@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>ODBC Query — Script Templates</title>
+<style>
+:root{
+  --bg:#f4f5f7; --card:#ffffff; --ink:#15171c; --muted:#5c6473;
+  --line:#e3e6ec; --accent:#1f6feb; --on-accent:#ffffff; --danger:#b3261e;
+  --radius:14px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0e1014; --card:#161a21; --ink:#e9ebef; --muted:#98a1b0;
+    --line:#252a33; --accent:#5b95fb; --on-accent:#07101f; --danger:#f2b8b5;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+.wrap{max-width:1080px; margin:0 auto; padding:24px 16px 48px}
+header h1{font-size:1.55rem; line-height:1.25; margin:0 0 10px; letter-spacing:-.01em}
+.lede{margin:0; color:var(--muted); max-width:62ch}
+.grid{display:grid; gap:14px; margin:24px 0 8px; grid-template-columns:1fr}
+.card{
+  display:flex; flex-direction:column; gap:8px; padding:18px;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  transition:box-shadow .15s ease;
+}
+.card h2{font-size:1.1rem; margin:0}
+.file{margin:0; font-size:.85rem; color:var(--muted); word-break:break-all}
+.file code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.applies{margin:0; font-size:.85rem; color:var(--muted)}
+.desc{margin:0; flex:1}
+.meta{margin:0; font-size:.8rem; color:var(--muted)}
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; width:100%;
+  min-height:48px; padding:12px 20px; margin-top:4px; border:0; border-radius:10px;
+  background:var(--accent); color:var(--on-accent); font:inherit; font-weight:600;
+  cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.btn[disabled]{cursor:progress; opacity:.7}
+.btn.is-error{background:var(--danger)}
+.how{margin-top:32px; padding:18px; background:var(--card);
+  border:1px solid var(--line); border-radius:var(--radius)}
+.how h2{font-size:1.05rem; margin:0 0 8px}
+.how ol{margin:0; padding-left:20px; color:var(--muted)}
+.how li{margin:4px 0}
+.how code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.9em}
+footer{margin-top:28px; color:var(--muted); font-size:.8rem}
+/* Tablet and up: cards side by side, buttons sized to their label so a mouse
+   does not have to cross a full-width bar. */
+@media (min-width:768px){
+  .wrap{padding:32px 24px 56px}
+  header h1{font-size:2rem}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; margin-top:28px}
+  .btn{width:auto; align-self:flex-start; min-width:132px}
+}
+@media (hover:hover){
+  .btn:hover{filter:brightness(1.07)}
+  .card:hover{box-shadow:0 8px 24px rgba(0,0,0,.1)}
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none !important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>ODBC Query — Script Templates</h1>
+  <p class="lede">Copy-ready copies of the analysis scripts that ship with ODBC&nbsp;Query.
+  Fixes and new templates appear here without waiting for an app update, so the script you
+  copy is always the current one.</p>
+</header>
+<main>
+  <section class="grid">
+    <article class="card">
+      <h2>Lims Raw Genealogy</h2>
+      <p class="file"><code>analyze-lims-raw-genealogy.py</code></p>
+      <p class="applies">Applies to: LIMS raw item / raw lot quantity data</p>
+      <p class="desc">Summarises raw lot quantities per raw item with a searchable stats table, a boxplot per raw lot and a per-item histogram drill-down.</p>
+      <p class="meta">19 KB &middot; updated 2026-09-18</p>
+      <button type="button" class="btn" data-url="https://llbxyhphblhplfpgyjht.supabase.co/storage/v1/object/public/odbc-app/templates/analyze-lims-raw-genealogy.py" aria-live="polite">Copy</button>
+    </article>
+    <article class="card">
+      <h2>Machine Uptime</h2>
+      <p class="file"><code>analyze-machine-uptime.py</code></p>
+      <p class="applies">Applies to: Machine / resource downtime event data</p>
+      <p class="desc">Turns machine downtime events into an uptime dashboard: uptime, planned and unplanned downtime percentages, a status timeline, duration histograms and a gravure-change analysis.</p>
+      <p class="meta">20 KB &middot; updated 2026-09-18</p>
+      <button type="button" class="btn" data-url="https://llbxyhphblhplfpgyjht.supabase.co/storage/v1/object/public/odbc-app/templates/analyze-machine-uptime.py" aria-live="polite">Copy</button>
+    </article>
+    <article class="card">
+      <h2>Mesa Yield</h2>
+      <p class="file"><code>analyze-mesa-yield.py</code></p>
+      <p class="applies">Applies to: Mesa yield data</p>
+      <p class="desc">Groups the loaded rows by MAIN_GROUP_DESCRIPTION and charts allocated, issued and FMI totals per work order in a self-contained HTML page.</p>
+      <p class="meta">34 KB &middot; updated 2026-09-09</p>
+      <button type="button" class="btn" data-url="https://llbxyhphblhplfpgyjht.supabase.co/storage/v1/object/public/odbc-app/templates/analyze-mesa-yield.py" aria-live="polite">Copy</button>
+    </article>
+    <article class="card">
+      <h2>Process Parameters</h2>
+      <p class="file"><code>analyze-process-params.py</code></p>
+      <p class="applies">Applies to: Process parameter / machine log data</p>
+      <p class="desc">Overlays every parameter column on one zoomable ECharts line chart with Date_Time on the x-axis. Runs in the editor, or standalone on a sql_*.xlsx.</p>
+      <p class="meta">10 KB &middot; updated 2026-09-09</p>
+      <button type="button" class="btn" data-url="https://llbxyhphblhplfpgyjht.supabase.co/storage/v1/object/public/odbc-app/templates/analyze-process-params.py" aria-live="polite">Copy</button>
+    </article>
+    <article class="card">
+      <h2>Laminate Lab Results</h2>
+      <p class="file"><code>analyze-tautona-data.py</code></p>
+      <p class="applies">Applies to: Tautona laminate lab test data</p>
+      <p class="desc">Profiling stats, Cp/Cpk/Ppk capability, SPC I-MR control charts and a categorical Pareto for laminate lab results, in one searchable page.</p>
+      <p class="meta">42 KB &middot; updated 2026-09-09</p>
+      <button type="button" class="btn" data-url="https://llbxyhphblhplfpgyjht.supabase.co/storage/v1/object/public/odbc-app/templates/analyze-tautona-data.py" aria-live="polite">Copy</button>
+    </article>
+  </section>
+  <section class="how">
+    <h2>How to use a template</h2>
+    <ol>
+      <li>Press <strong>Copy</strong> on a template — the whole script goes to the clipboard.</li>
+      <li>In ODBC Query, open the <strong>Script</strong> page and paste into the editor (Ctrl&nbsp;+&nbsp;V).</li>
+      <li>Choose the data source and run it — the grid rows arrive as a list of dicts called <code>data</code>.</li>
+    </ol>
+  </section>
+</main>
+<footer>
+  <p>5 template(s) &middot; page last published 2026-09-18 09:45</p>
+</footer>
+</div>
+<script>
+(function () {
+  "use strict";
+
+  // The scripts live in a public storage bucket, so the button fetches the
+  // bytes on click instead of linking a file: the visitor always gets the
+  // current copy, and nothing is written to their Downloads folder.
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    // Plain http:// intranet hosts are not a secure context, so fall back to
+    // the older selection-based copy.
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.top = "-1000px";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+      document.body.removeChild(area);
+      if (ok) { resolve(); } else { reject(new Error("copy blocked")); }
+    });
+  }
+
+  function flash(button, message, failed) {
+    button.textContent = message;
+    button.classList.toggle("is-error", !!failed);
+    clearTimeout(button.dataset.timer);
+    button.dataset.timer = setTimeout(function () {
+      button.textContent = "Copy";
+      button.classList.remove("is-error");
+    }, 1800);
+  }
+
+  var buttons = document.querySelectorAll(".btn");
+  Array.prototype.forEach.call(buttons, function (button) {
+    button.addEventListener("click", function () {
+      if (button.disabled) { return; }
+      button.disabled = true;
+      fetch(button.dataset.url, { cache: "no-store" })
+        .then(function (response) {
+          if (!response.ok) { throw new Error("HTTP " + response.status); }
+          return response.text();
+        })
+        .then(copyText)
+        .then(function () { flash(button, "Copied", false); })
+        .catch(function () { flash(button, "Copy failed", true); })
+        .then(function () { button.disabled = false; });
+    });
+  });
+})();
+</script>
+</body>
+</html>

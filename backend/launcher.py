@@ -1,0 +1,500 @@
+"""Packaged-app entry point (PyInstaller).
+
+Runs the FastAPI app with an embedded uvicorn server, opens the default
+browser once the server is ready, and supervises the server in a restart
+loop:
+
+* user closes every tab or presses Quit  -> reason "quit"   -> process exits;
+* the browser went silent (laptop sleep, frozen tab) and the watchdog
+  stopped the server -> reason "watchdog" -> the server restarts on the very
+  same port (persisted in the state dir) so the still-open browser tab
+  reconnects by itself, without a reload;
+* an unexpected crash is retried the same way, with a circuit breaker that
+  gives up after a few back-to-back fast failures and shows an error box.
+
+Built as a windowed (no-console) single-file exe, so stdout/stderr are
+redirected to ``%APPDATA%\\ODBCQueryApp\\server.log`` and fatal errors are
+shown in a message box instead of a console.
+"""
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+import webbrowser
+
+
+def _find_free_port(start: int = 8000, tries: int = 20) -> int:
+    """Return the first free localhost port at or above ``start``.
+
+    Lets the packaged app start even when another instance (e.g. a dev
+    server) already holds port 8000.
+    """
+    for port in range(start, start + tries):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    return start  # fall back; uvicorn will surface the bind error
+
+
+def _state_dir() -> str:
+    """Per-user state dir (logs, saved port); created on demand."""
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    path = os.path.join(base, "ODBCQueryApp")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _log_path() -> str:
+    return os.path.join(_state_dir(), "server.log")
+
+
+def _redirect_streams() -> None:
+    """Send stdout/stderr to a log file (windowed exe has no console)."""
+    log_file = open(_log_path(), "a", encoding="utf-8", buffering=1)
+    sys.stdout = log_file
+    sys.stderr = log_file
+
+
+def _load_saved_port() -> int | None:
+    try:
+        with open(os.path.join(_state_dir(), "port.txt"), encoding="utf-8") as fh:
+            port = int(fh.read().strip())
+        if 1024 <= port <= 65535:
+            return port
+    except Exception:
+        pass
+    return None
+
+
+def _save_port(port: int) -> None:
+    try:
+        with open(os.path.join(_state_dir(), "port.txt"), "w", encoding="utf-8") as fh:
+            fh.write(str(port))
+    except Exception:
+        pass
+
+
+def _port_is_bindable(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
+def _pick_port() -> int:
+    """Prefer the port used by the previous run.
+
+    An open browser tab can only heal itself (reconnect without a reload)
+    while the origin stays identical, so reuse the saved port whenever it is
+    free again and only drift to a neighbour when something else grabbed it.
+    """
+    saved = _load_saved_port()
+    if saved is not None and _port_is_bindable(saved):
+        return saved
+    return _find_free_port()
+
+
+# ---- Already-running detection / odbcapp:// protocol bookmark ----
+#
+# A browser cannot start a local process from a plain http:// page, so the
+# bookmark holds the custom ``odbcapp://`` scheme instead: clicking it hands
+# the URL to Windows, which runs this exe (registered below in HKCU), and the
+# exe opens the app in a tab.  A launch that finds a server already up only
+# opens the tab — it never starts a second server.
+
+_PROTOCOL = "odbcapp"
+_PORT_SCAN_TRIES = 20
+_SINGLE_INSTANCE_MUTEX = r"Local\ODBCQueryApp.SingleInstance"
+# Never closed on purpose: the lock must live exactly as long as this process.
+_instance_mutex_handle = None
+
+
+def _health_ok(port: int) -> bool:
+    """True when an ODBCQueryApp backend answers on ``port``."""
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/health", timeout=0.3
+        ) as response:
+            if response.status != 200:
+                return False
+            payload = json.loads(response.read().decode("utf-8"))
+        return payload.get("status") == "ok"
+    except Exception:
+        return False
+
+
+def _running_port() -> int | None:
+    """Port of an instance that is already serving, if any.
+
+    Reuses the saved port from the previous run first (that is where a running
+    instance sits), then scans the usual range in case it was started before a
+    port was ever persisted.
+    """
+    candidates: list[int] = []
+    saved = _load_saved_port()
+    if saved is not None:
+        candidates.append(saved)
+    candidates.extend(
+        port
+        for port in range(8000, 8000 + _PORT_SCAN_TRIES)
+        if port not in candidates
+    )
+    for port in candidates:
+        if _health_ok(port):
+            return port
+    return None
+
+
+def _acquire_single_instance() -> bool:
+    """Claim the "one server per session" lock; False when someone else holds it.
+
+    Two quick clicks on the bookmark must not spin up two servers on two ports
+    (which would open two tabs with separate state), so the loser just waits
+    for the winner and opens a tab on it.
+    """
+    global _instance_mutex_handle
+    try:
+        import ctypes
+
+        handle = ctypes.windll.kernel32.CreateMutexW(None, False, _SINGLE_INSTANCE_MUTEX)
+    except Exception:  # noqa: BLE001 - not Windows / no ctypes: never block startup
+        return True
+    if not handle:
+        return True
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        return False
+    _instance_mutex_handle = handle
+    return True
+
+
+def _wait_for_running_port(seconds: float = 30.0) -> int | None:
+    """Poll for a backend another instance is still starting up.
+
+    A one-file exe needs a moment to unpack before it serves anything, so the
+    second launcher waits instead of assuming nobody is coming.
+    """
+    deadline = time.monotonic() + seconds
+    while True:
+        port = _running_port()
+        if port is not None:
+            return port
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.5)
+
+
+# PyInstaller's onefile bootloader exports a set of private launch variables to
+# every child of the running app.  The browser is started *from* here, so it
+# inherits them and hands them on to whatever it launches — including the
+# ``odbcapp://`` handler, which is this very exe.  The bootloader then sees a
+# parent executable that does not match its own archive and aborts with
+# "Security validation failure: parent process has different executable!".
+# The bootloader has already consumed these by the time Python runs, so
+# dropping them here keeps the browser — and anything it starts — clean.
+_PYI_PRIVATE_VARS = (
+    "_PYI_ARCHIVE_FILE",
+    "_PYI_APPLICATION_HOME_DIR",
+    "_PYI_PARENT_PROCESS_LEVEL",
+    "_PYI_SPLASH_IPC",
+)
+
+
+def _clear_pyi_environment() -> None:
+    """Stop leaking PyInstaller's private launch variables to child processes."""
+    for name in _PYI_PRIVATE_VARS:
+        os.environ.pop(name, None)
+
+
+def _ensure_protocol_registered() -> None:
+    """Point ``odbcapp://`` at this exe (HKCU — no admin rights needed).
+
+    Best effort: the bookmark is a convenience, so any registry trouble is
+    swallowed rather than reported.  The command is rewritten only when it
+    differs, so an exe that was moved heals the registration on its next
+    normal launch.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        import winreg
+
+        command = f'"{sys.executable}" "%1"'
+        base = rf"Software\Classes\{_PROTOCOL}"
+        command_key = base + r"\shell\open\command"
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, command_key) as key:
+                if winreg.QueryValueEx(key, "")[0] == command:
+                    return  # already registered for this very exe
+        except OSError:
+            pass
+        with winreg.CreateKeyEx(
+            winreg.HKEY_CURRENT_USER, base, 0, winreg.KEY_WRITE
+        ) as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "URL:ODBCQueryApp")
+            winreg.SetValueEx(key, "URL Protocol", 0, winreg.REG_SZ, "")
+        with winreg.CreateKeyEx(
+            winreg.HKEY_CURRENT_USER, command_key, 0, winreg.KEY_WRITE
+        ) as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, command)
+    except Exception:  # noqa: BLE001 - never let a shortcut break startup
+        pass
+
+
+def _show_error(title: str, message: str) -> None:
+    """Show a native Windows error dialog; never raises (best-effort).
+
+    Uses user32.MessageBoxW instead of tkinter so the packaged app does not
+    need to bundle the Tcl/Tk runtime just for one error dialog.
+    """
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(0, message, title, 0x10)  # MB_ICONERROR
+    except Exception:
+        pass
+
+
+def _open_browser_when_ready(server, port: int) -> None:
+    """Wait for the server to finish starting, then open the app URL."""
+    for _ in range(60):
+        if server.started:  # uvicorn Server.started is a plain bool
+            webbrowser.open(f"http://127.0.0.1:{port}")
+            return
+        time.sleep(0.5)
+
+
+# ---- Self-update support (pairs with app/update.py) ----
+
+def _pending_update_path() -> str:
+    return os.path.join(_state_dir(), "pending_update.json")
+
+
+def _cleanup_old_backups(exe_path: str) -> None:
+    """Delete '<exe>.<version>.old' backups left behind by successful swaps."""
+    folder = os.path.dirname(exe_path) or "."
+    base = os.path.basename(exe_path)
+    try:
+        for name in os.listdir(folder):
+            if name.startswith(base + ".") and name.endswith(".old"):
+                try:
+                    os.remove(os.path.join(folder, name))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
+def _spawn_detached(exe_path: str) -> None:
+    """Start the freshly updated build as an independent background process.
+
+    The child must not inherit this process' PyInstaller bootloader state.
+    Since PyInstaller 6.22.1 the onefile bootloader treats a process that
+    inherits ``_PYI_ARCHIVE_FILE`` as a child of the *same* installation and
+    aborts with "Security validation failure: parent process has different
+    executable!" when the parent executable does not match.  That is exactly
+    what happens here: the running exe was just renamed aside by the swap, so
+    the relaunched build would die on startup and leave the open page stuck.
+
+    ``PYINSTALLER_RESET_ENVIRONMENT=1`` is the documented switch for spawning
+    a subprocess that outlives the current application (application restart):
+    it drops the inherited private bootloader variables so the new build comes
+    up as a fresh top-level process and unpacks itself again.
+    """
+    env = dict(os.environ)
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    flags = 0
+    if os.name == "nt":
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(
+        [exe_path, "--updated"],
+        cwd=os.path.dirname(exe_path) or None,
+        creationflags=flags,
+        close_fds=True,
+        env=env,
+    )
+
+
+def _apply_pending_update() -> bool:
+    """Swap the staged new exe in for the running one and relaunch it.
+
+    Windows refuses to overwrite a running exe but *does* allow renaming it,
+    so the trick is: rename the current build out of the way, copy the staged
+    update onto the original path, then spawn the new build detached with
+    ``--updated`` (no new browser tab; it reuses the saved port so the
+    already-open page reconnects by itself).
+    """
+    path = _pending_update_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            pending = json.load(fh)
+        staged = str(pending["exe"])
+        target = str(pending["target"])
+        version = str(pending.get("version") or "new")
+        if not os.path.isfile(staged):
+            raise OSError("the staged update file is missing")
+        backup = f"{target}.{version}.old"
+        for attempt in range(6):  # give AV/search indexers a moment to release handles
+            try:
+                os.replace(target, backup)
+                break
+            except OSError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.5)
+        try:
+            shutil.copyfile(staged, target)
+        except OSError:
+            os.replace(backup, target)  # roll back so the old build still works
+            raise
+        os.remove(path)  # consumed — never retry the swap after this point
+        print(f"installed update v{version}; relaunching {target}")
+        _spawn_detached(target)
+    except Exception as exc:  # noqa: BLE001 - always leave the user a working app
+        _show_error(
+            "ODBCQueryApp",
+            "The update could not be installed:\n"
+            f"{exc}\n\nThe previous version will keep running. "
+            f"Details in the log:\n{_log_path()}",
+        )
+        return False
+    try:
+        os.remove(staged)
+    except OSError:
+        pass
+    return True
+
+
+# Restart-loop tuning: a run shorter than this counts as a fast failure; the
+# supervisor gives up (and surfaces the error) after this many in a row.
+_FAST_FAILURE_SECONDS = 10.0
+_MAX_FAST_FAILURES = 3
+
+
+def main() -> int:
+    if getattr(sys, "frozen", False):
+        # Must happen before anything opens a browser: a leaked
+        # ``_PYI_ARCHIVE_FILE`` makes the odbcapp:// handler abort on launch.
+        _clear_pyi_environment()
+        _redirect_streams()
+        _cleanup_old_backups(sys.executable)
+        _ensure_protocol_registered()
+
+    # "--updated" is passed by _apply_pending_update: a browser tab is
+    # already open on the saved port, so don't spawn another one.
+    from_updater = "--updated" in sys.argv
+
+    if not from_updater:
+        # Bookmark click (odbcapp://) or a second exe launch: an instance is
+        # already serving, so only show its page and leave the server alone.
+        running = _running_port()
+        if running is not None:
+            webbrowser.open(f"http://127.0.0.1:{running}")
+            return 0
+        if not _acquire_single_instance():
+            # Another instance is still unpacking/starting: wait for it and
+            # show its page instead of starting a rival server on a new port.
+            running = _wait_for_running_port()
+            if running is not None:
+                webbrowser.open(f"http://127.0.0.1:{running}")
+            return 0
+
+    try:
+        import uvicorn
+
+        from app.main import app, arm_reattach_grace
+    except Exception as exc:  # noqa: BLE001 - report any startup failure
+        _show_error("ODBCQueryApp", f"Failed to start the app:\n{exc}")
+        return 1
+
+    port = _pick_port()
+    _save_port(port)
+
+    if from_updater:
+        # Nobody has a page open *yet* (no tab was launched), so give the
+        # pre-update browser tab a bounded chance to reconnect; if none
+        # does, the watchdog exits the app instead of lingering headless.
+        arm_reattach_grace()
+
+    first_run = not from_updater
+    fast_failures = 0
+    last_error = ""
+
+    while True:
+        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
+        server = uvicorn.Server(config)
+        # Lets the in-app Quit button (POST /api/shutdown) stop the server.
+        app.state.uvicorn_server = server
+        app.state.shutdown_reason = None
+
+        print(f"Serving ODBCQueryApp at http://127.0.0.1:{port}")
+        if first_run:
+            # Only open a new tab on the very first launch; restarts after a
+            # watchdog stop are meant to be picked up by the already-open page.
+            first_run = False
+            threading.Thread(
+                target=_open_browser_when_ready, args=(server, port), daemon=True
+            ).start()
+
+        started_at = time.monotonic()
+        crashed = False
+        try:
+            server.run()
+        except KeyboardInterrupt:
+            return 0  # console/dev stop: intentional exit
+        except BaseException as exc:  # noqa: BLE001 - e.g. port already in use
+            crashed = True
+            last_error = str(exc)
+            print(f"uvicorn stopped with an error: {exc!r}")
+
+        reason = getattr(app.state, "shutdown_reason", None)
+        if reason is None:
+            reason = "crash" if crashed else "quit"
+        ran_for = time.monotonic() - started_at
+
+        if reason == "update":
+            if _apply_pending_update():
+                return 0  # new build was spawned and owns the port now
+            # Swap failed: fall through and restart the old build so the
+            # open page reconnects to something that still works.
+
+        if reason == "quit":
+            if crashed and ran_for < _FAST_FAILURE_SECONDS:
+                # e.g. the very first bind failed: surface it, don't loop.
+                _show_error("ODBCQueryApp", f"The server stopped unexpectedly:\n{last_error}")
+                return 1
+            return 0
+
+        # "watchdog" / "crash": restart so the still-open page can reconnect.
+        if ran_for < _FAST_FAILURE_SECONDS:
+            fast_failures += 1
+            if fast_failures >= _MAX_FAST_FAILURES:
+                _show_error(
+                    "ODBCQueryApp",
+                    "The server kept failing to start. See the log at\n"
+                    f"{_log_path()}\n\nLast error:\n{last_error or 'unknown'}",
+                )
+                return 1
+        else:
+            fast_failures = 0
+
+        print(f"server stopped ({reason}) — restarting on port {port} for auto-reconnect")
+        # Wait for a still-open page to beat again after the restart; if none
+        # does, the app exits for good instead of lingering headless.
+        arm_reattach_grace()
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

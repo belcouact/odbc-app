@@ -1,0 +1,11 @@
+# Start the backend (serves the API and, after a frontend build, the built frontend)
+cd backend
+.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# Start the frontend dev server with hot reload (proxies /api to port 8000)
+cd frontend
+npm run dev
+
+# Build the frontend for production (output: frontend/dist, served by the backend)
+cd frontend
+npm run build

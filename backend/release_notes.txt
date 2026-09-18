@@ -1,0 +1,3 @@
+1. Settings → AI: AI now starts enabled by default, so "Ask AI" and the AI summaries work as soon as you add a provider and a key. Turn the master switch off if you do not want it.
+2. Settings → About: the "Server / Shut down server" card has been removed. Closing the last tab already stops the app, and clicking your odbcapp:// bookmark starts it again.
+3. "How to use this app": the first step now spells out the first-time setup — double-click ODBCQueryApp.exe once to register the odbcapp:// link, then save that link as a bookmark and use it from then on.

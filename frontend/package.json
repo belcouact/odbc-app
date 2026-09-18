@@ -1,0 +1,39 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node node_modules/vite/bin/vite.js",
+    "build": "node node_modules/typescript/bin/tsc -b; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; node node_modules/vite/bin/vite.js build",
+    "lint": "oxlint",
+    "preview": "node node_modules/vite/bin/vite.js preview"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@mui/icons-material": "^9.3.1",
+    "@mui/material": "^9.3.1",
+    "ag-grid-community": "^36.1.0",
+    "ag-grid-react": "^36.1.0",
+    "axios": "^1.19.0",
+    "echarts": "^6.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "sql-formatter": "^15.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "oxlint": "^1.75.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
+  }
+}

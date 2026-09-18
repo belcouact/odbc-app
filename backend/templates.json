@@ -1,0 +1,180 @@
+{
+  "published": "2026-09-18T09:45:36",
+  "templates": [
+    {
+      "name": "analyze-lims-raw-genealogy.py",
+      "stem": "analyze-lims-raw-genealogy",
+      "title": "Lims Raw Genealogy",
+      "applies_to": "LIMS raw item / raw lot quantity data",
+      "description": "Summarises raw lot quantities per raw item with a searchable stats table, a boxplot per raw lot and a per-item histogram drill-down.",
+      "details": {
+        "requires": [
+          "raw_item",
+          "raw_lot",
+          "raw_lot_qty"
+        ],
+        "outputs": [
+          "One self-contained HTML report, opened in your browser",
+          "KPIs: valid source rows, unique item-lot groups and raw item count",
+          "Searchable, sortable table of unique raw lots, total / min / max / average / median quantity per raw_item",
+          "ECharts boxplot of summed raw_lot_qty per raw lot",
+          "Per-item histogram modal with bin-size and quantity range controls plus a raw lot details table"
+        ]
+      },
+      "size": "19 KB",
+      "updated": "2026-09-18",
+      "example": {
+        "name": "raw_item_statistical_report.html",
+        "object": "templates/examples/raw_item_statistical_report.html",
+        "label": "Raw Item Statistical Report",
+        "size": "1008 KB"
+      }
+    },
+    {
+      "name": "analyze-machine-uptime.py",
+      "stem": "analyze-machine-uptime",
+      "title": "Machine Uptime",
+      "applies_to": "Machine / resource downtime event data",
+      "description": "Turns machine downtime events into an uptime dashboard: uptime, planned and unplanned downtime percentages, a status timeline, duration histograms and a gravure-change analysis.",
+      "details": {
+        "requires": [
+          "event_start_date",
+          "status",
+          "description",
+          "dt_mins"
+        ],
+        "optional": [
+          "mes_resource"
+        ],
+        "outputs": [
+          "One self-contained HTML dashboard, opened in your browser",
+          "Uptime %, planned downtime % and unplanned downtime % KPIs",
+          "Machine status timeline (running / planned / unplanned) with a machine picker and date range",
+          "Event duration histogram and a selected-event trend chart",
+          "Gravure change analysis: changeover counts, gravure-to-gravure vs gravure-to-cleaning split and an interval detail table"
+        ]
+      },
+      "size": "20 KB",
+      "updated": "2026-09-18",
+      "example": {
+        "name": "machine_up_down_timeline.html",
+        "object": "templates/examples/machine_up_down_timeline.html",
+        "label": "Machine Event Analysis",
+        "size": "4.0 MB"
+      }
+    },
+    {
+      "name": "analyze-mesa-yield.py",
+      "stem": "analyze-mesa-yield",
+      "title": "Mesa Yield",
+      "applies_to": "Mesa yield data",
+      "description": "Groups the loaded rows by MAIN_GROUP_DESCRIPTION and charts allocated, issued and FMI totals per work order in a self-contained HTML page.",
+      "details": {
+        "requires": [
+          "MAIN_GROUP_DESCRIPTION",
+          "MAIN_GROUP",
+          "JDE_WO_NUMBER",
+          "ALLOCATED_NET",
+          "ISSUED_NET",
+          "FMI_TOTAL",
+          "PLANNED_YIELD",
+          "FMI_GOOD",
+          "OVERRUN",
+          "FMI_DATE"
+        ],
+        "outputs": [
+          "One self-contained HTML page, opened in your browser",
+          "Allocated, issued and FMI totals charted per work order, grouped by MAIN_GROUP_DESCRIPTION",
+          "Planned yield, good quantity and overrun rolled up per work order"
+        ]
+      },
+      "size": "34 KB",
+      "updated": "2026-09-09",
+      "example": {
+        "name": "yield_trend_charts.html",
+        "object": "templates/examples/yield_trend_charts.html",
+        "label": "Yield Trend & Statistics",
+        "size": "774 KB"
+      }
+    },
+    {
+      "name": "analyze-process-params.py",
+      "stem": "analyze-process-params",
+      "title": "Process Parameters",
+      "applies_to": "Process parameter / machine log data",
+      "description": "Overlays every parameter column on one zoomable ECharts line chart with Date_Time on the x-axis. Runs in the editor, or standalone on a sql_*.xlsx.",
+      "details": {
+        "requires": [
+          "Date_Time",
+          "One column per parameter to trend (any numeric column)"
+        ],
+        "optional": [
+          "WOL",
+          "Prefix",
+          "Suffix",
+          "WCenter",
+          "Operation",
+          "Product",
+          "DEVICE_NUM",
+          "EVENT_ID"
+        ],
+        "outputs": [
+          "One self-contained HTML dashboard, opened in your browser",
+          "A single zoomable ECharts line chart overlaying every parameter column",
+          "Date_Time on the x-axis, with the extra metadata used for grouping and hover"
+        ]
+      },
+      "size": "10 KB",
+      "updated": "2026-09-09",
+      "example": {
+        "name": "Process_param_trend.html",
+        "object": "templates/examples/Process_param_trend.html",
+        "label": "Parameter Trend Dashboard",
+        "size": "1.6 MB"
+      }
+    },
+    {
+      "name": "analyze-tautona-data.py",
+      "stem": "analyze-tautona-data",
+      "title": "Laminate Lab Results",
+      "applies_to": "Tautona laminate lab test data",
+      "description": "Profiling stats, Cp/Cpk/Ppk capability, SPC I-MR control charts and a categorical Pareto for laminate lab results, in one searchable page.",
+      "details": {
+        "requires": [
+          "MG_DESC",
+          "ANALYSIS",
+          "RESULT_NAME",
+          "RESPONSE2"
+        ],
+        "optional": [
+          "WOL",
+          "LAM_DATE",
+          "IN_SPEC",
+          "SPEC_RULE",
+          "LSL",
+          "USL",
+          "LCL",
+          "UCL",
+          "MAIN_GROUP",
+          "DESCRIPTION",
+          "UNITS"
+        ],
+        "outputs": [
+          "Laminate_Analysis.html — one self-contained, searchable page",
+          "Profiling statistics and an out-of-spec overview per group",
+          "Cp / Cpk / Ppk capability with histograms",
+          "SPC I-MR control charts and a categorical Pareto",
+          "Pop-up chart modals when a laminate (MG_DESC) is clicked"
+        ]
+      },
+      "size": "42 KB",
+      "updated": "2026-09-09",
+      "example": {
+        "name": "Laminate_Analysis.html",
+        "object": "templates/examples/Laminate_Analysis.html",
+        "label": "Laminate Analysis — Statistical & Capability Summary",
+        "size": "12.1 MB"
+      }
+    }
+  ]
+}

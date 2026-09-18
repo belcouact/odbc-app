@@ -1,0 +1,80 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Light color scheme (matches the editorial data-desk theme). */
+:root {
+  color-scheme: light;
+}
+
+/* Atmospheric light canvas: a subtle wash of cool teal and warm terracotta
+   drifting behind the app so the background is never a flat gray. */
+body {
+  background-color: #f4f6f8;
+  background-image:
+    radial-gradient(1200px 620px at 8% -8%, rgba(15, 110, 110, 0.06), transparent 60%),
+    radial-gradient(1000px 520px at 96% -4%, rgba(194, 84, 43, 0.05), transparent 55%),
+    radial-gradient(900px 500px at 50% 115%, rgba(22, 114, 140, 0.05), transparent 60%);
+  background-attachment: fixed;
+  /* Never allow a stray horizontal scrollbar on small screens. */
+  overflow-x: hidden;
+  /* Always reserve the vertical scrollbar gutter so every page centers its
+     content identically. Without this, tall pages (e.g. Query) show a
+     scrollbar that shifts the centered column left vs. short pages
+     (e.g. Analyze), making their left margins look different. */
+  overflow-y: scroll;
+}
+
+/* Code editor + generated SQL/code blocks use the mono suite. */
+code,
+pre,
+textarea.code {
+  font-family: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Code', Menlo, Consolas,
+    monospace;
+}
+
+/* Consistent, keyboard-visible focus ring (teal = primary). Scoped to
+   interactive elements that MUI does not already outline (buttons, links,
+   tab stop widgets) to avoid double-ringing text fields. */
+:where(a, button, [role='button'], [tabindex]):focus-visible {
+  outline: 2px solid rgba(15, 110, 110, 0.7);
+  outline-offset: 2px;
+}
+
+/* Respect users who prefer reduced motion: collapse all transitions/animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Slim, unobtrusive scrollbars to match the data-dense layout. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 110, 110, 0.35) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(15, 110, 110, 0.3);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(15, 110, 110, 0.5);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -1,0 +1,182 @@
+{
+  "FAB_MESA10": {
+    "_comment": "GUI quick-search options for the FAB_MESA10 connection. The SELECT template is loaded from backend/sql/FAB_MESA10/<name>.sql (one option per .sql file). All field conditions and user-added parameters are injected at the '{}' anchor in the base SQL; empty optional fields are dropped at run time. 'alias' is the friendly name shown in the criteria UI (from the base SQL SELECT alias when one exists, else the bare column name); 'label' stays the table.column SQL reference used to build the WHERE clause.",
+    "options": [
+      {
+        "name": "Lot_Genealogy",
+        "fields": [
+          { "key": "lot_number", "alias": "lot_number", "label": "mesa_event_history.lot_number", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "from_lot", "alias": "from_lot", "label": "mesa_event_history.from_lot", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product", "alias": "product", "label": "lm.product", "type": "varchar", "operator": "like", "optional": true }
+        ]
+      },
+      {
+        "name": "On_Hold",
+        "fields": [
+          { "key": "wol", "alias": "WOL", "label": "mesa_lot_master.split_bin_from_lot_number", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product", "alias": "Item", "label": "mesa_lot_master.product", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "hold_code", "alias": "Code", "label": "mesa_lot_master.hold_code", "type": "varchar", "operator": "like", "optional": true }
+        ]
+      },
+      {
+        "name": "Yield_Summary",
+        "fields": [
+          { "key": "branch_plant", "alias": "Branch_Plant", "label": "mys.branch_plant", "type": "varchar", "operator": "=", "optional": true, "default": "B180" },
+          { "key": "jde_wo_number", "alias": "WO", "label": "mys.jde_wo_number", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group", "alias": "Main_Group", "label": "mys.MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product", "alias": "Item", "label": "mys.product", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "fmi_date", "alias": "FMI_Date", "label": "mys.fmi_date", "type": "datetime", "operator": ">=", "optional": true }
+        ]
+      },
+      {
+        "name": "Machine uptime",
+        "fields": [
+          { "key": "plant", "alias": "plant", "label": "rsc.plant", "type": "varchar", "operator": "=", "optional": true, "default": "B180" },
+          { "key": "mes_resource", "alias": "mes_resource", "label": "rsc.mes_resource", "type": "varchar", "operator": "=", "optional": true, "placeholder": "180L26C" },
+          { "key": "event_start_date", "alias": "event_start_date", "label": "rsc.event_start_date", "type": "datetime", "operator": ">=", "optional": true }
+        ]
+      }
+    ]
+  },
+  "FabLIMS": {
+    "_comment": "GUI quick-search options for the FabLIMS connection. Each option defines the input fields; the SELECT template itself is loaded from backend/sql/FabLIMS/<name>.sql (one option per .sql file, named after the file). Fields may carry an 'operator' (= default, like, in, >=, <=); all field conditions and user-added parameters are injected at the '{}' anchor at run time. Field values are bound as ODBC parameters — never concatenated into SQL. 'alias' is the friendly name shown in the criteria UI (from the base SQL SELECT alias); 'label' stays the table.column SQL reference. Add a new option by dropping a .sql file into backend/sql/FabLIMS/ and (optionally) adding its fields here under the same name.",
+    "options": [
+      {
+        "name": "Tautona_Test_Result",
+        "fields": [
+          { "key": "mfg_date", "label": "MFG_DATE", "type": "datetime", "operator": ">=", "optional": true },
+          { "key": "mg_desc", "label": "MG_DESC", "type": "varchar", "optional": true },
+          { "key": "analysis", "label": "ANALYSIS", "type": "varchar", "optional": true },
+          { "key": "result_name", "label": "RESULT_NAME", "type": "varchar", "optional": true },
+          { "key": "wo", "label": "WOL", "type": "varchar", "optional": true }
+        ]
+      },
+      {
+        "name": "Package_Info",
+        "fields": [
+          {
+            "key": "operation",
+            "alias": "Line",
+            "label": "GM_WOL.G_OPERATION",
+            "type": "varchar",
+            "operator": "like",
+            "optional": true
+          },
+          {
+            "key": "pack_date",
+            "alias": "Package finished local time",
+            "label": "GM_WOL.G_MAN_DATE",
+            "column": "(GM_WOL.G_MAN_DATE + 0.5)",
+            "type": "datetime",
+            "operator": ">=",
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "Lot_Genealogy",
+        "fields": [
+          {
+            "key": "to_lot",
+            "alias": "WOL",
+            "label": "gm_batch.TO_LOT",
+            "type": "varchar",
+            "operator": "like",
+            "optional": true
+          },
+          {
+            "key": "raw_issue_date",
+            "alias": "Raw_issue_date",
+            "label": "gm_batch.CHANGED_ON",
+            "type": "datetime",
+            "operator": ">=",
+            "optional": true
+          }
+        ]
+      },
+      {
+        "name": "LSN",
+        "fields": [
+          {
+            "key": "wol",
+            "alias": "WOL",
+            "label": "x.G_WOL",
+            "type": "varchar",
+            "operator": "like",
+            "optional": true
+          },
+          {
+            "key": "item",
+            "alias": "Item",
+            "label": "x.G_ITEM",
+            "type": "varchar",
+            "operator": "like",
+            "optional": true
+          },
+          {
+            "key": "name",
+            "alias": "Name",
+            "label": "x.NAME",
+            "type": "varchar",
+            "operator": "like",
+            "optional": true
+          },
+          {
+            "key": "man_date",
+            "alias": "Man_Date",
+            "label": "x.G_MAN_DATE",
+            "type": "datetime",
+            "operator": ">=",
+            "optional": true
+          }
+        ]
+      }
+    ]
+  },
+  "PostgreSQL35W": {
+    "_comment": "GUI quick-search options for the PostgreSQL35W connection. The SELECT template is loaded from backend/sql/PostgreSQL35W/<name>.sql (one option per .sql file). Each field maps to a ':key' placeholder in the base SQL; empty optional fields are dropped at run time. '{}' is the anchor for user-added parameters. 'alias' is the friendly name shown in the criteria UI (from the base SQL SELECT alias); 'label' stays the table.column SQL reference.",
+    "options": [
+      {
+        "name": "Defect_Summary",
+        "fields": [
+          { "key": "piece_name", "alias": "piece_name", "label": "p.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "class_name", "alias": "class_name", "label": "c.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "layer_name", "alias": "layer_name", "label": "l.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "job_recipe", "alias": "job_recipe", "label": "j.recipe", "type": "varchar", "operator": "like", "optional": true }
+        ]
+      },
+      {
+        "name": "Defects_With_Images",
+        "fields": [
+          { "key": "job_name", "alias": "job_name", "label": "j.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "piece_name", "alias": "piece_name", "label": "p.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "class_name", "alias": "class_name", "label": "c.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "layer_name", "alias": "layer_name", "label": "l.name", "type": "varchar", "operator": "like", "optional": true }
+        ]
+      },
+      {
+        "name": "Defects_Without_Images",
+        "fields": [
+          { "key": "job_name", "alias": "job_name", "label": "j.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "piece_name", "alias": "piece_name", "label": "p.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "class_name", "alias": "class_name", "label": "c.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "layer_name", "alias": "layer_name", "label": "l.name", "type": "varchar", "operator": "like", "optional": true }
+        ]
+      }
+    ]
+  },
+  "SZMFGACTIVE": {
+    "_comment": "GUI quick-search options for the SZMFGACTIVE connection. The SELECT template is loaded from backend/sql/SZMFGACTIVE/<name>.sql (one option per .sql file). All field conditions and user-added parameters are injected at the '{}' anchor in the base SQL; empty optional fields are dropped at run time. 'alias' is the friendly name shown in the criteria UI (the bare column name, without the 'db.' prefix); 'label' stays the table.column SQL reference.",
+    "options": [
+      {
+        "name": "Process_Data",
+        "fields": [
+          { "key": "wol", "alias": "WOL", "label": "db.WOL", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "date_time", "alias": "Date_Time", "label": "db.Date_Time", "type": "datetime", "operator": ">=", "optional": true },
+          { "key": "operation", "alias": "Operation", "label": "db.Operation", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product", "alias": "Product", "label": "db.Product", "type": "varchar", "operator": "like", "optional": true }
+        ]
+      }
+    ]
+  }
+}

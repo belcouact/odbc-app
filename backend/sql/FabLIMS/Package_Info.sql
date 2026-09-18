@@ -1,0 +1,20 @@
+SELECT
+    GM_WOL.G_WOL,
+    G_WOL.G_MAIN_GROUP,
+    gmp.DESCRIPTION AS 'Mgp Description',
+    GM_WOL.PRODUCT,
+    GM_WOL.G_OPERATION AS 'Line',
+    GM_WOL.G_WO,
+    exp.DESCRIPTION AS 'Product Description',
+    GM_WOL.GM_PACKAGE AS 'Package',
+    (GM_WOL.G_MAN_DATE + 0.5) AS 'Package finished local time',
+    ROUND(GM_WOL.G_WOL_QTY, 1) AS 'Qty'
+FROM GM_WOL
+LEFT JOIN VW_F4801 exp ON exp.ORDER_NUMBER = GM_WOL.G_WO
+LEFT JOIN G_WOL ON GM_WOL.G_WOL = G_WOL.NAME
+LEFT JOIN G_MAIN_GROUPS gmp ON gmp.NAME = G_WOL.G_MAIN_GROUP
+WHERE 1 = 1
+    AND GM_WOL.GM_PLANT = 'B180'
+    AND LEN(GM_WOL.GM_PACKAGE) > 0
+    AND GM_WOL.G_WO_QTY > 0
+{}
