@@ -247,9 +247,10 @@ export default function AiSettingsPage() {
       base_url: preset.base_url,
       model: preset.model,
       // Selecting a different model means a different provider/endpoint, so the
-      // previous key no longer applies. It stays filed under its own brand and
-      // model, so switching back offers that same key again.
-      api_key: '',
+      // previous key no longer applies. If this brand/model already has a key on
+      // file it is restored right away, so switching back keeps working without
+      // having to hunt for the key again.
+      api_key: savedKeys[savedKeyLabel(preset)] ?? '',
     }))
     setShowApiKey(false)
     setTestResult(null)
@@ -283,7 +284,7 @@ export default function AiSettingsPage() {
       // that pair rather than replacing whatever key was last saved.
       const saved = await api.saveAiSettings({ ...form, key_label: savedKeyLabel(form) })
       setSavedKeys(saved?.saved_keys ?? {})
-      setNotice({ severity: 'success', message: 'AI settings saved.' })
+      setNotice({ severity: 'success', message: 'AI settings saved — the assistant uses them on your next message.' })
     } catch (err) {
       setNotice({
         severity: 'error',

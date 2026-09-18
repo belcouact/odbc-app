@@ -496,6 +496,17 @@ _CLARIFY_POLICY = (
     "your assumptions in one short line. Never reply with an empty message."
 )
 
+_GENERAL_ASSISTANT_SYSTEM_PROMPT = (
+    "You are a helpful general-purpose assistant built into a desktop ODBC query "
+    "tool used by quality/process engineers. Answer any question the user asks — "
+    "general knowledge, explanations, data interpretation, calculations, writing, "
+    "SQL/data concepts, or how to use this app. Be direct and concise: lead with "
+    "the answer, then add only the detail that is needed, using short paragraphs "
+    "or bullet lists. Use markdown (tables, fenced code blocks) when it makes the "
+    "answer clearer. If the request is genuinely ambiguous, ask one short "
+    "clarifying question instead of guessing. Never reply with an empty message."
+)
+
 _SQL_ASSISTANT_SYSTEM_PROMPT = (
     "You are a SQL expert and data-analysis assistant for quality/process engineers. "
     "When the user asks you to write or modify SQL, respond with ONLY one read-only SQL "
@@ -1040,12 +1051,13 @@ def grid_history_delete(entry_id: str):
 def _build_chat_messages(payload: ChatRequest) -> tuple[list[dict], int, str, int]:
     """Build the LLM message list for a chat request.
 
-    ``mode`` selects the specialty: ``sql`` (default), ``script`` or ``chart``.
-    Returns ``(messages, max_tokens, mode, grid_column_count)`` shared by the
-    blocking and streaming chat endpoints.
+    ``mode`` selects the specialty: ``chat`` (general questions, no context),
+    ``sql`` (default), ``script`` or ``chart``. Returns
+    ``(messages, max_tokens, mode, grid_column_count)`` shared by the blocking
+    and streaming chat endpoints.
     """
     mode = (payload.mode or "sql").strip().lower()
-    if mode not in ("sql", "script", "chart"):
+    if mode not in ("chat", "sql", "script", "chart"):
         mode = "sql"
 
     schema_lines: list[str] = []
@@ -1061,7 +1073,14 @@ def _build_chat_messages(payload: ChatRequest) -> tuple[list[dict], int, str, in
         ]
     grid_columns = _grid_column_names(payload.columns or [])
 
-    if mode == "chart":
+    if mode == "chat":
+        # General conversation: no database or grid context is injected — the
+        # user may ask about anything and the editor state is irrelevant.
+        messages = [
+            {"role": "system", "content": _GENERAL_ASSISTANT_SYSTEM_PROMPT},
+            *({"role": turn.role, "content": turn.content} for turn in payload.messages),
+        ]
+    elif mode == "chart":
         # Chart conversations keep the dataset context on every turn; the sample
         # rows (value-format reference only) are attached to the last user turn.
         sample = (payload.rows or [])[:5]
@@ -1073,7 +1092,7 @@ def _build_chat_messages(payload: ChatRequest) -> tuple[list[dict], int, str, in
                 "Sample rows (JSON — value-format reference only, do NOT embed these values):",
                 json.dumps(sample, ensure_ascii=False, default=str)[:4000],
             ]
-        messages: list[dict] = [{"role": "system", "content": _ECHART_ASSISTANT_SYSTEM_PROMPT}]
+        messages = [{"role": "system", "content": _ECHART_ASSISTANT_SYSTEM_PROMPT}]
         turns = list(payload.messages)
         for i, turn in enumerate(turns):
             if turn.role != "user":
@@ -1129,10 +1148,11 @@ def _build_chat_messages(payload: ChatRequest) -> tuple[list[dict], int, str, in
 def chat(payload: ChatRequest):
     """Run a continuous assistant conversation in the global AI sidebar.
 
-    ``mode`` selects the specialty: ``sql`` (default) explains/debugs/writes
-    read-only SQL; ``script`` writes Python/JavaScript data scripts; ``chart``
-    writes ECharts option scripts that reference the grid rows. The full
-    message history is sent each turn so the conversation stays in context.
+    ``mode`` selects the specialty: ``chat`` answers general questions with no
+    database context; ``sql`` (default) explains/debugs/writes read-only SQL;
+    ``script`` writes Python/JavaScript data scripts; ``chart`` writes ECharts
+    option scripts that reference the grid rows. The full message history is
+    sent each turn so the conversation stays in context.
     """
     settings = _load_settings()
     _require_configured(settings)

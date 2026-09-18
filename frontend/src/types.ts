@@ -217,7 +217,7 @@ export interface AiSettings {
 }
 
 /** Specialty of the global AI sidebar conversation. */
-export type AiMode = 'sql' | 'script' | 'chart'
+export type AiMode = 'chat' | 'sql' | 'script' | 'chart'
 
 export type ScriptLanguage = 'python' | 'javascript'
 

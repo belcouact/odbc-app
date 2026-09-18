@@ -3,6 +3,7 @@ import type { ChangeEvent, PointerEvent as ReactPointerEvent, ReactElement } fro
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import ChatIcon from '@mui/icons-material/Chat'
 import CodeIcon from '@mui/icons-material/Code'
 import CloseIcon from '@mui/icons-material/Close'
 import LightbulbIcon from '@mui/icons-material/Lightbulb'
@@ -23,7 +24,6 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import type { EChartsOption } from 'echarts'
 import { api } from '../api/client'
-import type { ResultColumn } from '../api/client'
 import { emit } from '../editorBus'
 import type { AiMode } from '../types'
 import { getWorkspaceSnapshot } from '../workspaceBus'
@@ -42,6 +42,12 @@ interface AiSidebarProps {
 }
 
 const MODES: { value: AiMode; label: string; icon: ReactElement; hint: string }[] = [
+  {
+    value: 'chat',
+    label: 'Chat',
+    icon: <ChatIcon fontSize="small" />,
+    hint: 'Ask anything — general questions, explanations, calculations or how to use this app.',
+  },
   {
     value: 'sql',
     label: 'SQL',
@@ -104,7 +110,7 @@ function parseEchartScript(script: string, rows: Record<string, unknown>[]): ECh
   throw new Error('The script did not produce an ECharts `option` object.')
 }
 
-const EMPTY = { sql: [], script: [], chart: [] } as Record<AiMode, ChatMessage[]>
+const EMPTY = { chat: [], sql: [], script: [], chart: [] } as Record<AiMode, ChatMessage[]>
 
 const STORAGE_KEY = 'ai_chat_messages_v1'
 /** At most this many messages are kept per mode (storage sanity cap). */
@@ -147,9 +153,9 @@ export default function AiSidebar({
   // Each mode keeps its own conversation so switching tabs never loses
   // context. Conversations are persisted so they survive app restarts.
   const [messages, setMessages] = useState<Record<AiMode, ChatMessage[]>>(loadStoredMessages)
-  const [inputs, setInputs] = useState<Record<AiMode, string>>({ sql: '', script: '', chart: '' })
+  const [inputs, setInputs] = useState<Record<AiMode, string>>({ chat: '', sql: '', script: '', chart: '' })
   const [loadingMode, setLoadingMode] = useState<AiMode | null>(null)
-  const [errors, setErrors] = useState<Record<AiMode, string | null>>({ sql: null, script: null, chart: null })
+  const [errors, setErrors] = useState<Record<AiMode, string | null>>({ chat: null, sql: null, script: null, chart: null })
   const [notice, setNotice] = useState<string | null>(null)
 
   /** Resizable drawer width (sm+ only; mobile stays full-width). */
@@ -227,7 +233,16 @@ export default function AiSidebar({
       return
     }
     const snapshotNow = getWorkspaceSnapshot()
-    const columns: ResultColumn[] = snapshotNow.columns.map((name) => ({ name, type: '' }))
+    // The general Chat tab answers any question, so the grid/editor context is
+    // not sent for it — it would only bloat the request.
+    const gridContext =
+      mode === 'chat'
+        ? {}
+        : {
+            connectionId: snapshotNow.connectionId || undefined,
+            columns: snapshotNow.columns.map((name) => ({ name, type: '' })),
+            rows: snapshotNow.rows,
+          }
     const conversation: ChatMessage[] = [...messages[mode], { role: 'user', content: text }]
     // Append an empty assistant placeholder that fills in as chunks stream in.
     setMessages((prev) => ({ ...prev, [mode]: [...conversation, { role: 'assistant', content: '' }] }))
@@ -249,9 +264,7 @@ export default function AiSidebar({
       const reply = await api.askAiChatStream(
         {
           messages: conversation,
-          connectionId: snapshotNow.connectionId || undefined,
-          columns,
-          rows: snapshotNow.rows,
+          ...gridContext,
           mode,
           sql: mode === 'sql' ? snapshotNow.sqlText || undefined : undefined,
         },
@@ -314,7 +327,7 @@ export default function AiSidebar({
       })
       showNotice('Script inserted into the Analyze editor.')
       onOpenScript?.()
-    } else {
+    } else if (mode === 'chart') {
       try {
         const option = parseEchartScript(code, snapshotNow.rows)
         emit({ type: 'apply-chart', option })
@@ -445,6 +458,8 @@ export default function AiSidebar({
       >
         {currentMessages.length === 0 && (
           <Typography variant="body2" color="text.secondary">
+            {mode === 'chat' &&
+              'Ask anything — e.g. “What does this app do?”, “Explain standard deviation”, or “Summarize this data in plain words”.'}
             {mode === 'sql' &&
               'e.g. “Explain what this SQL does”, “Fix the error: …”, or “Write a query for …”.'}
             {mode === 'script' &&
@@ -571,7 +586,9 @@ export default function AiSidebar({
                 {message.content}
               </Typography>
             )}
-            {message.role === 'assistant' && extractCodeBlock(message.content) && (
+            {/* The Chat tab is context-free, so its code blocks are not applied
+                anywhere — the Apply button only belongs to the SQL/script/chart tabs. */}
+            {mode !== 'chat' && message.role === 'assistant' && extractCodeBlock(message.content) && (
               <Button
                 size="small"
                 variant="outlined"
@@ -651,9 +668,11 @@ export default function AiSidebar({
             multiline
             minRows={2}
             placeholder={
-              mode === 'chart'
-                ? 'Ask anything, or describe the chart you want…'
-                : 'Ask anything or request SQL / a script…'
+              mode === 'chat'
+                ? 'Ask anything…'
+                : mode === 'chart'
+                  ? 'Ask anything, or describe the chart you want…'
+                  : 'Ask anything or request SQL / a script…'
             }
           />
           <Button

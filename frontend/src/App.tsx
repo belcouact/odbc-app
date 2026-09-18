@@ -23,6 +23,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import AppsIcon from '@mui/icons-material/Apps'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CodeIcon from '@mui/icons-material/Code'
 import CloseIcon from '@mui/icons-material/Close'
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
@@ -1216,6 +1217,17 @@ function AppShell() {
               sx={{ flexShrink: 0, ml: 'auto', color: 'secondary.main' }}
             >
               <InfoIcon color="secondary" />
+            </IconButton>
+          </Tooltip>
+          {/* AI assistant: opens the sidebar on the general Chat tab, which
+              answers any question without needing a query in the editor. */}
+          <Tooltip title="Open AI assistant">
+            <IconButton
+              aria-label="Open AI assistant"
+              onClick={() => openAi('chat')}
+              sx={{ flexShrink: 0, ml: 0.5, color: 'primary.main' }}
+            >
+              <AutoAwesomeIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title="Open Connections settings">
