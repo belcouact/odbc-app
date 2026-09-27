@@ -76,6 +76,9 @@ export default function FieldWell({
 
       <Box
         onDragOver={(event) => {
+          // Only column drags (text/plain) highlight the well — a chart-type
+          // drag carries its own MIME and belongs on the canvas.
+          if (!Array.from(event.dataTransfer.types).includes('text/plain')) return
           event.preventDefault()
           setOver(true)
         }}

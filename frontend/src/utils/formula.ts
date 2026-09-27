@@ -314,6 +314,57 @@ const FUNCTIONS: Record<string, (args: Value[]) => Value> = {
   TRIM: ([s]) => toText(s).trim(),
   IF: ([cond, t, f]) => (truthy(cond ?? false) ? t ?? '' : f ?? ''),
   COALESCE: (args) => args.find((a) => a !== null && a !== undefined) ?? (args.length ? args[args.length - 1] : null),
+  // Capture group `group` (default 0 = the whole match) of the first regex
+  // match in `text`, or '' when nothing matches — so the result can drive IF()
+  // directly ('' is falsy). `flags` is an optional JS flag string, e.g. 'i'.
+  //   REGEXEXTRACT({NAME}, '(\d{8}[A-Za-z]{2})', 1, 'i')
+  REGEXEXTRACT: ([text, pattern, group, flags]) => {
+    const source = toText(text)
+    const expr = toText(pattern)
+    if (!source || !expr) return ''
+    let re: RegExp
+    try {
+      re = new RegExp(expr, toText(flags))
+    } catch (err) {
+      throw new FormulaError(
+        `Invalid regular expression '${expr}': ${err instanceof Error ? err.message : 'unknown error'}`,
+      )
+    }
+    const match = re.exec(source)
+    if (!match) return ''
+    // A group beyond the pattern's capture groups yields undefined → ''.
+    const index = group === undefined || group === null ? 0 : Math.max(0, Math.trunc(toNumber(group)))
+    return match[index] ?? ''
+  },
+  // CIELAB → sRGB → '#rrggbb' (D65 white point, sRGB transfer function). Ported
+  // from backend/templates/color-conversions-pantone-tcx.js (labToHex) so the
+  // ColorDB colour measurements can carry a readable swatch value.
+  //   LABTOHEX({L}, {a}, {b})
+  LABTOHEX: ([l, a, b]) => {
+    // A blank measurement stays blank instead of collapsing to black.
+    const isBlank = (v: Value) => v === null || v === undefined || v === ''
+    if (isBlank(l) || isBlank(a) || isBlank(b)) return ''
+    const L = toNumber(l)
+    const A = toNumber(a)
+    const B = toNumber(b)
+    // LAB → XYZ
+    const py = (L + 16) / 116
+    const inversePivot = (v: number) => (v ** 3 > 0.008856 ? v ** 3 : (v - 16 / 116) / 7.787)
+    const X = 95.047 * inversePivot(A / 500 + py)
+    const Y = 100.0 * inversePivot(py)
+    const Z = 108.883 * inversePivot(py - B / 200)
+    // XYZ → linear sRGB → gamma-encoded 0-255
+    const x = X / 100
+    const y = Y / 100
+    const z = Z / 100
+    const gamma = (v: number) => (v > 0.0031308 ? 1.055 * v ** (1 / 2.4) - 0.055 : 12.92 * v)
+    const channel = (v: number) => Math.min(255, Math.max(0, Math.round(255 * gamma(v))))
+    const r = channel(3.2406 * x - 1.5372 * y - 0.4986 * z)
+    const g = channel(-0.9689 * x + 1.8758 * y + 0.0415 * z)
+    const blue = channel(0.0557 * x - 0.204 * y + 1.057 * z)
+    const hex = (v: number) => v.toString(16).padStart(2, '0')
+    return `#${hex(r)}${hex(g)}${hex(blue)}`
+  },
 }
 
 function applyFunction(name: string, args: Value[]): Value {

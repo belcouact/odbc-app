@@ -109,6 +109,12 @@ a = Analysis(
             os.path.join(backend_dir, "app", "data", "connection_templates.json"),
             "app/data",
         ),
+        # Pantone TCX reference database -> <bundle>/app/data
+        # (built by tools/build_pantone_db.py from templates/Pantone_TCX.xlsx)
+        (
+            os.path.join(backend_dir, "app", "data", "pantone_tcx.db"),
+            "app/data",
+        ),
         # Release history shown in Settings -> About -> <bundle>/app/data
         # (release.py rewrites it before every build so it includes this release)
         (
@@ -161,8 +167,8 @@ a = Analysis(
         # tkinter: replaced by a native ctypes MessageBox in launcher.py
         # (also drops the bundled Tcl/Tk DLLs and data tree).
         "tkinter", "Tkinter", "_tkinter", "tcl", "tk",
-        # sqlite3: reachable only via lazy pandas.io.sql paths; app uses ODBC.
-        "sqlite3",
+        # NOTE: sqlite3 is deliberately NOT excluded -- it reads the bundled
+        # Pantone TCX reference database (app/data/pantone_tcx.db).
         # Unused stdlib documentation/debug/test modules.
         "pydoc", "pydoc_data", "doctest", "unittest", "unittest.mock",
         "pdb", "cmd", "bdb", "code", "xmlrpc", "smtplib", "telnetlib",

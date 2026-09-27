@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent, ReactElement } from 'react'
-import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 import AbcIcon from '@mui/icons-material/Abc'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
@@ -21,6 +20,7 @@ import GridViewIcon from '@mui/icons-material/GridView'
 import MultilineChartIcon from '@mui/icons-material/MultilineChart'
 import NumbersIcon from '@mui/icons-material/Numbers'
 import PieChartIcon from '@mui/icons-material/PieChart'
+import PushPinIcon from '@mui/icons-material/PushPin'
 import RadarIcon from '@mui/icons-material/Radar'
 import ScatterPlotIcon from '@mui/icons-material/ScatterPlot'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
@@ -73,6 +73,9 @@ import {
   SINGLE_SERIES_TYPES,
 } from '../utils/chartCatalog'
 import FieldWell from './ChartFieldWell'
+import EChart from './EChart'
+import KpiCards from './KpiCards'
+import type { VisualConfig } from '../utils/visual'
 
 /** Every chart family the builder can render, shown as a colored icon + tooltip. */
 const CHART_TYPES: { value: ChartType; label: string; icon: ReactElement; color: string }[] = [
@@ -97,6 +100,9 @@ const CHART_TYPES: { value: ChartType; label: string; icon: ReactElement; color:
   { value: 'scatter', label: 'Scatter', color: '#7cb342', icon: <ScatterPlotIcon /> },
   { value: 'gauge', label: 'Gauge', color: '#0288d1', icon: <SpeedIcon /> },
 ]
+
+/** Custom drag MIME so chart-type drags never collide with field drags (text/plain). */
+const CHART_TYPE_MIME = 'application/x-bi-charttype'
 
 /** Sorts offered for the aggregated categories. */
 const SORT_OPTIONS: { value: ChartSort; label: string }[] = [
@@ -153,11 +159,21 @@ const KIND_CHIP_COLOR: Record<ColumnKind, 'primary' | 'default' | 'secondary' | 
   boolean: 'info',
 }
 
+/**
+ * A chart configuration pushed in from outside. `y` accepts a single column
+ * name for backwards compatibility with analysis templates, while a dashboard
+ * tile hands back the full multi-column config.
+ */
+export type ChartPreset = Partial<Omit<VisualConfig, 'y'>> & {
+  y?: string | string[]
+  nonce: number
+}
+
 interface ChartsPanelProps {
   source: QuerySource
   result: QueryResult
   /** Optional chart configuration pushed in from outside (e.g. an analysis template). */
-  preset?: { chartType?: ChartType; x?: string; y?: string; nonce: number } | null
+  preset?: ChartPreset | null
   /** Externally generated ECharts option (e.g. from the AI chart assistant). */
   aiOption?: { option: EChartsOption; nonce: number } | null
   /** Called when the user takes over with the manual chart builder. */
@@ -166,6 +182,10 @@ interface ChartsPanelProps {
   onAiChart?: () => void
   /** Disables the AI chart button (e.g. while an upload is in progress). */
   aiDisabled?: boolean
+  /** Pins the current configuration onto the snapshot's dashboard. */
+  onAddToDashboard?: (config: VisualConfig) => void
+  /** Label for the pin button — "Update" when re-editing a pinned visual. */
+  addLabel?: string
 }
 
 export default function ChartsPanel({
@@ -175,14 +195,13 @@ export default function ChartsPanel({
   onClearAi,
   onAiChart,
   aiDisabled,
+  onAddToDashboard,
+  addLabel = 'Add to dashboard',
 }: ChartsPanelProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const chartRef = useRef<echarts.ECharts | null>(null)
   // Tracks the last Y-column toggle so a fast double-click doesn't immediately
   // reverse the selection (which made the dropdown feel "too sensitive").
   const lastYToggle = useRef<{ name: string; at: number }>({ name: '', at: 0 })
   const lastY2Toggle = useRef<{ name: string; at: number }>({ name: '', at: 0 })
-  const [chartReady, setChartReady] = useState(false)
 
   const [chartType, setChartType] = useState<ChartType>('bar')
   const [x, setX] = useState('')
@@ -206,6 +225,11 @@ export default function ChartsPanel({
 
   // The chart type picker + X/Y shelves can be collapsed the same way.
   const [setupOpen, setSetupOpen] = useState(true)
+
+  // Drag-and-drop for the chart-type tiles: `typeDragOver` draws the drop frame
+  // on the canvas while `draggingType` labels it with the pending family.
+  const [typeDragOver, setTypeDragOver] = useState(false)
+  const [draggingType, setDraggingType] = useState('')
 
   /** Auto-detected data kind for each column (Number / Text / Boolean / Date). */
   const columnKinds = useMemo(() => {
@@ -286,12 +310,30 @@ export default function ChartsPanel({
   }, [result])
 
   // Apply an externally-provided chart configuration (best-effort: only use
-  // keys that are valid for the current result columns).
+  // keys that are valid for the current result columns). A dashboard tile
+  // replays its whole config here, so editing a pinned visual starts from
+  // exactly what the tile shows.
   useEffect(() => {
     if (!preset) return
+    const known = (name: string | undefined) =>
+      !!name && result.columns.some((c) => c.name === name)
+    const knownList = (names: string[] | undefined) =>
+      (names ?? []).filter((name) => result.columns.some((c) => c.name === name))
+
     if (preset.chartType) setChartType(preset.chartType)
-    if (preset.x && result.columns.some((c) => c.name === preset.x)) setX(preset.x)
-    if (preset.y && result.columns.some((c) => c.name === preset.y)) setY([preset.y])
+    if (known(preset.x)) setX(preset.x as string)
+    const presetY = Array.isArray(preset.y) ? preset.y : preset.y ? [preset.y] : []
+    if (presetY.length > 0) setY(knownList(presetY))
+    if (preset.operation) setOperation(preset.operation)
+    if (preset.series !== undefined) setSeries(known(preset.series) ? (preset.series as string) : '')
+    if (preset.sort) setSort(preset.sort)
+    if (preset.topN !== undefined) setTopN(preset.topN)
+    if (preset.bins !== undefined) setBins(preset.bins)
+    if (preset.barMode) setBarMode(preset.barMode)
+    if (preset.horizontal !== undefined) setHorizontal(preset.horizontal)
+    if (preset.area !== undefined) setArea(preset.area)
+    if (preset.y2 !== undefined) setY2(knownList(preset.y2))
+    if (preset.y2Operation) setY2Operation(preset.y2Operation)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset])
 
@@ -421,34 +463,22 @@ export default function ChartsPanel({
     [chartType, result, y, operation],
   )
 
-  // Create / resize / dispose the ECharts instance (skipped for KPI cards).
-  const showCanvas = chartType !== 'kpi'
-  useEffect(() => {
-    if (!showCanvas) return
-    const el = containerRef.current
-    if (!el) return
-    const chart = echarts.init(el)
-    chartRef.current = chart
-    setChartReady(true)
-    const observer = new ResizeObserver(() => chart.resize())
-    observer.observe(el)
-    return () => {
-      observer.disconnect()
-      chart.dispose()
-      chartRef.current = null
-      setChartReady(false)
-    }
-  }, [showCanvas])
-
-  // Push the option into the chart when it changes.
-  useEffect(() => {
-    if (chartReady && chartRef.current && option) {
-      chartRef.current.setOption(option, true)
-      // The chart may have been created/resized while its tab was hidden
-      // (0-sized container); force a redraw so the option is actually painted.
-      chartRef.current.resize()
-    }
-  }, [option, chartReady])
+  /** What a dashboard tile would store if the user pinned this chart now. */
+  const currentConfig: VisualConfig = {
+    chartType,
+    x,
+    y,
+    operation,
+    series: seriesCapable && series ? series : undefined,
+    sort,
+    topN,
+    bins,
+    barMode,
+    horizontal,
+    area,
+    y2: chartType === 'combo' && y2.length > 0 ? y2 : undefined,
+    y2Operation: chartType === 'combo' && y2.length > 0 ? y2Operation : undefined,
+  }
 
   const missingAxes = (!NO_X_AXIS_TYPES.includes(chartType) && !x) || y.length === 0
 
@@ -491,6 +521,34 @@ export default function ChartsPanel({
   }
 
   const selectSx = { minHeight: 48 } as const
+
+  /** Makes a chart-type tile draggable onto the canvas. */
+  const chartTypeDragProps = (value: ChartType, label: string) => ({
+    draggable: true,
+    onDragStart: (event: ReactDragEvent<HTMLDivElement>) => {
+      event.dataTransfer.setData(CHART_TYPE_MIME, value)
+      event.dataTransfer.effectAllowed = 'copy'
+      setDraggingType(label)
+    },
+    onDragEnd: () => {
+      setDraggingType('')
+      setTypeDragOver(false)
+    },
+  })
+
+  /** True when the in-flight drag carries a chart type rather than a field. */
+  const isChartTypeDrag = (event: ReactDragEvent<HTMLDivElement>): boolean =>
+    Array.from(event.dataTransfer.types).includes(CHART_TYPE_MIME)
+
+  /** Drop a chart type onto the canvas to switch the visualization. */
+  const handleCanvasTypeDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!isChartTypeDrag(event)) return
+    event.preventDefault()
+    const dropped = event.dataTransfer.getData(CHART_TYPE_MIME) as ChartType
+    setDraggingType('')
+    setTypeDragOver(false)
+    if (dropped) handleChartType(dropped)
+  }
 
   return (
     <Stack spacing={1.5} sx={{ width: '100%' }}>
@@ -642,23 +700,43 @@ export default function ChartsPanel({
           )}
         </Paper>
 
-        {/* Right column — chart type picker, field shelves and display options. */}
-        <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+        {/* Canvas + Visualizations pane. The pane docks to the right on desktop
+            (Power BI-style) and stacks above the canvas on phones so the field
+            wells and chart types stay within reach. */}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) minmax(300px, 360px)' },
+            gap: 1.5,
+            alignItems: 'start',
+            minWidth: 0,
+          }}
+        >
 
-      {/* Chart setup — icon picker + X/Y shelves, collapsible so the chart can
-          take the full height. The active family stays visible in the header. */}
+      {/* Visualizations pane — chart type tiles, field wells and display
+          options, collapsible so the canvas can take the full height. */}
+      <Paper
+        variant="outlined"
+        sx={{
+          order: { xs: 1, lg: 2 },
+          position: { lg: 'sticky' },
+          top: { lg: 8 },
+          minWidth: 0,
+          p: 1.5,
+        }}
+      >
       <Stack
         direction="row"
         spacing={1}
         onClick={() => setSetupOpen((cur) => !cur)}
         role="button"
         aria-expanded={setupOpen}
-        aria-label={setupOpen ? 'Collapse chart setup' : 'Expand chart setup'}
-        title={setupOpen ? 'Collapse chart setup' : 'Expand chart setup'}
+        aria-label={setupOpen ? 'Collapse visualizations' : 'Expand visualizations'}
+        title={setupOpen ? 'Collapse visualizations' : 'Expand visualizations'}
         sx={{ alignItems: 'center', minHeight: 40, cursor: 'pointer' }}
       >
         <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-          Chart setup
+          Visualizations
         </Typography>
         <Typography variant="caption" color="text.secondary">
           {CHART_TYPES.find((t) => t.value === chartType)?.label ?? 'KPI cards'}
@@ -671,69 +749,81 @@ export default function ChartsPanel({
       <Collapse in={setupOpen} unmountOnExit>
         <Stack spacing={1.5} sx={{ minWidth: 0 }}>
 
-      {/* Row 1 — chart type picker + AI action. */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={1}
-        useFlexGap
-        sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}
-      >
-        {/* Chart type picker — every family on a single row, each icon with a
-            tooltip label. On narrow screens the row scrolls sideways so the
-            touch targets keep their size. */}
+      {/* Row 1 — chart type tiles. Tap to switch family, or drag a tile onto
+          the canvas. */}
+      <Stack spacing={0.5}>
+        <Typography variant="caption" color="text.secondary">
+          Chart type
+        </Typography>
         <Box
           sx={{
-            display: 'flex',
-            flexWrap: 'nowrap',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(44px, 1fr))',
             gap: 0.5,
-            flex: '1 1 320px',
-            minWidth: 0,
-            overflowX: 'auto',
-            scrollbarWidth: 'thin',
           }}
         >
           {CHART_TYPES.map((type) => (
-            <Tooltip key={type.value} title={type.label} arrow>
-              <ToggleButton
-                value={type.value}
-                selected={chartType === type.value}
-                onChange={() => handleChartType(type.value)}
-                aria-label={type.label}
-                sx={{
-                  flex: '1 1 0',
-                  minWidth: { xs: 48, md: 44 },
-                  minHeight: 48,
-                  px: 0,
-                  // Each family keeps its own hue; the selected button tints its
-                  // background and border with that same hue.
-                  color: type.color,
-                  borderColor: alpha(type.color, 0.4),
-                  '&:hover': { bgcolor: alpha(type.color, 0.08) },
-                  '&.Mui-selected': {
+            <Tooltip key={type.value} title={`${type.label} — tap or drag onto the canvas`} arrow>
+              <Box {...chartTypeDragProps(type.value, type.label)} sx={{ display: 'flex' }}>
+                <ToggleButton
+                  value={type.value}
+                  selected={chartType === type.value}
+                  onChange={() => handleChartType(type.value)}
+                  aria-label={type.label}
+                  sx={{
+                    flex: 1,
+                    minWidth: { xs: 48, md: 44 },
+                    minHeight: 48,
+                    px: 0,
+                    // Each family keeps its own hue; the selected button tints its
+                    // background and border with that same hue.
                     color: type.color,
-                    bgcolor: alpha(type.color, 0.16),
-                    borderColor: type.color,
-                    '&:hover': { bgcolor: alpha(type.color, 0.24) },
-                  },
-                }}
-              >
-                {type.icon}
-              </ToggleButton>
+                    borderColor: alpha(type.color, 0.4),
+                    '&:hover': { bgcolor: alpha(type.color, 0.08) },
+                    '&.Mui-selected': {
+                      color: type.color,
+                      bgcolor: alpha(type.color, 0.16),
+                      borderColor: type.color,
+                      '&:hover': { bgcolor: alpha(type.color, 0.24) },
+                    },
+                  }}
+                >
+                  {type.icon}
+                </ToggleButton>
+              </Box>
             </Tooltip>
           ))}
         </Box>
+        <Typography variant="caption" color="text.disabled">
+          Tap a type to switch, or drag one onto the canvas.
+        </Typography>
 
-        <Button
-          size="small"
-          variant="outlined"
-          color="primary"
-          startIcon={<AutoAwesomeIcon />}
-          onClick={onAiChart}
-          disabled={aiDisabled}
-          sx={{ minHeight: 48, flexShrink: 0, alignSelf: 'center', ml: { sm: 'auto' } }}
-        >
-          AI Chart
-        </Button>
+        {onAiChart && (
+          <Button
+            size="small"
+            variant="outlined"
+            color="primary"
+            startIcon={<AutoAwesomeIcon />}
+            onClick={onAiChart}
+            disabled={aiDisabled}
+            sx={{ minHeight: 48, width: '100%', mt: 0.5 }}
+          >
+            AI Chart
+          </Button>
+        )}
+
+        {onAddToDashboard && (
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<PushPinIcon />}
+            onClick={() => onAddToDashboard(currentConfig)}
+            disabled={!x && !NO_X_AXIS_TYPES.includes(chartType)}
+            sx={{ minHeight: 48, width: '100%', mt: 0.5 }}
+          >
+            {addLabel}
+          </Button>
+        )}
       </Stack>
 
       {/* Row 2 — X / Y field shelves, on their own line below the icon row. */}
@@ -780,13 +870,13 @@ export default function ChartsPanel({
           )}
           {seriesCapable && seriesCandidates.length > 0 && (
             <FieldWell
-              label="Color by"
+              label="Legend"
               value={series ? [series] : []}
               options={seriesCandidates.map((n) => ({ name: n, kind: columnKinds[n] }))}
               onChoose={setSeries}
               onAdd={setSeries}
               onRemove={() => setSeries('')}
-              hint="Drop to color by series"
+              hint="Drop to split the series"
             />
           )}
 
@@ -936,6 +1026,12 @@ export default function ChartsPanel({
         </Stack>
         </Stack>
       </Collapse>
+      </Paper>
+
+      {/* Canvas column — the visualization fills the space left of the pane on
+          desktop and sits below it on phones. Chart-type tiles can be dropped
+          straight onto it. */}
+      <Stack spacing={1.5} sx={{ order: { xs: 2, lg: 1 }, minWidth: 0 }}>
 
       {aiOption && (
         <Alert severity="info" onClose={onClearAi}>
@@ -943,80 +1039,36 @@ export default function ChartsPanel({
         </Alert>
       )}
 
+      <Box
+        onDragOver={(event: ReactDragEvent<HTMLDivElement>) => {
+          if (!isChartTypeDrag(event)) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+          if (!typeDragOver) setTypeDragOver(true)
+        }}
+        onDragLeave={() => setTypeDragOver(false)}
+        onDrop={handleCanvasTypeDrop}
+        sx={{
+          position: 'relative',
+          minWidth: 0,
+          borderRadius: 1,
+          outline: typeDragOver ? '2px dashed' : 'none',
+          outlineColor: 'primary.main',
+          outlineOffset: 2,
+        }}
+      >
+
       {chartType === 'kpi' ? (
         kpiCards.length > 0 ? (
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(auto-fit, minmax(180px, 1fr))' },
-              gap: 1.5,
-            }}
-          >
-            {kpiCards.map((card) => {
-              const opLabel = OPERATIONS.find((o) => o.value === card.op)?.label
-              return (
-                <Paper
-                  key={card.label}
-                  variant="outlined"
-                  sx={{ p: 1.5, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}
-                >
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    noWrap
-                    sx={{ display: 'block' }}
-                    title={opLabel && card.stats.length > 0 ? `${card.label} · ${opLabel}` : card.label}
-                  >
-                    {card.label}
-                    {opLabel && card.stats.length > 0 ? ` · ${opLabel}` : ''}
-                  </Typography>
-                  <Typography
-                    variant="h5"
-                    noWrap
-                    sx={{ fontWeight: 700 }}
-                    title={card.formatted}
-                  >
-                    {card.formatted}
-                  </Typography>
-                  {card.stats.length > 0 && (
-                    <Box
-                      sx={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                        columnGap: 1,
-                        rowGap: 0.25,
-                        mt: 0.5,
-                      }}
-                    >
-                      {card.stats.map((stat) => (
-                        <Box key={stat.label} sx={{ minWidth: 0 }}>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ display: 'block', lineHeight: 1.2 }}
-                          >
-                            {stat.label}
-                          </Typography>
-                          <Typography variant="body2" noWrap title={stat.formatted}>
-                            {stat.formatted}
-                          </Typography>
-                        </Box>
-                      ))}
-                    </Box>
-                  )}
-                </Paper>
-              )
-            })}
-          </Box>
+          <KpiCards cards={kpiCards} />
         ) : (
           <Typography color="text.secondary">Select numeric columns to show KPI cards.</Typography>
         )
       ) : (
         <Box sx={{ position: 'relative' }}>
-          <Box
-            ref={containerRef}
-            sx={{ height: { xs: 320, sm: 420, md: 480 }, minHeight: 300, width: '100%' }}
-          />
+          <Box sx={{ height: { xs: 320, sm: 420, md: 480 }, minHeight: 300, width: '100%' }}>
+            <EChart option={option} />
+          </Box>
           {!hasData && (
             <Box
               sx={{
@@ -1041,7 +1093,29 @@ export default function ChartsPanel({
           )}
         </Box>
       )}
-        </Stack>
+
+        {typeDragOver && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              // The overlay is purely visual: drops must still land on the Box.
+              pointerEvents: 'none',
+              borderRadius: 1,
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+            }}
+          >
+            <Typography color="primary" sx={{ fontWeight: 600, px: 2, textAlign: 'center' }}>
+              {draggingType ? `Drop to switch to ${draggingType}` : 'Drop a chart type here'}
+            </Typography>
+          </Box>
+        )}
+      </Box>
+      </Stack>
+      </Box>
       </Box>
     </Stack>
   )

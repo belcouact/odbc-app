@@ -15,6 +15,7 @@ import EditIcon from '@mui/icons-material/Edit'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FileOpenIcon from '@mui/icons-material/FileOpen'
+import GridOnIcon from '@mui/icons-material/GridOn'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SaveIcon from '@mui/icons-material/Save'
@@ -24,6 +25,7 @@ import BarChartIcon from '@mui/icons-material/BarChart'
 import BookmarksIcon from '@mui/icons-material/Bookmarks'
 import CodeIcon from '@mui/icons-material/Code'
 import RefreshIcon from '@mui/icons-material/Refresh'
+import StorageIcon from '@mui/icons-material/Storage'
 import TerminalIcon from '@mui/icons-material/Terminal'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import Alert from '@mui/material/Alert'
@@ -59,13 +61,15 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { alpha } from '@mui/material/styles'
 import type { EChartsOption } from 'echarts'
 import { api, downloadBlob } from '../api/client'
-import type { DownloadResult } from '../api/client'
+import type { DownloadResult, SnapshotMeta } from '../api/client'
 import type {
   AiMode,
   DbConnection,
@@ -264,6 +268,22 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   /** Anchor for the "Insert example" dropdown menu. */
   const [exampleMenuAnchor, setExampleMenuAnchor] = useState<HTMLElement | null>(null)
 
+  // ---- Script data source ----
+  /** Where the script's rows come from: the Query grid (default) or a snapshot. */
+  const [dataSource, setDataSource] = useState<'grid' | 'snapshot'>('grid')
+  /** Stored snapshots offered when ``dataSource`` is 'snapshot'. */
+  const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([])
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false)
+  const [snapshotError, setSnapshotError] = useState<string | null>(null)
+  /** Snapshot chosen as the script's data source ('' = none picked yet). */
+  const [snapshotId, setSnapshotId] = useState('')
+  /** The chosen snapshot's rows, cached so a re-run does not re-fetch them. */
+  const [snapshotRows, setSnapshotRows] = useState<{
+    id: string
+    rows: Record<string, unknown>[]
+  } | null>(null)
+  const [snapshotRowsLoading, setSnapshotRowsLoading] = useState(false)
+
   // ---- Template scripts (Supabase ``templates/`` catalog, bundled fallback) ----
   /** Whether the "use template" toggle is on. On by default so the Script tab
    *  opens with the template list ready instead of an empty editor. */
@@ -431,12 +451,75 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   useImperativeHandle(ref, () => ({ refresh: () => void refresh() }), [refresh])
 
   // ---- Data source resolution ----
-  // The script data source is always the grid table data (rows currently loaded
-  // in the Query grid — from a builder query, custom SQL or an upload).
-  const resolveScriptData = (): {
+  // The default is the grid table data (rows currently loaded in the Query
+  // grid — from a builder query, custom SQL or an upload); the user can switch
+  // to a stored snapshot's rows instead.
+  const loadSnapshotRows = useCallback(async (id: string) => {
+    setSnapshotRowsLoading(true)
+    setSnapshotError(null)
+    try {
+      const detail = await api.getSnapshot(id)
+      setSnapshotRows({ id, rows: detail.rows })
+    } catch (err) {
+      setSnapshotRows(null)
+      setSnapshotError(err instanceof Error ? err.message : 'Failed to load the snapshot')
+    } finally {
+      setSnapshotRowsLoading(false)
+    }
+  }, [])
+
+  /** Fetch the snapshot list lazily — only once the snapshot source is picked. */
+  const loadSnapshotList = useCallback(async () => {
+    setSnapshotsLoading(true)
+    setSnapshotError(null)
+    try {
+      setSnapshots(await api.listSnapshots())
+    } catch (err) {
+      setSnapshotError(err instanceof Error ? err.message : 'Failed to load snapshots')
+    } finally {
+      setSnapshotsLoading(false)
+    }
+  }, [])
+
+  const handleDataSourceChange = (value: 'grid' | 'snapshot') => {
+    setDataSource(value)
+    if (value === 'snapshot' && snapshots.length === 0 && !snapshotsLoading) {
+      void loadSnapshotList()
+    }
+  }
+
+  const handleSelectSnapshot = (id: string) => {
+    setSnapshotId(id)
+    setSnapshotRows(null)
+    if (id && snapshotRows?.id !== id) void loadSnapshotRows(id)
+  }
+
+  const resolveScriptData = async (): Promise<{
     rows?: Record<string, unknown>[]
     error?: string
-  } => {
+  }> => {
+    if (dataSource === 'snapshot') {
+      if (!snapshotId) {
+        return { error: 'Choose a snapshot under Analyze → Script → Snapshot data first.' }
+      }
+      const rows =
+        snapshotRows?.id === snapshotId
+          ? snapshotRows.rows
+          : await api
+              .getSnapshot(snapshotId)
+              .then((detail) => {
+                setSnapshotRows({ id: snapshotId, rows: detail.rows })
+                return detail.rows
+              })
+              .catch((err: unknown) => {
+                setSnapshotError(err instanceof Error ? err.message : 'Failed to load the snapshot')
+                return null
+              })
+      if (rows === null) return { error: `Could not load snapshot "${snapshotId}".` }
+      return rows.length > 0
+        ? { rows }
+        : { error: 'The selected snapshot has no stored rows.' }
+    }
     const snapshotNow = getWorkspaceSnapshot()
     if (!snapshotNow.rows || snapshotNow.rows.length === 0) {
       return { error: 'No grid data — run a query or upload a file in the Query tab first.' }
@@ -522,7 +605,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
       })
       return
     }
-    const resolved = resolveScriptData()
+    const resolved = await resolveScriptData()
     if (resolved.error) {
       setScriptResult({
         ok: false,
@@ -574,14 +657,14 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
       setSaveScriptError('Enter a name for the script.')
       return
     }
-    const resolved = resolveScriptData()
+    const resolved = await resolveScriptData()
     if (resolved.error) {
       setSaveScriptError(resolved.error)
       return
     }
-    // The editor always runs against the grid data; store the workspace's
-    // current builder query / custom SQL so the saved script re-runs its
-    // data source when launched from the Pre-defined list.
+    // The data actually fed to the script is not stored with it; keep the
+    // workspace's current builder query / custom SQL so the saved script can
+    // re-run its data source when launched from the Pre-defined list.
     const snapshotNow = getWorkspaceSnapshot()
     setSavingScript(true)
     setSaveScriptError(null)
@@ -661,8 +744,9 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
       // The guided tour spotlights controls on a specific tab (e.g. the
       // template picker on Script), so it has to be able to open that tab.
       else if (action.type === 'show-analyze-tab') setTab(action.tab)
-      else if (action.type === 'apply-chart') {
+      else if (action.type === 'apply-chart' && action.target !== 'bi') {
         // AI sidebar chart: surface the generated option on the Chart tab.
+        // Charts emitted from the BI page carry target 'bi' and land there.
         setAiOption({ option: action.option, nonce: Date.now() })
         setTab('chart')
       }
@@ -741,6 +825,10 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
 
   const snapshotForSubtitle = getWorkspaceSnapshot()
 
+  const selectedSnapshot = snapshots.find((s) => s.id === snapshotId) ?? null
+  const selectedSnapshotRowCount =
+    snapshotRows?.id === snapshotId ? snapshotRows.rows.length : selectedSnapshot?.row_count ?? 0
+
   // ---- Chart tab data ----
   // The Chart tab charts the grid table loaded in the Query tab, so wrap the
   // workspace snapshot in the QueryResult shape ChartsPanel expects.
@@ -818,15 +906,78 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                 useFlexGap
                 sx={{ alignItems: { xs: 'stretch', md: 'center' }, flexWrap: 'wrap' }}
               >
+                <ToggleButtonGroup
+                  value={dataSource}
+                  exclusive
+                  size="small"
+                  onChange={(_event, value: 'grid' | 'snapshot' | null) => {
+                    if (value) handleDataSourceChange(value)
+                  }}
+                  aria-label="Script data source"
+                  sx={{
+                    flexShrink: 0,
+                    '& .MuiToggleButton-root': { minHeight: 48, px: 1.5, textTransform: 'none' },
+                  }}
+                >
+                  <ToggleButton value="grid" aria-label="Use grid data">
+                    <GridOnIcon fontSize="small" sx={{ mr: 0.5 }} />
+                    Grid data
+                  </ToggleButton>
+                  <ToggleButton value="snapshot" aria-label="Use snapshot data">
+                    <StorageIcon fontSize="small" sx={{ mr: 0.5 }} />
+                    Snapshot data
+                  </ToggleButton>
+                </ToggleButtonGroup>
+
+                {dataSource === 'snapshot' && (
+                  <FormControl
+                    size="small"
+                    sx={{ minWidth: { xs: '100%', md: 260 }, flexShrink: 0 }}
+                  >
+                    <InputLabel shrink>Snapshot</InputLabel>
+                    <Select
+                      value={snapshotId}
+                      onChange={(e: SelectChangeEvent) => handleSelectSnapshot(e.target.value)}
+                      label="Snapshot"
+                      displayEmpty
+                      disabled={snapshotsLoading || snapshots.length === 0}
+                      renderValue={(v) => {
+                        const found = snapshots.find((s) => s.id === v)
+                        if (found) return found.name
+                        return snapshotsLoading ? 'Loading…' : 'Select a snapshot…'
+                      }}
+                    >
+                      {snapshots.map((s) => (
+                        <MenuItem key={s.id} value={s.id}>
+                          {`${s.name} — ${s.row_count.toLocaleString()} rows`}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+
                 <Typography variant="body2" color="text.secondary" sx={{ minWidth: 0 }}>
-                  {snapshotForSubtitle.rows.length > 0 ? (
+                  {dataSource === 'grid' ? (
+                    snapshotForSubtitle.rows.length > 0 ? (
+                      <>
+                        Data source: <b>all grid table data</b> —{' '}
+                        {snapshotForSubtitle.rows.length.toLocaleString()} row
+                        {snapshotForSubtitle.rows.length === 1 ? '' : 's'} in the grid.
+                      </>
+                    ) : (
+                      'Data source: grid table data — no rows yet. Run a query or upload a file in the Query tab first.'
+                    )
+                  ) : selectedSnapshot ? (
                     <>
-                      Data source: <b>all grid table data</b> —{' '}
-                      {snapshotForSubtitle.rows.length.toLocaleString()} row
-                      {snapshotForSubtitle.rows.length === 1 ? '' : 's'} in the grid.
+                      Data source: <b>{selectedSnapshot.name}</b> —{' '}
+                      {snapshotRowsLoading
+                        ? 'loading rows…'
+                        : `${selectedSnapshotRowCount.toLocaleString()} stored row${
+                            selectedSnapshotRowCount === 1 ? '' : 's'
+                          }.`}
                     </>
                   ) : (
-                    'Data source: grid table data — no rows yet. Run a query or upload a file in the Query tab first.'
+                    'Data source: stored snapshot — pick one to run the script against it.'
                   )}
                 </Typography>
 
@@ -884,6 +1035,12 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                   </Button>
                 </Stack>
               </Stack>
+
+              {snapshotError && (
+                <Alert severity="error" onClose={() => setSnapshotError(null)}>
+                  {snapshotError}
+                </Alert>
+              )}
 
               {templateError && (
                 <Alert severity="error" onClose={() => setTemplateError(null)}>

@@ -202,6 +202,40 @@ TEMPLATE_INFO = {
             "gravure-to-cleaning split and an interval detail table",
         ],
     },
+    "analyze-color-data": {
+        "title": "Color Data",
+        "applies_to": "Color_Data lab colour measurements (LD / Raw / Laminate)",
+        "description": (
+            "Lab colour explorer in one four-tab page: an LD heat map, unmatched "
+            "Raw items, laminate ΔE scoring and a like-colour pair comparison."
+        ),
+        "requires": [
+            "Sample_type",
+            "LD_item",
+            "L",
+            "a",
+            "b",
+        ],
+        "optional": [
+            "Raw_item",
+            "DATE",
+            "NAME",
+            "Batch",
+            "Hex",
+            "WOL",
+            "Product",
+            "Description",
+        ],
+        "outputs": [
+            "One self-contained HTML page with four tabs, opened in your browser",
+            "LD heat map: one row per LD_item coloured by the mean of its LD "
+            "samples; clicking an item opens its ΔE-by-batch detail view",
+            "Unmatched Raw and Laminate tables with CIEDE2000 ΔE scoring "
+            "against a selectable reference LD_item",
+            "ΔE Compare: like-colour pairs within a textile, with baseline "
+            "highlighting and a side-by-side colour popup",
+        ],
+    },
     "analyze-lims-raw-genealogy": {
         "title": "Lims Raw Genealogy",
         "applies_to": "LIMS raw item / raw lot quantity data",

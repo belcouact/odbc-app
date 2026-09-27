@@ -14,7 +14,9 @@ from app import logging_utils, storage, update
 from app.version import APP_VERSION
 from app.api import (
     ai,
+    analytics_store,
     charts,
+    color_lot,
     connection_templates,
     connections,
     feedback,
@@ -339,8 +341,10 @@ app.include_router(charts.router, prefix="/api", tags=["charts"])
 app.include_router(history.router, prefix="/api", tags=["history"])
 app.include_router(ai.router, prefix="/api", tags=["ai"])
 app.include_router(report.router, prefix="/api", tags=["report"])
+app.include_router(analytics_store.router, prefix="/api", tags=["analytics"])
 app.include_router(scripts.router, prefix="/api", tags=["scripts"])
 app.include_router(connection_templates.router, prefix="/api", tags=["connection-templates"])
+app.include_router(color_lot.router, prefix="/api", tags=["color-lot"])
 app.include_router(uploads.router, prefix="/api", tags=["uploads"])
 app.include_router(update.router, prefix="/api", tags=["update"])
 app.include_router(feedback.router, prefix="/api", tags=["feedback"])

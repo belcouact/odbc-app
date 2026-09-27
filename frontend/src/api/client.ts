@@ -1,4 +1,7 @@
 import axios from 'axios'
+// A pinned dashboard visual: chart choices only, no data. Type-only import, so
+// there is no runtime cycle with utils/visual (which imports chart build helpers).
+import type { DashboardVisual } from '../utils/visual'
 import type {
   AiMode,
   AiSettings,
@@ -49,6 +52,29 @@ export interface TestConnectionResult {
   details?: string
 }
 
+/** One step of the Color_Data → FabLIMS lot-genealogy enrichment pipeline. */
+export interface ColorEnrichStep {
+  step: string
+  status: 'running' | 'done'
+  label: string
+  detail?: string
+}
+
+/** Match counts reported when the lot-genealogy enrichment finishes. */
+export interface ColorEnrichSummary {
+  rows: number
+  wol_total: number
+  wol_matched: number
+  batch_total: number
+  batch_matched: number
+  genealogy_rows: number
+  cached: boolean
+}
+
+export interface ColorEnrichResult extends QueryResult {
+  summary: ColorEnrichSummary
+}
+
 export interface ChartDataResponse {
   labels: (string | number)[]
   // `null` marks empty groups (trend gaps, box categories with no data).
@@ -75,12 +101,21 @@ export interface ConnectionTemplateField {
   placeholder?: string
 }
 
+/** A per-row derived column declared by a template (evaluated after the query). */
+export interface ConnectionTemplateComputedColumn {
+  name: string
+  /** Formula over the result columns, e.g. REGEXEXTRACT({NAME}, '...'). */
+  expression: string
+}
+
 /** A connection template option (Tautona / Package / Lot genealogy …). */
 export interface ConnectionTemplateOption {
   name: string
   fields: ConnectionTemplateField[]
   /** Parameterized SELECT template (':key' placeholders) used for the live preview. */
   sql?: string
+  /** Derived columns appended to every result this option returns. */
+  computed_columns?: ConnectionTemplateComputedColumn[]
 }
 
 /** A user-added template parameter: a column from the base SQL plus a filter. */
@@ -366,12 +401,14 @@ export class QueryCanceledError extends Error {
  *
  * `options.onRunId` receives the ``X-Run-Id`` response header as soon as the
  * headers arrive, enabling cancellation of the in-flight run.
+ * `options.onStep` receives ``{"type":"step",...}`` events from the multi-stage
+ * pipelines (e.g. the Color_Data lot-genealogy enrichment).
  */
 async function streamQuery<T>(
   path: string,
   body: unknown,
   onProgress?: (rows: number) => void,
-  options?: { onRunId?: (runId: string) => void },
+  options?: { onRunId?: (runId: string) => void; onStep?: (step: ColorEnrichStep) => void },
 ): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: 'POST',
@@ -417,6 +454,8 @@ async function streamQuery<T>(
         }
         if (evt.type === 'progress') {
           onProgress?.(Number(evt.rows ?? 0))
+        } else if (evt.type === 'step') {
+          options?.onStep?.(evt as unknown as ColorEnrichStep)
         } else if (evt.type === 'canceled') {
           streamError = new QueryCanceledError()
         } else if (evt.type === 'error') {
@@ -565,6 +604,18 @@ export const api = {
   /** Cancel an in-flight run (see ``X-Run-Id`` on run endpoints). */
   cancelQuery: (runId: string): Promise<{ ok: boolean }> =>
     apiFetch(client.post(`/query/cancel/${encodeURIComponent(runId)}`)),
+
+  /** Append the FabLIMS lot genealogy (Product by WOL, Raw_item by Batch) to
+   *  Color_Data rows, streaming one progress step per stage. */
+  enrichColorData: (
+    payload: {
+      rows: Record<string, unknown>[]
+      columns: { name: string; type: string }[]
+      refresh?: boolean
+    },
+    onStep?: (step: ColorEnrichStep) => void,
+  ): Promise<ColorEnrichResult> =>
+    streamQuery<ColorEnrichResult>('/color-lot/enrich', payload, undefined, { onStep }),
 
   exportQuery: async (query: QueryDef, format: ExportFormat): Promise<Blob> => {
     try {
@@ -950,9 +1001,11 @@ export const api = {
   getAiSettings: (): Promise<AiSettings> => apiFetch(client.get('/ai/settings')),
 
   /** `key_label` is the "brand · model" the key belongs to, so the backend files
-   *  it under that brand/model instead of keeping it as the last key used. */
+   *  it under that brand/model instead of keeping it as the last key used.
+   *  `profile_label` labels the saved-configuration snapshot the settings page
+   *  can re-load from its dropdown. */
   saveAiSettings: (
-    settings: Partial<AiSettings> & { key_label?: string },
+    settings: Partial<AiSettings> & { key_label?: string; profile_label?: string },
   ): Promise<AiSettings> => apiFetch(client.put('/ai/settings', settings)),
 
   testAi: (overrides?: Partial<AiSettings>): Promise<{ ok: boolean; message: string }> =>
@@ -1254,6 +1307,58 @@ export const api = {
       }),
     )
   },
+
+  // ---- BI warehouse (query snapshots) ----
+
+  /** Local warehouse file path, snapshot/row counts and size on disk. */
+  getWarehouseInfo: (): Promise<WarehouseInfo> =>
+    apiFetch(client.get('/analytics/warehouse', { timeout: 15000 })),
+
+  /** Snapshot metadata (no row payloads), newest first. */
+  listSnapshots: (): Promise<SnapshotMeta[]> =>
+    apiFetch(client.get('/analytics/snapshots', { timeout: 30000 })),
+
+  /** Persist the current result grid as a new snapshot. */
+  createSnapshot: (payload: SnapshotCreatePayload): Promise<SnapshotMeta> =>
+    apiFetch(client.post('/analytics/snapshots', payload, { timeout: 120000 })),
+
+  /** Snapshot metadata plus its stored rows. */
+  getSnapshot: (id: string): Promise<SnapshotDetail> =>
+    apiFetch(client.get(`/analytics/snapshots/${encodeURIComponent(id)}`, { timeout: 60000 })),
+
+  /** Rename an existing snapshot. */
+  renameSnapshot: (id: string, name: string): Promise<SnapshotMeta> =>
+    apiFetch(
+      client.put(
+        `/analytics/snapshots/${encodeURIComponent(id)}`,
+        { name },
+        { timeout: 15000 },
+      ),
+    ),
+
+  /** Replace a snapshot's stored rows with the current grid data. */
+  updateSnapshotData: (id: string, payload: SnapshotDataPayload): Promise<SnapshotMeta> =>
+    apiFetch(
+      client.put(`/analytics/snapshots/${encodeURIComponent(id)}/data`, payload, { timeout: 120000 }),
+    ),
+
+  /** Delete a snapshot and all of its stored rows. */
+  deleteSnapshot: (id: string): Promise<{ ok: boolean }> =>
+    apiFetch(client.delete(`/analytics/snapshots/${encodeURIComponent(id)}`, { timeout: 30000 })),
+
+  /** The snapshot's pinned dashboard visuals (empty list when none exist yet). */
+  getDashboard: (id: string): Promise<DashboardPayload> =>
+    apiFetch(client.get(`/analytics/snapshots/${encodeURIComponent(id)}/dashboard`, { timeout: 30000 })),
+
+  /** Replace the snapshot's pinned dashboard visuals. */
+  saveDashboard: (id: string, visuals: DashboardVisual[]): Promise<DashboardPayload> =>
+    apiFetch(
+      client.put(
+        `/analytics/snapshots/${encodeURIComponent(id)}/dashboard`,
+        { visuals },
+        { timeout: 60000 },
+      ),
+    ),
 }
 
 /** Feedback category: bug report, idea, question or anything else. */
@@ -1352,6 +1457,58 @@ export interface VersionHistoryResponse {
 
 /** Column metadata from a query result grid ({ name, type }). */
 export type ResultColumn = { name: string; type: string }
+
+/** Local SQLite BI warehouse stats (GET /api/analytics/warehouse). */
+export interface WarehouseInfo {
+  path: string
+  snapshot_count: number
+  row_count: number
+  size_bytes: number
+}
+
+/** Metadata for a stored query snapshot (no row payloads). */
+export interface SnapshotMeta {
+  id: string
+  name: string
+  source: string
+  connection_id: string | null
+  sql_text: string | null
+  row_count: number
+  columns: ResultColumn[]
+  created_at: string
+}
+
+/** A stored query snapshot including its rows. */
+export interface SnapshotDetail extends SnapshotMeta {
+  rows: Record<string, unknown>[]
+}
+
+/** Request body for POST /api/analytics/snapshots. */
+export interface SnapshotCreatePayload {
+  name: string
+  source?: string
+  connection_id?: string | null
+  sql_text?: string | null
+  columns?: ResultColumn[]
+  rows?: Record<string, unknown>[]
+}
+
+/** Request body for PUT /api/analytics/snapshots/{id}/data (refresh stored rows). */
+export interface SnapshotDataPayload {
+  source?: string
+  connection_id?: string | null
+  sql_text?: string | null
+  columns?: ResultColumn[]
+  rows?: Record<string, unknown>[]
+}
+
+/** A snapshot's pinned dashboard (GET/PUT /api/analytics/snapshots/{id}/dashboard). */
+export interface DashboardPayload {
+  snapshot_id: string
+  visuals: DashboardVisual[]
+  /** Null while the snapshot has never been charted. */
+  updated_at: string | null
+}
 
 /** A stored AI grid-transform script kept for re-use. */
 export interface GridScriptHistoryEntry {

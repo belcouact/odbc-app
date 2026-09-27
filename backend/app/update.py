@@ -161,11 +161,111 @@ _IS_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 _IS_ABS_PATH_RE = re.compile(r"^[a-zA-Z]:[\\/]|^\\\\")
 
 
+# ---------------------------------------------------------------------------
+# resilient URL fetching
+# ---------------------------------------------------------------------------
+
+# On some corporate networks most direct TLS handshakes to the update host are
+# reset (WinError 10054 during the handshake), so a single-shot urlopen fails
+# the majority of the time. Fetches therefore retry, then fall back to the
+# proxy servers named in the system's auto-config (WPAD/PAC) file. Python
+# cannot evaluate a PAC, but harvesting its "PROXY host:port" candidates and
+# trying them explicitly turns a flaky direct route into a reliable one.
+
+_PROXY_ROUTES: list[str | None] | None = None
+_PROXY_ROUTES_LOCK = threading.Lock()
+
+
+def _pac_proxy_candidates() -> list[str]:
+    """Proxy URLs harvested from the Windows auto-config (WPAD/PAC) file."""
+    try:
+        import winreg  # noqa: PLC0415 — Windows-only, kept out of module scope
+
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+        ) as key:
+            pac_url = winreg.QueryValueEx(key, "AutoConfigURL")[0]
+    except Exception:  # noqa: BLE001 — no registry entry: direct access only
+        return []
+    pac_url = str(pac_url or "").strip()
+    if not _IS_URL_RE.match(pac_url):
+        return []
+    try:
+        with urllib.request.urlopen(
+            urllib.request.Request(pac_url, headers={"User-Agent": "ODBCQueryApp"}),
+            timeout=10,
+        ) as response:
+            text = response.read().decode("utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 — unreadable PAC: direct access only
+        return []
+    proxies: list[str] = []
+    for match in re.finditer(r"PROXY\s+([^;\"\s]+)", text, re.IGNORECASE):
+        candidate = match.group(1).strip()
+        # The PAC may legitimately return DIRECT for our URL, but when the
+        # direct route is being reset its named proxies are the working way
+        # out — try every host:port it mentions.
+        if candidate and candidate.upper() != "DIRECT" and candidate not in proxies:
+            proxies.append(candidate if "://" in candidate else f"http://{candidate}")
+    return proxies
+
+
+# A usable proxy is a dotted hostname (or bracketed IPv6) plus optional port;
+# the registry can hold malformed leftovers ("Servers", "=") that must be skipped.
+_PROXY_URL_RE = re.compile(
+    r"^https?://(?:[A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)+|\[[0-9a-fA-F:]+\])(:\d+)?$"
+)
+
+
+def _proxy_routes() -> list[str | None]:
+    """Routes to try in order: direct first, then environment/PAC proxies."""
+    global _PROXY_ROUTES
+    with _PROXY_ROUTES_LOCK:
+        if _PROXY_ROUTES is None:
+            routes: list[str | None] = [None]
+            for value in urllib.request.getproxies().values():
+                proxy = value if "://" in value else f"http://{value}"
+                # The registry can hold malformed leftovers ("Servers", "=");
+                # only well-formed host:port proxies are worth a connection.
+                if _PROXY_URL_RE.match(proxy) and proxy not in routes:
+                    routes.append(proxy)
+            for proxy in _pac_proxy_candidates():
+                if _PROXY_URL_RE.match(proxy) and proxy not in routes:
+                    routes.append(proxy)
+            _PROXY_ROUTES = routes
+        return list(_PROXY_ROUTES)
+
+
+def _urlopen_with_fallback(
+    request: urllib.request.Request, timeout: float, attempts_per_route: int = 2
+):
+    """Open ``request``, riding out flaky direct egress.
+
+    Tries the direct route first (a couple of attempts — handshake resets are
+    intermittent), then each proxy discovered from the environment or the
+    system auto-config file. Returns an open response; raises the last error
+    seen when every route fails.
+    """
+    last_exc: Exception = OSError(f"no route available for {request.full_url}")
+    for route in _proxy_routes():
+        for attempt in range(max(1, attempts_per_route)):
+            try:
+                handler = urllib.request.ProxyHandler(
+                    {} if route is None else {"http": route, "https": route}
+                )
+                return urllib.request.build_opener(handler).open(request, timeout=timeout)
+            except Exception as exc:  # noqa: BLE001 — retried below, then next route
+                last_exc = exc
+                if attempt + 1 < max(1, attempts_per_route):
+                    time.sleep(1.5)
+    raise last_exc
+
+
 def _load_manifest(source: str) -> tuple[dict, str]:
     """Return (manifest_dict, base_location); base is used to resolve relative exes."""
     if _IS_URL_RE.match(source):
         request = urllib.request.Request(source, headers={"User-Agent": "ODBCQueryApp"})
-        with urllib.request.urlopen(request, timeout=15) as response:
+        with _urlopen_with_fallback(request, timeout=15) as response:
             raw = response.read()
         return json.loads(raw.decode("utf-8")), source
     with open(source, "r", encoding="utf-8") as fh:
@@ -271,7 +371,7 @@ def _download_to(src: str, dst: str) -> tuple[str, int]:
     window: list[tuple[float, int]] = []
     if _IS_URL_RE.match(src):
         request = urllib.request.Request(src, headers={"User-Agent": "ODBCQueryApp"})
-        remote = urllib.request.urlopen(request, timeout=60)
+        remote = _urlopen_with_fallback(request, timeout=60)
     else:
         remote = open(src, "rb")
         try:

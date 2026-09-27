@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
-import type { ColDef, ColumnState, GridApi, GridReadyEvent, ValueFormatterParams } from 'ag-grid-community'
+import type {
+  CellContextMenuEvent,
+  ColDef,
+  ColumnHeaderContextMenuEvent,
+  ColumnState,
+  GridApi,
+  GridReadyEvent,
+  ValueFormatterParams,
+} from 'ag-grid-community'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
@@ -8,16 +16,36 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
+import Divider from '@mui/material/Divider'
+import IconButton from '@mui/material/IconButton'
+import ListItemIcon from '@mui/material/ListItemIcon'
+import ListItemText from '@mui/material/ListItemText'
+import Menu from '@mui/material/Menu'
+import MenuItem from '@mui/material/MenuItem'
+import Popover from '@mui/material/Popover'
+import Stack from '@mui/material/Stack'
+import Tooltip from '@mui/material/Tooltip'
+import Typography from '@mui/material/Typography'
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import BlockIcon from '@mui/icons-material/Block'
+import ClearAllIcon from '@mui/icons-material/ClearAll'
 import CloseIcon from '@mui/icons-material/Close'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import FilterAltIcon from '@mui/icons-material/FilterAlt'
+import FilterAltOffIcon from '@mui/icons-material/FilterAltOff'
 import FunctionsIcon from '@mui/icons-material/Functions'
-import Stack from '@mui/material/Stack'
-import Tooltip from '@mui/material/Tooltip'
+import HelpOutlinedIcon from '@mui/icons-material/HelpOutlined'
+import LowPriorityIcon from '@mui/icons-material/LowPriority'
+import PushPinIcon from '@mui/icons-material/PushPin'
+import RestartAltIcon from '@mui/icons-material/RestartAlt'
+import StraightenIcon from '@mui/icons-material/Straighten'
+import SwapVertIcon from '@mui/icons-material/SwapVert'
 import TuneIcon from '@mui/icons-material/Tune'
 import UndoIcon from '@mui/icons-material/Undo'
-import Typography from '@mui/material/Typography'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import type { GridDrillFilter, QueryResult } from '../types'
 import { formatCellValue } from '../utils/format'
 import { detectColumnKind, groupingKey, type ColumnKind } from '../utils/columns'
@@ -29,6 +57,138 @@ import ColumnTypesDialog from './ColumnTypesDialog'
 ModuleRegistry.registerModules([AllCommunityModule])
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+
+/** Which part of the grid the custom context menu was opened on. */
+type MenuScope = 'cell' | 'header'
+
+/** Everything the custom context menu can do. */
+type MenuAction =
+  | 'copyCell'
+  | 'copyRow'
+  | 'copySelected'
+  | 'filterBy'
+  | 'filterOut'
+  | 'openFilter'
+  | 'clearFilter'
+  | 'clearAllFilters'
+  | 'sortAsc'
+  | 'sortDesc'
+  | 'clearSort'
+  | 'pinLeft'
+  | 'pinRight'
+  | 'unpin'
+  | 'autosizeThis'
+  | 'autosizeAll'
+  | 'resetColumns'
+  | 'hideColumn'
+  | 'showAllColumns'
+
+/** Live grid facts captured when the menu opens, to enable/disable its items. */
+interface MenuFacts {
+  sorted: boolean
+  pinned: 'left' | 'right' | null
+  filtered: boolean
+  anyFilter: boolean
+  canHide: boolean
+  canShowAll: boolean
+  selectedCount: number
+}
+
+/** State behind the custom context menu: where it opens and what it targets. */
+interface ContextMenuState {
+  /** Pointer position in client coordinates — the menu is anchored here. */
+  mouseX: number
+  mouseY: number
+  /** Column the actions apply to. */
+  colId: string
+  scope: MenuScope
+  /** Filter flavour of the column, so "filter by value" builds a valid model. */
+  filterType: 'number' | 'text'
+  /** Column/selection state as of the moment the menu opened. */
+  facts: MenuFacts
+  /** Cell value (cell scope only); drives the filter-by-value actions. */
+  value?: unknown
+  /** Row data (cell scope only); drives "Copy row". */
+  row?: Record<string, unknown>
+}
+
+/** Writes text to the clipboard, with a fallback for restricted builds. */
+async function writeToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+  }
+}
+
+/** One tab-separated line for a row, in the result's own column order. */
+function rowToTsv(headers: string[], row: Record<string, unknown>) {
+  return headers
+    .map((header) => {
+      const value = row[header]
+      return value === null || value === undefined ? '' : String(value)
+    })
+    .join('\t')
+}
+
+/** A clipboard-ready TSV block: header row plus one line per row. Rows are
+ *  separated with CRLF — Excel only starts a new row on "\r\n" and treats a
+ *  lone "\n" as an in-cell line break (which collapses everything on paste). */
+function toTsv(headers: string[], rows: Record<string, unknown>[]) {
+  return [headers.join('\t'), ...rows.map((row) => rowToTsv(headers, row))].join('\r\n')
+}
+
+/** One feature line inside the toolbar's "what can I do" popover. */
+function HelpRow({ icon, title, detail }: { icon: ReactNode; title: string; detail?: string }) {
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+      <Box sx={{ display: 'flex', color: 'text.secondary', pt: 0.25 }}>{icon}</Box>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {title}
+        </Typography>
+        {detail && (
+          <Typography variant="caption" color="text.secondary">
+            {detail}
+          </Typography>
+        )}
+      </Box>
+    </Stack>
+  )
+}
+
+/** A separator between groups of items in the grid context menu. */
+function MenuDivider() {
+  // Menu renders a <ul>, so the divider needs to be a list item to stay valid.
+  return <Divider component="li" sx={{ my: 0.5 }} />
+}
+
+/** One clickable row in the grid context menu. */
+function ActionItem({
+  icon,
+  label,
+  disabled,
+  onClick,
+}: {
+  icon: ReactNode
+  label: string
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <MenuItem disabled={disabled} onClick={onClick} sx={{ minHeight: 40, gap: 1 }}>
+      <ListItemIcon sx={{ minWidth: 0 }}>{icon}</ListItemIcon>
+      <ListItemText>{label}</ListItemText>
+    </MenuItem>
+  )
+}
 
 interface EditableHeaderProps {
   /** Label AG Grid derived for the column (its ``headerName``). */
@@ -209,6 +369,8 @@ export default function ResultsGrid({
   onClearDrill,
 }: ResultsGridProps) {
   const gridRef = useRef<AgGridReact>(null)
+  /** Wrapper around the grid; used to capture the right-click position early. */
+  const gridWrapRef = useRef<HTMLDivElement | null>(null)
   const [copied, setCopied] = useState(false)
   /** User-chosen data kinds, keyed by column name. Overrides auto-detection. */
   const [columnKinds, setColumnKinds] = useState<Record<string, ColumnKind>>({})
@@ -216,6 +378,13 @@ export default function ResultsGrid({
   const [columnLabels, setColumnLabels] = useState<Record<string, string>>({})
   const [addColumnOpen, setAddColumnOpen] = useState(false)
   const [typesOpen, setTypesOpen] = useState(false)
+  /** The custom right-click menu; null while it is closed. */
+  const [menu, setMenu] = useState<ContextMenuState | null>(null)
+  /** Anchor element for the toolbar's feature-help popover. */
+  const [helpAnchor, setHelpAnchor] = useState<HTMLElement | null>(null)
+  /** Latest pointer position. Captured in the capture phase, because AG Grid's
+   *  own `cellContextMenu` callback fires before our bubble-phase handler. */
+  const pointerRef = useRef({ x: 0, y: 0 })
 
   /** Does one row satisfy every drill-through condition? Uses the same
    *  ``groupingKey`` the Summary tab grouped by, so the match is exact. */
@@ -306,38 +475,185 @@ export default function ResultsGrid({
 
   const handleCopy = useCallback(async () => {
     if (!result || result.rows.length === 0) return
-    // Build a TSV snapshot of the full result set and write it to the clipboard
-    // directly — the grid clipboard API can silently fail depending on
-    // selection state / focus, so copy from the raw data instead.
     const headers = result.columns.map((column) => column.name)
-    const lines = [
-      headers.join('\t'),
-      ...result.rows.map((row) =>
-        headers
-          .map((header) => {
-            const value = (row as Record<string, unknown>)[header]
-            return value === null || value === undefined ? '' : String(value)
-          })
-          .join('\t'),
-      ),
-    ]
-    const text = lines.join('\n')
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch {
-      // Fallback for restricted contexts (e.g. some Electron builds).
-      const textarea = document.createElement('textarea')
-      textarea.value = text
-      textarea.style.position = 'fixed'
-      textarea.style.opacity = '0'
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-    }
+    // A row selection narrows the copy to those rows; with nothing selected the
+    // whole result is copied. Build the TSV snapshot from the raw data and write
+    // it to the clipboard directly — the grid clipboard API can silently fail
+    // depending on selection state / focus.
+    const selected = gridRef.current?.api?.getSelectedNodes() ?? []
+    const rows =
+      selected.length > 0
+        ? selected.map((node) => (node.data ?? {}) as Record<string, unknown>)
+        : result.rows
+    await writeToClipboard(toTsv(headers, rows))
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
   }, [result])
+
+  // AG Grid dispatches its own `cellContextMenu` handler before React's
+  // bubble-phase listeners run, so the right-click position has to be recorded
+  // while the event is still travelling down (capture phase).
+  useEffect(() => {
+    const element = gridWrapRef.current
+    if (!element) return
+    const track = (event: MouseEvent) => {
+      pointerRef.current = { x: event.clientX, y: event.clientY }
+    }
+    element.addEventListener('contextmenu', track, true)
+    return () => element.removeEventListener('contextmenu', track, true)
+  }, [result])
+
+  /** Live grid facts captured when the menu opens, to enable/disable its items. */
+  const readMenuFacts = useCallback((colId: string): MenuFacts => {
+    const api = gridRef.current?.api
+    const columns = api?.getColumns() ?? []
+    const visible = columns.filter((column) => column.isVisible())
+    const state = api?.getColumnState().find((column) => column.colId === colId)
+    return {
+      sorted: Boolean(state?.sort),
+      pinned: state?.pinned === 'left' || state?.pinned === 'right' ? state.pinned : null,
+      filtered: api?.getColumnFilterModel(colId) != null,
+      anyFilter: Object.keys(api?.getFilterModel() ?? {}).length > 0,
+      canHide: visible.length > 1,
+      canShowAll: visible.length < columns.length,
+      selectedCount: api?.getSelectedNodes().length ?? 0,
+    }
+  }, [])
+
+  /** Opens the context menu for a right-clicked body cell. */
+  const handleCellContextMenu = useCallback(
+    (event: CellContextMenuEvent) => {
+      const { column, value, data } = event
+      if (!column) return
+      const filter = column.getColDef().filter
+      const colId = column.getColId()
+      setMenu({
+        mouseX: pointerRef.current.x,
+        mouseY: pointerRef.current.y,
+        colId,
+        scope: 'cell',
+        filterType: typeof filter === 'string' && filter.includes('Number') ? 'number' : 'text',
+        facts: readMenuFacts(colId),
+        value,
+        row: (data ?? {}) as Record<string, unknown>,
+      })
+    },
+    [readMenuFacts],
+  )
+
+  /** Opens the context menu for a right-clicked column header. */
+  const handleHeaderContextMenu = useCallback(
+    (event: ColumnHeaderContextMenuEvent) => {
+      const column = event.column
+      // Column groups are unused in this grid, but the event type allows them.
+      if (!('getColId' in column)) return
+      const filter = column.getColDef().filter
+      const colId = column.getColId()
+      setMenu({
+        mouseX: pointerRef.current.x,
+        mouseY: pointerRef.current.y,
+        colId,
+        scope: 'header',
+        filterType: typeof filter === 'string' && filter.includes('Number') ? 'number' : 'text',
+        facts: readMenuFacts(colId),
+      })
+    },
+    [readMenuFacts],
+  )
+
+  /** Runs one context-menu action against the live grid API. */
+  const runMenuAction = useCallback(
+    async (action: MenuAction) => {
+      const api = gridRef.current?.api
+      const target = menu
+      // Close first: filter popups and dialogs expect a clean UI state.
+      setMenu(null)
+      if (!api || !target || !result) return
+      const { colId } = target
+      const headers = result.columns.map((column) => column.name)
+
+      switch (action) {
+        case 'copyCell':
+          await writeToClipboard(formatCellValue(target.value))
+          break
+        case 'copyRow':
+          if (target.row) await writeToClipboard(rowToTsv(headers, target.row))
+          break
+        case 'copySelected': {
+          const selected = api
+            .getSelectedNodes()
+            .map((node) => (node.data ?? {}) as Record<string, unknown>)
+          const rows = selected.length > 0 ? selected : target.row ? [target.row] : []
+          await writeToClipboard(toTsv(headers, rows))
+          break
+        }
+        case 'filterBy':
+        case 'filterOut':
+          await api.setColumnFilterModel(colId, {
+            filterType: target.filterType,
+            type: action === 'filterBy' ? 'equals' : 'notEqual',
+            filter:
+              target.filterType === 'number'
+                ? target.value
+                : formatCellValue(target.value),
+          })
+          api.onFilterChanged()
+          break
+        case 'openFilter':
+          api.showColumnFilter(colId)
+          break
+        case 'clearFilter':
+          await api.setColumnFilterModel(colId, null)
+          api.onFilterChanged()
+          break
+        case 'clearAllFilters':
+          api.setFilterModel(null)
+          api.onFilterChanged()
+          break
+        case 'sortAsc':
+        case 'sortDesc':
+          // Sorts this column and drops any other column's sort, matching the
+          // behaviour of the built-in column menu.
+          api.applyColumnState({
+            state: [{ colId, sort: action === 'sortAsc' ? 'asc' : 'desc' }],
+            defaultState: { sort: null },
+          })
+          break
+        case 'clearSort':
+          api.applyColumnState({ state: [{ colId, sort: null }] })
+          break
+        case 'pinLeft':
+        case 'pinRight':
+          api.applyColumnState({
+            state: [{ colId, pinned: action === 'pinLeft' ? 'left' : 'right' }],
+          })
+          break
+        case 'unpin':
+          api.applyColumnState({ state: [{ colId, pinned: null }] })
+          break
+        case 'autosizeThis':
+          api.autoSizeColumns([colId])
+          break
+        case 'autosizeAll':
+          api.autoSizeAllColumns()
+          break
+        case 'resetColumns':
+          // Order, width, pinning and sorting back to their defaults.
+          api.resetColumnState()
+          break
+        case 'hideColumn':
+          api.setColumnsVisible([colId], false)
+          break
+        case 'showAllColumns':
+          api.setColumnsVisible(
+            (api.getColumns() ?? []).map((column) => column.getColId()),
+            true,
+          )
+          break
+      }
+    },
+    [menu, result],
+  )
 
   if (!result) {
     return (
@@ -359,6 +675,16 @@ export default function ResultsGrid({
           · {result.elapsed_ms.toLocaleString()} ms
         </Typography>
         <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <Tooltip title="See everything this table can do">
+            <IconButton
+              size="small"
+              aria-label="Table features"
+              onClick={(event) => setHelpAnchor(event.currentTarget)}
+              sx={{ width: 40, height: 40 }}
+            >
+              <HelpOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           {onOpenAiTransform && (
             <Tooltip title="Describe a change and let AI write a Python script to update the grid">
               <Button
@@ -416,7 +742,7 @@ export default function ResultsGrid({
             disabled={empty}
             sx={{ minHeight: 40 }}
           >
-            {copied ? 'Copied!' : 'Copy all'}
+            {copied ? 'Copied!' : 'Copy'}
           </Button>
         </Stack>
       </Stack>
@@ -457,7 +783,11 @@ export default function ResultsGrid({
           <Typography color="text.secondary">The query returned no rows.</Typography>
         </Box>
       ) : (
-        <Box className="ag-theme-quartz" sx={{ height: { xs: 420, md: 560 }, width: '100%' }}>
+        <Box
+          ref={gridWrapRef}
+          className="ag-theme-quartz"
+          sx={{ height: { xs: 420, md: 560 }, width: '100%' }}
+        >
           <AgGridReact
             ref={gridRef}
             rowData={result.rows}
@@ -466,6 +796,12 @@ export default function ResultsGrid({
             headerHeight={52}
             rowSelection={{ mode: 'multiRow' }}
             cellSelection
+            // The grid's own context menu is Enterprise-only, so the browser
+            // menu is suppressed and replaced by the MUI menu below.
+            suppressContextMenu
+            preventDefaultOnContextMenu
+            onCellContextMenu={handleCellContextMenu}
+            onColumnHeaderContextMenu={handleHeaderContextMenu}
             pagination
             paginationPageSize={25}
             paginationPageSizeSelector={PAGE_SIZE_OPTIONS}
@@ -496,6 +832,220 @@ export default function ResultsGrid({
         onClose={() => setTypesOpen(false)}
         onKindChange={handleKindChange}
       />
+
+      {/* Right-click menu. AG Grid Community ships no context menu, so this
+          covers its Enterprise column menu items plus copy / filter helpers. */}
+      <Menu
+        open={menu !== null}
+        onClose={() => setMenu(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={{ top: menu?.mouseY ?? 0, left: menu?.mouseX ?? 0 }}
+        slotProps={{ paper: { sx: { minWidth: 248 } } }}
+      >
+        {menu?.scope === 'cell' && (
+          <ActionItem
+            icon={<ContentCopyIcon fontSize="small" />}
+            label="Copy cell"
+            onClick={() => void runMenuAction('copyCell')}
+          />
+        )}
+        {menu?.scope === 'cell' && (
+          <ActionItem
+            icon={<ContentCopyIcon fontSize="small" />}
+            label="Copy row"
+            onClick={() => void runMenuAction('copyRow')}
+          />
+        )}
+        {menu?.scope === 'cell' && (
+          <ActionItem
+            icon={<ContentCopyIcon fontSize="small" />}
+            label={
+              menu && menu.facts.selectedCount > 1
+                ? `Copy ${menu.facts.selectedCount} selected rows`
+                : 'Copy selected rows'
+            }
+            disabled={!menu || menu.facts.selectedCount === 0}
+            onClick={() => void runMenuAction('copySelected')}
+          />
+        )}
+        {menu?.scope === 'cell' && <MenuDivider />}
+        {menu?.scope === 'cell' && (
+          <ActionItem
+            icon={<FilterAltIcon fontSize="small" />}
+            label="Filter by this value"
+            onClick={() => void runMenuAction('filterBy')}
+          />
+        )}
+        {menu?.scope === 'cell' && (
+          <ActionItem
+            icon={<FilterAltOffIcon fontSize="small" />}
+            label="Filter out this value"
+            onClick={() => void runMenuAction('filterOut')}
+          />
+        )}
+        <ActionItem
+          icon={<FilterAltIcon fontSize="small" />}
+          label="Open filter"
+          onClick={() => void runMenuAction('openFilter')}
+        />
+        <ActionItem
+          icon={<FilterAltOffIcon fontSize="small" />}
+          label="Clear this column's filter"
+          disabled={!menu?.facts.filtered}
+          onClick={() => void runMenuAction('clearFilter')}
+        />
+        <ActionItem
+          icon={<ClearAllIcon fontSize="small" />}
+          label="Clear all filters"
+          disabled={!menu?.facts.anyFilter}
+          onClick={() => void runMenuAction('clearAllFilters')}
+        />
+        <MenuDivider />
+        <ActionItem
+          icon={<ArrowUpwardIcon fontSize="small" />}
+          label="Sort ascending"
+          onClick={() => void runMenuAction('sortAsc')}
+        />
+        <ActionItem
+          icon={<ArrowDownwardIcon fontSize="small" />}
+          label="Sort descending"
+          onClick={() => void runMenuAction('sortDesc')}
+        />
+        <ActionItem
+          icon={<SwapVertIcon fontSize="small" />}
+          label="Clear sort"
+          disabled={!menu?.facts.sorted}
+          onClick={() => void runMenuAction('clearSort')}
+        />
+        <MenuDivider />
+        <ActionItem
+          icon={<PushPinIcon fontSize="small" />}
+          label="Pin column left"
+          disabled={menu?.facts.pinned === 'left'}
+          onClick={() => void runMenuAction('pinLeft')}
+        />
+        <ActionItem
+          icon={<PushPinIcon fontSize="small" sx={{ transform: 'scaleX(-1)' }} />}
+          label="Pin column right"
+          disabled={menu?.facts.pinned === 'right'}
+          onClick={() => void runMenuAction('pinRight')}
+        />
+        <ActionItem
+          icon={<BlockIcon fontSize="small" />}
+          label="Unpin column"
+          disabled={!menu?.facts.pinned}
+          onClick={() => void runMenuAction('unpin')}
+        />
+        <MenuDivider />
+        <ActionItem
+          icon={<StraightenIcon fontSize="small" />}
+          label="Autosize this column"
+          onClick={() => void runMenuAction('autosizeThis')}
+        />
+        <ActionItem
+          icon={<StraightenIcon fontSize="small" />}
+          label="Autosize all columns"
+          onClick={() => void runMenuAction('autosizeAll')}
+        />
+        <ActionItem
+          icon={<RestartAltIcon fontSize="small" />}
+          label="Reset columns"
+          onClick={() => void runMenuAction('resetColumns')}
+        />
+        <MenuDivider />
+        <ActionItem
+          icon={<VisibilityOffIcon fontSize="small" />}
+          label="Hide this column"
+          disabled={!menu?.facts.canHide}
+          onClick={() => void runMenuAction('hideColumn')}
+        />
+        <ActionItem
+          icon={<VisibilityIcon fontSize="small" />}
+          label="Show all columns"
+          disabled={!menu?.facts.canShowAll}
+          onClick={() => void runMenuAction('showAllColumns')}
+        />
+      </Menu>
+
+      <Popover
+        open={helpAnchor !== null}
+        anchorEl={helpAnchor}
+        onClose={() => setHelpAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        slotProps={{
+          paper: { sx: { p: 2, width: 420, maxWidth: '92vw', maxHeight: '70vh' } },
+        }}
+      >
+        <Stack spacing={1.25}>
+          <Box>
+            <Typography variant="subtitle2">Everything this table can do</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Right-click a cell or a column header for the full menu.
+            </Typography>
+          </Box>
+          <Divider />
+          <HelpRow
+            icon={<ContentCopyIcon fontSize="small" />}
+            title="Copy"
+            detail="Copy cell / row / selected rows from the right-click menu. The Copy button copies the rows you selected, or the whole result when nothing is selected — paste it straight into Excel."
+          />
+          <HelpRow
+            icon={<SwapVertIcon fontSize="small" />}
+            title="Sort"
+            detail="Click a header to sort, or use Sort ascending / descending / Clear sort in the right-click menu."
+          />
+          <HelpRow
+            icon={<LowPriorityIcon fontSize="small" />}
+            title="Sort by several columns"
+            detail="Hold Shift and click more headers to add them to the sort. Numbered badges on the headers show the order; click a header again to flip or extend its direction."
+          />
+          <HelpRow
+            icon={<FilterAltIcon fontSize="small" />}
+            title="Filter"
+            detail="Filter by or out a single value, open the filter, or clear one / all filters from the right-click menu."
+          />
+          <HelpRow
+            icon={<PushPinIcon fontSize="small" />}
+            title="Columns"
+            detail="Pin left or right, autosize one or all columns, reset columns, and hide or show columns — all from the right-click menu. Drag between headers to resize or reorder."
+          />
+          <HelpRow
+            icon={<TuneIcon fontSize="small" />}
+            title="Rename a column"
+            detail="Double-click any column header."
+          />
+          <HelpRow
+            icon={<StraightenIcon fontSize="small" />}
+            title="Data types"
+            detail="The Data types button switches a column between text, number and date so sorting and filters behave correctly."
+          />
+          <HelpRow
+            icon={<FunctionsIcon fontSize="small" />}
+            title="Add column"
+            detail="Build a calculated column with a formula over the existing columns."
+          />
+          {onOpenAiTransform && (
+            <HelpRow
+              icon={<AutoAwesomeIcon fontSize="small" />}
+              title="AI edit"
+              detail="Describe a change in plain English and AI writes the Python script that updates this table."
+            />
+          )}
+          {onRevertGrid && (
+            <HelpRow
+              icon={<UndoIcon fontSize="small" />}
+              title="Revert"
+              detail="Undo the last AI edit and restore the previous table."
+            />
+          )}
+          <HelpRow
+            icon={<HelpOutlinedIcon fontSize="small" />}
+            title="Selection"
+            detail="Click a row to select it; ctrl/cmd-click or drag to select several, then copy them in one go."
+          />
+        </Stack>
+      </Popover>
     </Stack>
   )
 }

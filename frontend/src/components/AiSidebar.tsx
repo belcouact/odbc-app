@@ -39,6 +39,10 @@ interface AiSidebarProps {
   onOpenEditor?: () => void
   /** Switch the app to the Analyze tab (called after inserting a script or chart). */
   onOpenScript?: () => void
+  /** Where AI charts are applied — the Analyze page or the BI page's chart builder. */
+  chartTarget?: 'script' | 'bi'
+  /** Switch the app to the BI tab (called after applying a chart targeted at BI). */
+  onOpenBi?: () => void
 }
 
 const MODES: { value: AiMode; label: string; icon: ReactElement; hint: string }[] = [
@@ -149,6 +153,8 @@ export default function AiSidebar({
   onClose,
   onOpenEditor,
   onOpenScript,
+  chartTarget = 'script',
+  onOpenBi,
 }: AiSidebarProps) {
   // Each mode keeps its own conversation so switching tabs never loses
   // context. Conversations are persisted so they survive app restarts.
@@ -330,9 +336,11 @@ export default function AiSidebar({
     } else if (mode === 'chart') {
       try {
         const option = parseEchartScript(code, snapshotNow.rows)
-        emit({ type: 'apply-chart', option })
-        showNotice('Chart applied to the Analyze tab.')
-        onOpenScript?.()
+        const toBi = chartTarget === 'bi'
+        emit({ type: 'apply-chart', option, target: toBi ? 'bi' : 'script' })
+        showNotice(toBi ? 'Chart applied to the BI chart builder.' : 'Chart applied to the Analyze tab.')
+        if (toBi) onOpenBi?.()
+        else onOpenScript?.()
       } catch (err) {
         setErrors((prev) => ({
           ...prev,

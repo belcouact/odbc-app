@@ -6,6 +6,32 @@ import type { ChartOperation, ChartType } from '../api/client'
  * components and the builders cannot drift apart.
  */
 
+/** Human-readable name for every chart family, shared by the builder and the
+ *  dashboard tiles so a pinned visual is labelled the same way everywhere. */
+export const CHART_TYPE_LABELS: Record<ChartType, string> = {
+  bar: 'Bar',
+  stackbar: 'Stacked bar',
+  trend: 'Line',
+  stepline: 'Step line',
+  area: 'Area',
+  stackarea: 'Stacked area',
+  combo: 'Combo (bar + line)',
+  pie: 'Pie',
+  doughnut: 'Doughnut',
+  rose: 'Rose',
+  radar: 'Radar',
+  pareto: 'Pareto',
+  waterfall: 'Waterfall',
+  funnel: 'Funnel',
+  treemap: 'Treemap',
+  heatmap: 'Heatmap',
+  histogram: 'Histogram',
+  box: 'Box plot',
+  scatter: 'Scatter',
+  gauge: 'Gauge',
+  kpi: 'KPI cards',
+}
+
 /** Aggregation operations offered for the Y axis (None = raw values). */
 export const OPERATIONS: { value: ChartOperation; label: string }[] = [
   { value: 'none', label: 'None (raw)' },

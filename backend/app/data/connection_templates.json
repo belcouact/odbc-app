@@ -1,4 +1,52 @@
 {
+  "ColorDB": {
+    "_comment": "GUI quick-search options for the ColorDB connection (Access .mdb). The SELECT template is loaded from backend/sql/ColorDB/<name>.sql (one option per .sql file). All field conditions and user-added parameters are injected at the '{}' anchor in the base SQL; empty optional fields are dropped at run time. The base SQL unions STANDARDS_GROUP and DATA_GROUP into one result, so 'label' refers to the unioned alias (COLOR_DATA.[NAME] / COLOR_DATA.[DATE]). 'computed_columns' are per-row derived columns the app evaluates after the query from the 'expression' formula (see frontend/src/utils/formula.ts); they are appended to every result this option returns.",
+    "options": [
+      {
+        "name": "Color_Data",
+        "fields": [
+          {
+            "key": "name",
+            "alias": "NAME",
+            "label": "COLOR_DATA.[NAME]",
+            "type": "varchar",
+            "operator": "like",
+            "optional": true
+          },
+          {
+            "key": "date",
+            "alias": "DATE",
+            "label": "COLOR_DATA.[DATE]",
+            "type": "datetime",
+            "operator": ">=",
+            "optional": true
+          }
+        ],
+        "computed_columns": [
+          {
+            "name": "LD_item",
+            "expression": "REGEXEXTRACT({NAME}, '^(.*?)[-_](?:LD|Master)', 1, 'i')"
+          },
+          {
+            "name": "WOL",
+            "expression": "REGEXEXTRACT({NAME}, '(\\d{8}[A-Za-z]{2})', 1, 'i')"
+          },
+          {
+            "name": "Batch",
+            "expression": "REGEXEXTRACT({NAME}, '(?<![A-Za-z0-9])([A-Za-z][0-9]{5}|[0-9]{6})(?![A-Za-z0-9])', 1, 'i')"
+          },
+          {
+            "name": "Sample_type",
+            "expression": "IF({LD_item}, 'LD', IF({WOL}, 'Laminate', IF({Batch}, 'Raw', 'Null')))"
+          },
+          {
+            "name": "Hex",
+            "expression": "LABTOHEX({L}, {a}, {b})"
+          }
+        ]
+      }
+    ]
+  },
   "FAB_MESA10": {
     "_comment": "GUI quick-search options for the FAB_MESA10 connection. The SELECT template is loaded from backend/sql/FAB_MESA10/<name>.sql (one option per .sql file). All field conditions and user-added parameters are injected at the '{}' anchor in the base SQL; empty optional fields are dropped at run time. 'alias' is the friendly name shown in the criteria UI (from the base SQL SELECT alias when one exists, else the bare column name); 'label' stays the table.column SQL reference used to build the WHERE clause.",
     "options": [

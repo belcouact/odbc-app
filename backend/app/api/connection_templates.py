@@ -687,6 +687,25 @@ def _load_templates() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _template_entry(template_key: str) -> dict | None:
+    """Case-insensitive lookup of a connection's template entry.
+
+    Access-file connections key off their display name, which the user may
+    have cased differently from the JSON config ('colorDB' vs 'ColorDB').
+    JSON keys are case-sensitive while the base SQL folder lookup is not — on
+    Windows the folder still resolves, so the option appears in the UI with
+    empty fields. Matching on case keeps the criteria and derived columns.
+    """
+    templates = _load_templates()
+    if template_key in templates:
+        return templates[template_key]
+    lowered = str(template_key).lower()
+    for key, entry in templates.items():
+        if str(key).lower() == lowered:
+            return entry
+    return None
+
+
 # Base SQL files live in backend/sql/<template_key>/*.sql and replace the
 # hardcoded 'sql' templates: the file is the source of the SQL, while the JSON
 # config stays the source of the input fields.
@@ -711,11 +730,16 @@ def _load_base_sql_options(template_key: str) -> dict[str, str]:
     return options
 
 
-def _json_fields_by_name(template_key: str) -> dict[str, list]:
-    """Return {option_name: fields} from the JSON config for a template key."""
-    entry = _load_templates().get(template_key) or {}
+def _json_options_by_name(template_key: str) -> dict[str, dict]:
+    """Return {option_name: option} from the JSON config for a template key.
+
+    The JSON config remains the source of the per-option metadata (input
+    fields, derived ``computed_columns``) even when the SQL itself is loaded
+    from backend/sql/<template_key>/*.sql.
+    """
+    entry = _template_entry(template_key) or {}
     return {
-        str(o.get("name")): o.get("fields", [])
+        str(o.get("name")): o
         for o in entry.get("options", [])
         if o.get("name")
     }
@@ -730,18 +754,24 @@ def _effective_options(template_key: str) -> list[dict] | None:
     config alone when no base SQL folder is present. Returns None when the key
     has no templates at all.
     """
-    json_entry = _load_templates().get(template_key)
+    json_entry = _template_entry(template_key)
     base_options = _load_base_sql_options(template_key)
     if base_options:
-        fields_by_name = _json_fields_by_name(template_key)
-        return [
-            {
-                "name": stem,
-                "fields": fields_by_name.get(stem, []),
-                "sql": sql,
-            }
-            for stem, sql in base_options.items()
-        ]
+        options_by_name = _json_options_by_name(template_key)
+        merged: list[dict] = []
+        for stem, sql in base_options.items():
+            cfg = options_by_name.get(stem, {})
+            merged.append(
+                {
+                    "name": stem,
+                    "fields": cfg.get("fields", []),
+                    # Per-row derived columns evaluated by the app after the
+                    # query (see frontend/src/utils/formula.ts).
+                    "computed_columns": cfg.get("computed_columns", []),
+                    "sql": sql,
+                }
+            )
+        return merged
     if json_entry is None:
         return None
     return json_entry.get("options", [])
@@ -794,6 +824,8 @@ def list_connection_templates(template_key: str):
             {
                 "name": o.get("name"),
                 "fields": public_fields(o.get("fields", [])),
+                # Derived columns applied to every result this option returns.
+                "computed_columns": o.get("computed_columns", []),
                 "sql": o.get("sql") or "",
             }
             for o in options

@@ -26,6 +26,7 @@ import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CodeIcon from '@mui/icons-material/Code'
 import CloseIcon from '@mui/icons-material/Close'
+import DashboardIcon from '@mui/icons-material/Dashboard'
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
 import InfoIcon from '@mui/icons-material/Info'
 import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew'
@@ -45,6 +46,7 @@ import { api, sendTabLeftBeacon } from './api/client'
 import type { FeedbackThread, UpdateStatus } from './api/client'
 import WorkspacePage, { type WorkspacePageHandle } from './pages/WorkspacePage'
 import ScriptPage, { type ScriptPageHandle } from './pages/ScriptPage'
+import BiPage, { type BiPageHandle } from './pages/BiPage'
 import SettingsPage, { type SettingsSection } from './pages/SettingsPage'
 import FeedbackPage from './pages/FeedbackPage'
 import FlowDiagramPage from './pages/FlowDiagramPage'
@@ -53,12 +55,20 @@ import AiSidebar from './components/AiSidebar'
 import GuidedTour, { TOUR_STORAGE_KEY } from './components/GuidedTour'
 import type { AiMode } from './types'
 
-type View = 'editor' | 'script' | 'flowdiagram' | 'project' | 'problemsolving' | 'settings'
+type View =
+  | 'editor'
+  | 'script'
+  | 'bi'
+  | 'flowdiagram'
+  | 'project'
+  | 'problemsolving'
+  | 'settings'
 
 /** Tabs that sit directly in the top bar. */
 const MAIN_TABS: { value: View; label: string; icon: ReactElement }[] = [
   { value: 'editor', label: 'Query', icon: <CodeIcon color="primary" /> },
   { value: 'script', label: 'Analyze', icon: <TerminalIcon color="secondary" /> },
+  { value: 'bi', label: 'BI', icon: <DashboardIcon color="info" /> },
 ]
 
 /** Grouped behind a single menu button to keep the bar uncluttered. */
@@ -912,6 +922,7 @@ function AppShell() {
   const closeAi = useCallback(() => setAiOpen(false), [])
   const openEditor = useCallback(() => setView('editor'), [])
   const openScript = useCallback(() => setView('script'), [])
+  const openBi = useCallback(() => setView('bi'), [])
   const closeHelp = useCallback(() => setHelpOpen(false), [])
   // Opening the board reads everything on it; closing re-reads, so a post that
   // arrived while the board was open is not left flagged as unread.
@@ -935,6 +946,7 @@ function AppShell() {
   // through a ref. The outgoing page therefore does no work at all.
   const workspaceRef = useRef<WorkspacePageHandle>(null)
   const scriptRef = useRef<ScriptPageHandle>(null)
+  const biRef = useRef<BiPageHandle>(null)
   const viewRef = useRef(view)
   useEffect(() => {
     const previous = viewRef.current
@@ -943,6 +955,7 @@ function AppShell() {
     if (previous === view) return
     if (view === 'editor') workspaceRef.current?.refresh()
     else if (view === 'script') scriptRef.current?.refresh()
+    else if (view === 'bi') biRef.current?.refresh()
   }, [view])
 
   // Which grouped tool (if any) is showing — drives the menu button's icon/label.
@@ -1326,6 +1339,9 @@ function AppShell() {
         <Box sx={{ width: '100%', display: view === 'script' ? 'block' : 'none' }}>
           <ScriptPage ref={scriptRef} onOpenAi={openAi} />
         </Box>
+        <Box sx={{ width: '100%', display: view === 'bi' ? 'block' : 'none' }}>
+          <BiPage ref={biRef} onOpenAi={openAi} />
+        </Box>
         <Box sx={{ width: '100%', display: view === 'flowdiagram' ? 'block' : 'none' }}>
           <FlowDiagramPage active={view === 'flowdiagram'} />
         </Box>
@@ -1361,6 +1377,8 @@ function AppShell() {
         onClose={closeAi}
         onOpenEditor={openEditor}
         onOpenScript={openScript}
+        chartTarget={view === 'bi' ? 'bi' : 'script'}
+        onOpenBi={openBi}
       />
 
       <HowToUseDialog

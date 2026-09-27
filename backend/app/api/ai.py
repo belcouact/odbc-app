@@ -40,6 +40,11 @@ _DEFAULT_SETTINGS = {
 # as if it were the current brand's.
 _KEYRING_FIELD = "saved_keys"
 
+# Snapshots of previously saved configurations (one per "brand · model" label)
+# so the settings page can list them in a dropdown and re-load any of them.
+_SAVED_PROFILES_FIELD = "saved_profiles"
+_SAVED_PROFILES_CAP = 20
+
 _NOT_CONFIGURED_MSG = "AI is not configured. Set up AI in the AI Setting page."
 
 # Some LLM gateways sit behind Cloudflare and reject the default Python
@@ -68,11 +73,42 @@ def _load_settings() -> dict:
     settings.update({k: saved[k] for k in _DEFAULT_SETTINGS if k in saved})
     keyring = saved.get(_KEYRING_FIELD)
     settings[_KEYRING_FIELD] = dict(keyring) if isinstance(keyring, dict) else {}
+    profiles = saved.get(_SAVED_PROFILES_FIELD)
+    settings[_SAVED_PROFILES_FIELD] = (
+        [p for p in profiles if isinstance(p, dict)] if isinstance(profiles, list) else []
+    )
     return settings
 
 
 def _save_settings(settings: dict) -> None:
     storage.save_json(_AI_SETTINGS_FILE, settings)
+
+
+def _upsert_saved_profile(settings: dict, label: str, fields: dict) -> None:
+    """Record a saved configuration snapshot so it can be re-loaded later.
+
+    Profiles are keyed by ``label`` (usually "brand · model"): saving the same
+    label again refreshes its snapshot instead of growing the list. Newest
+    first, capped so the file cannot grow without bound.
+    """
+    from datetime import datetime, timezone
+
+    profiles = [
+        p for p in (settings.get(_SAVED_PROFILES_FIELD) or []) if isinstance(p, dict)
+    ]
+    entry = {
+        "label": label or str(fields.get("model") or "saved setting"),
+        "enabled": bool(settings.get("enabled")),
+        "provider": str(fields.get("provider") or ""),
+        "base_url": str(fields.get("base_url") or ""),
+        "api_key": str(fields.get("api_key") or ""),
+        "model": str(fields.get("model") or ""),
+        "temperature": fields.get("temperature", settings.get("temperature", 0.2)),
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    profiles = [p for p in profiles if p.get("label") != entry["label"]]
+    profiles.insert(0, entry)
+    settings[_SAVED_PROFILES_FIELD] = profiles[:_SAVED_PROFILES_CAP]
 
 
 def _get_connection(connection_id: str) -> dict:
@@ -599,6 +635,9 @@ class SettingsUpdate(BaseModel):
     # The "brand · model" the submitted api_key belongs to, so the key is filed
     # under that brand/model instead of being kept only as the last one used.
     key_label: Optional[str] = None
+    # The label the saved-configuration snapshot is filed under (same
+    # "brand · model" string), so the settings dropdown can re-load it later.
+    profile_label: Optional[str] = None
 
 
 class TestRequest(BaseModel):
@@ -679,6 +718,7 @@ def update_ai_settings(payload: SettingsUpdate):
     settings = _load_settings()
     fields = payload.model_dump(exclude_unset=True)
     label = fields.pop("key_label", None)
+    profile_label = fields.pop("profile_label", None)
     settings.update(fields)
     if label and "api_key" in fields:
         keyring = dict(settings.get(_KEYRING_FIELD) or {})
@@ -689,6 +729,10 @@ def update_ai_settings(payload: SettingsUpdate):
             # An emptied key field is a deliberate removal for that brand/model.
             keyring.pop(label, None)
         settings[_KEYRING_FIELD] = keyring
+    # A full configuration was submitted — snapshot it so the settings page's
+    # dropdown can list and re-load it later.
+    if "base_url" in fields and "model" in fields:
+        _upsert_saved_profile(settings, str(profile_label or ""), fields)
     _save_settings(settings)
     return settings
 

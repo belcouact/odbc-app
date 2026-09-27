@@ -1,23 +1,20 @@
 /**
  * Cell value formatting per the app's data rule:
- * - numeric with |value| < 1  -> percentage string (0.05 -> "5%", 0.0567 -> "5.67%")
- * - numeric with |value| >= 1 -> thousand separators, no unit (10000 -> "10,000"),
+ * - any numeric -> thousand separators, no unit (10000 -> "10,000", 0.05 -> "0.05"),
  *   decimals kept up to 4 places with trailing zeros trimmed
  * - null / undefined -> ""
  * - dates -> locale string
  * - booleans -> "Yes" / "No"
  * - everything else -> String(value)
+ *
+ * Numbers are never rewritten as percentages: a small value like 0.05 is shown
+ * as-is rather than "5%".
  */
 export function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) return ''
 
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return String(value)
-    if (Math.abs(value) < 1) {
-      // 0.05 * 100 = 5.000000000000001 in some engines -> round before trimming zeros.
-      const pct = Number.parseFloat((value * 100).toFixed(6))
-      return `${pct}%`
-    }
     return value.toLocaleString('en-US', { maximumFractionDigits: 4 })
   }
 

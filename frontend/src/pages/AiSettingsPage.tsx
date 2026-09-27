@@ -27,7 +27,7 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import Slider from '@mui/material/Slider'
 import { api } from '../api/client'
-import type { AiSettings } from '../types'
+import type { AiSettings, AiSettingsProfile } from '../types'
 
 type Notice = { severity: 'success' | 'error'; message: string } | null
 
@@ -181,6 +181,10 @@ export default function AiSettingsPage() {
   /** Keys already on file, keyed by "brand · model", so the key offered back is
    *  the one that belongs to the selected brand and model. */
   const [savedKeys, setSavedKeys] = useState<Record<string, string>>({})
+  /** Snapshots of previously saved configurations, listable in the dropdown. */
+  const [savedProfiles, setSavedProfiles] = useState<AiSettingsProfile[]>([])
+  /** Label picked in the "Saved settings" dropdown ('' = nothing picked). */
+  const [pickedProfile, setPickedProfile] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
 
   const [saving, setSaving] = useState(false)
@@ -208,6 +212,7 @@ export default function AiSettingsPage() {
       const label = savedKeyLabel(loaded)
       if (loaded.api_key && !keys[label]) keys[label] = loaded.api_key
       setSavedKeys(keys)
+      setSavedProfiles(settings.saved_profiles ?? [])
       setShowApiKey(false)
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load AI settings')
@@ -256,6 +261,27 @@ export default function AiSettingsPage() {
     setTestResult(null)
   }
 
+  /** Re-fill every field from a previously saved configuration snapshot. The
+   *  dropdown is an action rather than a persistent selection, so it resets to
+   *  the placeholder right after applying. */
+  const applySavedProfile = (event: SelectChangeEvent) => {
+    const picked = event.target.value
+    setPickedProfile('')
+    const profile = savedProfiles.find((p) => p.label === picked)
+    if (!profile) return
+    setForm({
+      enabled: profile.enabled,
+      provider: profile.provider || 'openai',
+      base_url: profile.base_url,
+      api_key: profile.api_key || '',
+      model: profile.model,
+      temperature:
+        typeof profile.temperature === 'number' ? profile.temperature : 0.2,
+    })
+    setShowApiKey(false)
+    setTestResult(null)
+  }
+
   const updateField =
     (field: keyof AiSettings) => (event: ChangeEvent<HTMLInputElement>) => {
       setForm((current) => ({ ...current, [field]: event.target.value }))
@@ -281,9 +307,15 @@ export default function AiSettingsPage() {
     setSaving(true)
     try {
       // The label says which brand/model this key is for, so it is filed under
-      // that pair rather than replacing whatever key was last saved.
-      const saved = await api.saveAiSettings({ ...form, key_label: savedKeyLabel(form) })
+      // that pair rather than replacing whatever key was last saved. The same
+      // label also names the configuration snapshot the dropdown can re-load.
+      const saved = await api.saveAiSettings({
+        ...form,
+        key_label: savedKeyLabel(form),
+        profile_label: savedKeyLabel(form),
+      })
       setSavedKeys(saved?.saved_keys ?? {})
+      setSavedProfiles(saved?.saved_profiles ?? savedProfiles)
       setNotice({ severity: 'success', message: 'AI settings saved — the assistant uses them on your next message.' })
     } catch (err) {
       setNotice({
@@ -355,6 +387,50 @@ export default function AiSettingsPage() {
                 }
                 label="Enable AI (LLM)"
               />
+
+              <FormControl fullWidth>
+                <InputLabel id="llm-saved-label">Saved settings</InputLabel>
+                <Select
+                  labelId="llm-saved-label"
+                  label="Saved settings"
+                  value={pickedProfile}
+                  onChange={applySavedProfile}
+                  sx={{ minHeight: 48 }}
+                >
+                  <MenuItem value="">
+                    <em>
+                      {savedProfiles.length
+                        ? 'Load a saved setting…'
+                        : 'No saved settings yet — they appear after you click Save'}
+                    </em>
+                  </MenuItem>
+                  {savedProfiles.map((profile) => (
+                    <MenuItem key={profile.label} value={profile.label}>
+                      <Box sx={{ py: 0.25 }}>
+                        <Typography variant="body2" component="div">
+                          {profile.label}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          component="div"
+                          sx={{
+                            maxWidth: { xs: '68vw', sm: 420 },
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {profile.model}
+                          {profile.saved_at
+                            ? ` · saved ${new Date(profile.saved_at).toLocaleDateString()}`
+                            : ''}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
               <FormControl fullWidth>
                 <InputLabel id="llm-preset-label">Quick setup preset</InputLabel>

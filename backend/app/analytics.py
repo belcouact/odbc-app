@@ -1,341 +1,370 @@
-"""Analytics engine: summaries, outliers, trends, recommendations.
+"""Smoke tests for the SQL builder and analytics modules.
 
-Fully offline statistical analysis built on pandas. :func:`analyze` returns
-exactly::
+Run from the ``backend`` directory:
 
-    {
-        "summary": [str, ...],
-        "outliers": [{"column", "index", "value"}, ...],
-        "trends": [str, ...],
-        "recommendations": [str, ...],
-        "stats": {col: {"count", "mean", "median", "std", "min", "max",
-                        "missing", "unique"}},
-        "correlation": {"columns": [str, ...], "matrix": [[float|None, ...], ...]},
-        "frequencies": {col: [{"value", "count", "pct"}, ...], ...},
-    }
+    .venv\\Scripts\\python.exe -m pytest
 """
-import math
-from datetime import datetime
 
-import numpy as np
+import io
+import json
+
 import pandas as pd
+import pytest
+from fastapi import HTTPException
 
-MAX_OUTLIERS_PER_COLUMN = 10
-TREND_RELATIVE_THRESHOLD = 0.05
-MISSING_HIGH_THRESHOLD = 0.30
-MAX_FREQUENCY_VALUES = 10
-MAX_FREQUENCY_DISTINCT = 50
-TOP_VALUES_LIMIT = 10
+from app.analytics import analyze, profile_dataframe
+from app.api import feedback as feedback_mod
+from app.api.uploads import _iter_parse_events, _spool_pop, _spool_put
+from app.db import odbc as odbc_mod
+from app.db.sql_builder import MAX_LIMIT, build_select, resolve_dbms
 
 
-def analyze(df: pd.DataFrame) -> dict:
-    """Compute descriptive stats, outliers, trends and recommendations."""
-    if df is None or df.empty:
-        return {
-            "summary": ["The dataset contains no rows."],
-            "outliers": [],
-            "trends": [],
-            "recommendations": ["The dataset is empty; nothing to analyze."],
-            "stats": {},
-            "correlation": {"columns": [], "matrix": []},
-            "frequencies": {},
+# ---- sql_builder.build_select -----------------------------------------------
+
+
+def test_build_select_basic_limit():
+    sql, params = build_select({"table": "dbo.Lots", "columns": ["lot_id", "qty"]})
+    assert sql == 'SELECT lot_id, qty FROM "dbo.Lots" LIMIT 1000'
+    assert params == []
+
+
+def test_build_select_sqlserver_uses_top():
+    sql, _ = build_select({"table": "Lots"}, dbms="Microsoft SQL Server")
+    assert sql.startswith("SELECT TOP 1000 ")
+    assert "LIMIT" not in sql
+
+
+def test_build_select_oracle_fetch_first():
+    sql, _ = build_select({"table": "LOTS"}, dbms="Oracle")
+    assert sql.endswith("FETCH FIRST 1000 ROWS ONLY")
+
+
+def test_build_select_access_brackets():
+    sql, _ = build_select({"table": "Lot Table", "columns": ["Part No"]}, dbms="Microsoft Access")
+    assert "SELECT TOP 1000 [Part No] FROM [Lot Table]" in sql
+
+
+def test_build_select_filters_and_params():
+    sql, params = build_select(
+        {
+            "table": "t",
+            "filters": [
+                {"column": "a", "operator": "=", "value": 1},
+                {"column": "b", "operator": "contains", "value": "x"},
+                {"column": "c", "operator": "in", "value": ["p", "q"]},
+                {"column": "d", "operator": "is null"},
+            ],
+        },
+        dbms="Microsoft SQL Server",
+    )
+    assert "a = ? AND b LIKE ? AND c IN (?, ?) AND d IS NULL" in sql
+    assert params == [1, "%x%", "p", "q"]
+
+
+def test_build_select_unsupported_operator_raises():
+    with pytest.raises(ValueError):
+        build_select({"table": "t", "filters": [{"column": "a", "operator": "~", "value": 1}]})
+
+
+def test_build_select_derived_columns():
+    sql, _ = build_select(
+        {
+            "table": "t",
+            "columns": ["a"],
+            "derived_columns": [{"name": "total", "expression": "a * 2"}],
         }
-
-    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-    stats = {col: _column_stats(df[col]) for col in numeric_cols}
-    outliers = _find_outliers(df, numeric_cols)
-    trends = _find_trends(df, numeric_cols)
-    summary = _build_summary(df, numeric_cols, outliers, stats)
-    recommendations = _build_recommendations(df, numeric_cols, outliers, trends, stats)
-
-    return {
-        "summary": summary,
-        "outliers": outliers,
-        "trends": trends,
-        "recommendations": recommendations,
-        "stats": stats,
-        "correlation": _correlation(df, numeric_cols),
-        "frequencies": _frequencies(df),
-    }
+    )
+    assert "SELECT a, a * 2 AS total FROM t LIMIT 1000" == sql
 
 
-def _column_stats(series: pd.Series) -> dict:
-    """Per-column descriptive statistics (NaN -> None so JSON stays valid)."""
-    numeric = pd.to_numeric(series, errors="coerce")
-    count = int(numeric.notna().sum())
-    missing = int(numeric.isna().sum())
-    if count == 0:
-        return {
-            "count": 0,
-            "mean": None,
-            "median": None,
-            "std": None,
-            "min": None,
-            "max": None,
-            "missing": missing,
-            "unique": int(series.nunique()),
-        }
-    values = numeric.dropna()
-    return {
-        "count": count,
-        "mean": _float_or_none(values.mean()),
-        "median": _float_or_none(values.median()),
-        "std": _float_or_none(values.std(ddof=1)),
-        "min": _float_or_none(values.min()),
-        "max": _float_or_none(values.max()),
-        "missing": missing,
-        "unique": int(series.nunique()),
-    }
+def test_build_select_limit_clamped():
+    sql, _ = build_select({"table": "t", "limit": 10**9})
+    assert f"LIMIT {MAX_LIMIT}" in sql
 
 
-def _find_outliers(df: pd.DataFrame, numeric_cols: list) -> list[dict]:
-    """IQR-based outliers (Q1-1.5*IQR / Q3+1.5*IQR), capped per column."""
-    outliers: list[dict] = []
-    for col in numeric_cols:
-        numeric = pd.to_numeric(df[col], errors="coerce").dropna()
-        if len(numeric) < 4:
-            continue
-        q1 = float(numeric.quantile(0.25))
-        q3 = float(numeric.quantile(0.75))
-        iqr = q3 - q1
-        lower = q1 - 1.5 * iqr
-        upper = q3 + 1.5 * iqr
-        mask = (numeric < lower) | (numeric > upper)
-        hits = numeric[mask]
-        for idx, value in hits.head(MAX_OUTLIERS_PER_COLUMN).items():
-            outliers.append(
-                {"column": str(col), "index": int(idx), "value": _float_or_none(value)}
-            )
-    return outliers
+def test_build_select_date_range():
+    sql, params = build_select(
+        {"table": "t", "date_column": "created", "date_from": "2024-01-01", "date_to": "2024-12-31"}
+    )
+    assert "created BETWEEN ? AND ?" in sql
+    assert params == ["2024-01-01", "2024-12-31"]
 
 
-def _find_trends(df: pd.DataFrame, numeric_cols: list) -> list[str]:
-    """Linear-regression slope on each numeric column vs row order."""
-    trends: list[str] = []
-    for col in numeric_cols:
-        numeric = pd.to_numeric(df[col], errors="coerce").dropna()
-        if len(numeric) < 3:
-            continue
-        n = len(numeric)
-        slope = float(np.polyfit(np.arange(n), numeric.to_numpy(dtype=float), 1)[0])
-        span = float(numeric.max()) - float(numeric.min())
-        if span <= 0 or abs(slope) * (n - 1) < span * TREND_RELATIVE_THRESHOLD:
-            direction = "no clear trend"
-        else:
-            direction = "increasing" if slope > 0 else "decreasing"
-        trends.append(f"{col}: {direction} over the selected rows")
-    return trends
+def test_resolve_dbms_prefers_user_selection():
+    assert resolve_dbms({"database_type": "oracle"}, "Microsoft SQL Server") == "Oracle"
+    assert resolve_dbms({"database_type": "auto"}, "Microsoft SQL Server") == "Microsoft SQL Server"
+    assert resolve_dbms({}, None) is None
 
 
-def _build_summary(df, numeric_cols, outliers, stats) -> list[str]:
-    summary = [
-        f"Dataset contains {len(df)} rows and {len(df.columns)} columns "
-        f"({len(numeric_cols)} numeric)."
-    ]
-    if numeric_cols:
-        summary.append(
-            "Numeric columns analyzed: " + ", ".join(str(c) for c in numeric_cols) + "."
-        )
-        for col in numeric_cols:
-            s = stats[col]
-            summary.append(
-                f"{col}: mean {_fmt(s['mean'])}, median {_fmt(s['median'])}, "
-                f"min {_fmt(s['min'])}, max {_fmt(s['max'])} "
-                f"(missing {s['missing']} of {s['count'] + s['missing']})."
-            )
-    outlier_cols = {o["column"] for o in outliers}
-    if outlier_cols:
-        summary.append(
-            f"Potential outliers were detected in {len(outlier_cols)} "
-            f"column(s): {', '.join(sorted(outlier_cols))}."
-        )
-    missing_cols = [c for c in numeric_cols if stats[c]["missing"] > 0]
-    if missing_cols:
-        summary.append(f"Missing values were found in {len(missing_cols)} numeric column(s).")
-    return summary
+# ---- odbc: packaged-exe ODBC loader state (Oracle error 1114 regression) ----
 
 
-def _build_recommendations(df, numeric_cols, outliers, trends, stats) -> list[str]:
-    recommendations: list[str] = []
-    total_rows = len(df)
-
-    for col in numeric_cols:
-        s = stats[col]
-        missing_share = s["missing"] / total_rows if total_rows else 0.0
-        if missing_share >= MISSING_HIGH_THRESHOLD:
-            recommendations.append(
-                f"Column '{col}' is missing {s['missing']} of {total_rows} "
-                f"values ({missing_share:.0%}); consider whether it should be "
-                "filled or excluded from analysis."
-            )
-
-    duplicate_rows = int(df.duplicated().sum()) if len(df) > 1 else 0
-    if duplicate_rows:
-        recommendations.append(
-            f"The dataset contains {duplicate_rows} duplicate row(s); "
-            "consider removing them before analysis."
-        )
-
-    for col in numeric_cols:
-        s = stats[col]
-        if s["count"] > 0 and s["min"] == s["max"] and s["count"] > 1:
-            recommendations.append(
-                f"Column '{col}' is constant (all values equal "
-                f"{_fmt(s['min'])}); it provides no analytical signal."
-            )
-
-    outlier_counts: dict[str, int] = {}
-    for o in outliers:
-        outlier_counts[o["column"]] = outlier_counts.get(o["column"], 0) + 1
-    for col, n in sorted(outlier_counts.items()):
-        recommendations.append(
-            f"Column '{col}' has {n} potential outlier(s); review those rows "
-            "before modeling or aggregating."
-        )
-
-    for trend in trends:
-        if "no clear trend" not in trend:
-            col = trend.split(":")[0]
-            recommendations.append(
-                f"Column '{col}' shows a {trend.split(': ', 1)[1]}; "
-                "investigate the drivers behind the change over time."
-            )
-
-    if not numeric_cols:
-        recommendations.append(
-            "No numeric columns detected; statistical analysis is limited "
-            "to data-quality checks."
-        )
-    return recommendations
+@pytest.fixture
+def _reset_loader_state(monkeypatch):
+    """Run each test with the one-time loader-state guard cleared."""
+    monkeypatch.setattr(odbc_mod, "_ODBC_LOADER_STATE_READY", False)
+    return None
 
 
-def _float_or_none(value):
-    if value is None:
-        return None
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return None
-    if math.isnan(f) or math.isinf(f):
-        return None
-    return f
+def test_frozen_open_connection_resets_dll_directory(monkeypatch, _reset_loader_state):
+    """When frozen, the first connect must clear SetDllDirectory before connecting.
 
-
-def _safe_value(value):
-    """Convert a pandas/numpy value to a JSON-serializable Python value."""
-    if value is None:
-        return None
-    if isinstance(value, (bool, str, int)):
-        return value
-    if isinstance(value, (float, np.floating)):
-        f = float(value)
-        # NaN / Infinity are not JSON-compliant (Starlette uses allow_nan=False).
-        if math.isnan(f) or math.isinf(f):
-            return None
-        return f
-    try:
-        if pd.isna(value):
-            return None
-    except (TypeError, ValueError):
-        pass
-    if isinstance(value, np.integer):
-        return int(value)
-    if isinstance(value, np.floating):
-        return _float_or_none(value)
-    if isinstance(value, (pd.Timestamp, datetime)):
-        return str(value)
-    return str(value)
-
-
-def _correlation(df: pd.DataFrame, numeric_cols: list) -> dict:
-    """Pearson correlation matrix over the numeric columns."""
-    if len(numeric_cols) < 2:
-        return {"columns": [], "matrix": []}
-    matrix = df[numeric_cols].corr(numeric_only=True)
-    columns = [str(c) for c in matrix.columns]
-    data = []
-    for _, row in matrix.iterrows():
-        data.append([_float_or_none(v) for v in row.values])
-    return {"columns": columns, "matrix": data}
-
-
-def _frequencies(df: pd.DataFrame) -> dict:
-    """Top-N value counts per column (only columns with few categories)."""
-    frequencies: dict[str, list[dict]] = {}
-    for col in df.columns:
-        series = df[col].dropna()
-        if len(series) == 0:
-            continue
-        if series.nunique() > MAX_FREQUENCY_DISTINCT:
-            continue  # too many categories to be useful
-        counts = series.value_counts().head(MAX_FREQUENCY_VALUES)
-        total = len(series)
-        frequencies[str(col)] = [
-            {
-                "value": _safe_value(k),
-                "count": int(v),
-                "pct": round(float(v) / total * 100, 2),
-            }
-            for k, v in counts.items()
-        ]
-    return frequencies
-
-
-def _fmt(value) -> str:
-    if value is None:
-        return "n/a"
-    return f"{value:.4g}"
-
-
-def _top_values(series: pd.Series) -> list[dict]:
-    """Most frequent values for a column, capped at ``TOP_VALUES_LIMIT``."""
-    counts = series.value_counts().head(TOP_VALUES_LIMIT)
-    return [{"value": _safe_value(k), "count": int(v)} for k, v in counts.items()]
-
-
-def profile_dataframe(df: pd.DataFrame, columns_meta: list | None = None) -> list[dict]:
-    """Profile every column (used for the Excel "Profile" report sheet).
-
-    ``columns_meta`` is the optional ``[{"name", "type"}, ...]`` list returned
-    by the query layer; it supplies the declared DB type per column. Returns a
-    list of row dicts containing counts, numeric stats, top values and a
-    0-100 quality score (completeness weighted 0.7, cardinality 0.3).
+    PyInstaller's one-file bootloader points the process DLL directory at the
+    extraction temp dir; Oracle's ODBC driver then fails to initialize
+    (IM003 / system error 1114). open_connection must undo that override.
     """
-    meta = {}
-    for item in columns_meta or []:
-        name = item.get("name")
-        if name is not None:
-            meta[str(name)] = item
+    calls = []
 
-    total = len(df)
-    rows = []
-    for col in df.columns:
-        series = df[col]
-        non_null = series.dropna()
-        distinct = int(series.nunique())
-        completeness = len(non_null) / total if total else 0.0
-        cardinality = distinct / total if total else 0.0
-        numeric = pd.to_numeric(series, errors="coerce").dropna()
+    class _FakeKernel32:
+        def SetDllDirectoryW(self, path):
+            calls.append(path)
+            return 1
 
-        row = {
-            "column": str(col),
-            "db_type": str(meta.get(str(col), {}).get("type", "")),
-            "total": total,
-            "non_null": int(len(non_null)),
-            "missing": int(total - len(non_null)),
-            "distinct": distinct,
-            "top_values": _top_values(non_null),
-            "quality_score": round((completeness * 0.7 + cardinality * 0.3) * 100, 1),
-        }
-        if len(numeric):
-            row.update(
-                {
-                    "min": _float_or_none(numeric.min()),
-                    "max": _float_or_none(numeric.max()),
-                    "mean": _float_or_none(numeric.mean()),
-                    "median": _float_or_none(numeric.median()),
-                    "std": _float_or_none(numeric.std(ddof=1)) if len(numeric) > 1 else None,
-                }
-            )
-        rows.append(row)
-    return rows
+    monkeypatch.setattr("ctypes.WinDLL", lambda name: _FakeKernel32(), raising=False)
+    monkeypatch.setattr(odbc_mod.sys, "frozen", True, raising=False)
+    sentinel = object()
+    monkeypatch.setattr(odbc_mod.pyodbc, "connect", lambda *a, **k: sentinel)
+
+    assert odbc_mod.open_connection({"type": "dsn", "dsn": "x"}) is sentinel
+    assert calls == [None]
+
+
+def test_non_frozen_open_connection_skips_loader_reset(monkeypatch, _reset_loader_state):
+    """Outside PyInstaller nothing should touch the DLL directory."""
+    calls = []
+
+    class _FakeKernel32:
+        def SetDllDirectoryW(self, path):
+            calls.append(path)
+            return 1
+
+    monkeypatch.setattr("ctypes.WinDLL", lambda name: _FakeKernel32(), raising=False)
+    monkeypatch.setattr(odbc_mod.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(odbc_mod.pyodbc, "connect", lambda *a, **k: "cn")
+
+    assert odbc_mod.open_connection({"type": "dsn", "dsn": "x"}) == "cn"
+    assert calls == []
+
+
+# ---- analytics.analyze -------------------------------------------------------
+
+
+def test_analyze_empty_df():
+    result = analyze(pd.DataFrame())
+    assert "no rows" in result["summary"][0].lower()
+    assert result["stats"] == {}
+    assert result["outliers"] == []
+
+
+def test_analyze_numeric_stats():
+    df = pd.DataFrame({"v": [1.0, 2.0, 3.0, 4.0]})
+    result = analyze(df)
+    stats = result["stats"]["v"]
+    assert stats["count"] == 4
+    assert stats["mean"] == pytest.approx(2.5)
+    assert "correlation" in result and "frequencies" in result
+
+
+# ---- analytics.profile_dataframe --------------------------------------------
+
+
+def test_profile_dataframe_counts_and_numeric_stats():
+    df = pd.DataFrame({"num": [1.0, 2.0, 3.0, 4.0], "cat": ["x", "x", "y", None]})
+    rows = profile_dataframe(df)
+    by_col = {r["column"]: r for r in rows}
+
+    assert by_col["num"]["total"] == 4
+    assert by_col["num"]["non_null"] == 4
+    assert by_col["num"]["mean"] == pytest.approx(2.5)
+    assert by_col["num"]["min"] == 1.0 and by_col["num"]["max"] == 4.0
+
+    assert by_col["cat"]["missing"] == 1
+    assert by_col["cat"]["distinct"] == 2
+    assert by_col["cat"]["top_values"][0] == {"value": "x", "count": 2}
+    assert "mean" not in by_col["cat"]
+
+
+def test_profile_dataframe_quality_score_and_meta():
+    df = pd.DataFrame({"v": [1.0, 2.0, 3.0, 4.0]})
+    rows = profile_dataframe(df, columns_meta=[{"name": "v", "type": "5"}])
+    row = rows[0]
+    # completeness 1.0 * 0.7 + cardinality 1.0 * 0.3 = 100.0
+    assert row["quality_score"] == 100.0
+    assert row["db_type"] == "5"
+
+
+def test_profile_dataframe_empty():
+    rows = profile_dataframe(pd.DataFrame({"a": []}))
+    assert rows[0]["total"] == 0
+    assert rows[0]["missing"] == 0
+
+
+# ---- feedback board ---------------------------------------------------------
+
+
+def test_feedback_anon_key_prefers_env(monkeypatch):
+    monkeypatch.setenv("ODBC_FEEDBACK_KEY", "env-key")
+    assert feedback_mod.anon_key() == "env-key"
+
+
+def test_feedback_anon_key_falls_back_to_builtin(monkeypatch):
+    monkeypatch.delenv("ODBC_FEEDBACK_KEY", raising=False)
+    monkeypatch.setattr(feedback_mod, "APP_DATA_DIR", "Z:\\does\\not\\exist")
+    assert feedback_mod.anon_key() == feedback_mod.DEFAULT_ANON_KEY
+
+
+def _fake_store(monkeypatch):
+    """Point the profile helpers at an in-memory store (never %APPDATA%)."""
+    saved: dict = {}
+    monkeypatch.setattr(
+        feedback_mod.storage,
+        "load_json",
+        lambda name, default=None: saved.get(name, default),
+    )
+    monkeypatch.setattr(feedback_mod.storage, "save_json", lambda name, data: saved.__setitem__(name, data))
+    return saved
+
+
+def test_feedback_profile_is_created_once(monkeypatch):
+    saved = _fake_store(monkeypatch)
+    first = feedback_mod.load_profile()
+    assert first["author_id"]
+    assert first["author_id"] == saved[feedback_mod._PROFILE_FILE]["author_id"]
+    assert feedback_mod.load_profile()["author_id"] == first["author_id"]
+
+
+def test_feedback_text_validation():
+    assert feedback_mod._text("  hi  ", "Title", max_length=10) == "hi"
+    with pytest.raises(HTTPException):
+        feedback_mod._text("   ", "Title", max_length=10)
+    with pytest.raises(HTTPException):
+        feedback_mod._text("x" * 11, "Title", max_length=10)
+
+
+def test_feedback_choice_validation():
+    assert feedback_mod._choice("", "Category", feedback_mod.CATEGORIES, "other") == "other"
+    assert feedback_mod._choice("BUG", "Category", feedback_mod.CATEGORIES, "other") == "bug"
+    with pytest.raises(HTTPException):
+        feedback_mod._choice("nope", "Category", feedback_mod.CATEGORIES, "other")
+
+
+def test_feedback_attachments_must_live_in_the_feedback_bucket():
+    good = {
+        "url": feedback_mod._storage_url("2026/09/shot.png", public=True),
+        "name": "shot.png",
+        "size": 1234,
+        "type": "image/png",
+    }
+    assert feedback_mod._attachments_in([good])[0]["name"] == "shot.png"
+    with pytest.raises(HTTPException):
+        feedback_mod._attachments_in([{**good, "url": "https://example.com/shot.png"}])
+    with pytest.raises(HTTPException):
+        feedback_mod._attachments_in([{**good, "size": feedback_mod.MAX_ATTACHMENT_BYTES + 1}])
+
+
+def test_feedback_embedded_count_and_shaping():
+    assert feedback_mod._embedded_count([{"count": 3}]) == 3
+    assert feedback_mod._embedded_count([]) == 0
+    assert feedback_mod._embedded_count(None) == 0
+
+    row = {
+        "id": "t1",
+        "title": "Broken export",
+        "category": "bug",
+        "author_id": "me",
+        "author_name": "Alex",
+        "created_at": "2026-09-14T00:00:00+00:00",
+        "updated_at": "2026-09-14T00:00:00+00:00",
+        "feedback_replies": [{"count": 2}],
+        "feedback_likes": [{"count": 5}],
+    }
+    out = feedback_mod._thread_out(row, "me", {"t1"})
+    assert out["mine"] is True
+    assert out["liked_by_me"] is True
+    assert out["reply_count"] == 2
+    assert out["like_count"] == 5
+    assert feedback_mod._thread_out(row, "someone-else", set())["mine"] is False
+
+
+# ---- streaming upload parse -------------------------------------------------
+
+
+def _stream_events(raw: bytes, filename: str) -> list[dict]:
+    return [json.loads(line) for line in _iter_parse_events(raw, filename)]
+
+
+def test_upload_stream_xlsx_reports_read_progress(monkeypatch):
+    from openpyxl import Workbook
+
+    import app.api.uploads as uploads_mod
+
+    monkeypatch.setattr(uploads_mod, "_XLSX_PROGRESS_ROWS", 3)
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["a", "b"])
+    for i in range(10):
+        ws.append([i, f"v{i}"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    events = _stream_events(buf.getvalue(), "book.xlsx")
+
+    types = [e["type"] for e in events]
+    assert "error" not in types
+    reads = [
+        e["rows"] for e in events if e["type"] == "progress" and e.get("stage") == "read"
+    ]
+    assert reads == [3, 6, 9, 10]
+    begin = next(e for e in events if e["type"] == "result_begin")
+    assert begin["row_count"] == 10
+    assert [c["name"] for c in begin["columns"]] == ["a", "b"]
+
+
+def test_upload_stream_csv_reports_row_progress_and_batches():
+    n = 25
+    csv = io.BytesIO(("a,b\n" + "\n".join(f"{i},{i * 2}" for i in range(n)) + "\n").encode())
+    events = _stream_events(csv.getvalue(), "data.csv")
+
+    types = [e["type"] for e in events]
+    assert types.count("result_begin") == 1
+    assert types.count("result_end") == 1
+    assert "error" not in types
+
+    begin = next(e for e in events if e["type"] == "result_begin")
+    assert begin["row_count"] == n
+    assert [c["name"] for c in begin["columns"]] == ["a", "b"]
+
+    row_events = [e for e in events if e["type"] == "result_rows"]
+    total_rows = sum(len(e["rows"]) for e in row_events)
+    assert total_rows == n
+    assert row_events[0]["rows"][0] == {"a": 0, "b": 0}
+
+    # Read progress reported cumulative counts, import progress matches batches.
+    read_progress = [e for e in events if e["type"] == "progress" and e.get("stage") == "read"]
+    assert read_progress[-1]["rows"] == n
+    import_progress = [e for e in events if e["type"] == "progress" and e.get("stage") == "import"]
+    assert import_progress[-1]["rows"] == n
+    assert "elapsed_ms" in events[-1]
+
+
+def test_upload_stream_empty_csv_yields_error_event():
+    events = _stream_events(b"a,b\n", "empty.csv")
+    assert events[-1]["type"] == "error"
+    assert "no rows" in events[-1]["detail"]
+
+
+def test_upload_stream_unsupported_type_yields_error_event():
+    events = _stream_events(b"whatever", "data.txt")
+    assert events[-1]["type"] == "error"
+    assert "Unsupported file type" in events[-1]["detail"]
+
+
+def test_upload_spool_roundtrip_and_missing_id():
+    upload_id = _spool_put(b"a,b\n1,2\n", "t.csv")
+    raw, filename = _spool_pop(upload_id)
+    assert raw == b"a,b\n1,2\n"
+    assert filename == "t.csv"
+    # Popped entries are gone — a second parse of the same id must 404.
+    with pytest.raises(HTTPException) as exc_info:
+        _spool_pop(upload_id)
+    assert exc_info.value.status_code == 404

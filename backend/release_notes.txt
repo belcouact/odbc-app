@@ -1,3 +1,2 @@
-1. Settings → AI: AI now starts enabled by default, so "Ask AI" and the AI summaries work as soon as you add a provider and a key. Turn the master switch off if you do not want it.
-2. Settings → About: the "Server / Shut down server" card has been removed. Closing the last tab already stops the app, and clicking your odbcapp:// bookmark starts it again.
-3. "How to use this app": the first step now spells out the first-time setup — double-click ODBCQueryApp.exe once to register the odbcapp:// link, then save that link as a bookmark and use it from then on.
+1. BI → Chart: a new "AI Chart" button sits above "Add to dashboard". Describe the chart you want in the AI sidebar and it renders straight onto the BI chart builder — where it can be tweaked and added to the dashboard like any other visual. Charts generated from the Analyze tab keep landing there as before.
+2. Colour Explorer template (analyze-color-data): both ΔE reference dropdowns now show the LD sample NAME instead of the item code, so picking a reference no longer requires knowing the LD_item.

@@ -308,7 +308,13 @@ def http(url: str, method: str, headers: dict[str, str] | None = None, data: byt
     for name, value in (headers or {}).items():
         request.add_header(name, value)
     try:
-        with urllib.request.urlopen(request, timeout=900) as response:
+        # The resilient opener rides out the corporate network's flaky direct
+        # egress (handshake resets) by retrying and falling back to the
+        # auto-config (WPAD) proxy servers.
+        sys.path.insert(0, str(ROOT))
+        from app.update import _urlopen_with_fallback  # noqa: PLC0415
+
+        with _urlopen_with_fallback(request, timeout=900) as response:
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", "replace")[:400]

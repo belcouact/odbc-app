@@ -20,8 +20,8 @@ export type EditorAction =
       source?: 'builder' | 'sql' | 'none'
     }
   | { type: 'request-run' }
-  /** Apply an AI-generated ECharts option to the Analyze page's Chart tab. */
-  | { type: 'apply-chart'; option: EChartsOption }
+  /** Apply an AI-generated ECharts option to a page's Chart tab. */
+  | { type: 'apply-chart'; option: EChartsOption; /** Destination page; defaults to the Analyze page. */ target?: 'script' | 'bi' }
   /** Bring the Analyze page to a specific tab (Chart / Script). */
   | { type: 'show-analyze-tab'; tab: 'chart' | 'script' }
 

@@ -204,6 +204,18 @@ export interface HistoryEntry {
 }
 
 /** AI assistant settings (stored locally by the backend). */
+/** A previously saved AI configuration snapshot, listed in the load dropdown. */
+export interface AiSettingsProfile {
+  label: string
+  enabled: boolean
+  provider: string
+  base_url: string
+  api_key: string
+  model: string
+  temperature: number
+  saved_at?: string
+}
+
 export interface AiSettings {
   enabled: boolean
   /** 'openai' (OpenAI-compatible chat completions) or 'anthropic' (Messages API). */
@@ -214,6 +226,8 @@ export interface AiSettings {
   temperature: number
   /** Keys held per "brand · model" label, so each brand keeps its own key. */
   saved_keys?: Record<string, string>
+  /** Snapshots of previously saved configurations, newest first. */
+  saved_profiles?: AiSettingsProfile[]
 }
 
 /** Specialty of the global AI sidebar conversation. */

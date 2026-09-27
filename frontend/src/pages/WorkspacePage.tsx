@@ -15,6 +15,7 @@ import type {
   SyntheticEvent,
 } from 'react'
 import AddIcon from '@mui/icons-material/Add'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CloseIcon from '@mui/icons-material/Close'
 import CodeIcon from '@mui/icons-material/Code'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -74,7 +75,7 @@ import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import type { SqlLanguage } from 'sql-formatter'
 import { api, downloadBlob, QueryCanceledError } from '../api/client'
-import type { ChannelSet, ComponentSet, ConnectionTemplateField, ConnectionTemplateOption, ExportFormat } from '../api/client'
+import type { ChannelSet, ComponentSet, ConnectionTemplateField, ConnectionTemplateOption, ColorEnrichStep, ExportFormat } from '../api/client'
 import ChannelSelectDialog from '../components/ChannelSelectDialog'
 import TestComponentsDialog from '../components/TestComponentsDialog'
 import type {
@@ -123,6 +124,40 @@ const sqlDialectFor = (databaseType: DatabaseType | undefined): SqlLanguage => {
 const sqlPreviewLine = (sql: string): string => {
   const flat = sql.trim().replace(/\s+/g, ' ')
   return flat.length > 160 ? `${flat.slice(0, 160)}…` : flat
+}
+
+/**
+ * Bake derived columns into a result so the grid header (type chip) and the
+ * chart field list both see them as regular columns. Columns whose name
+ * collides with a real column or an earlier derived one are skipped, so a
+ * template column never silently overwrites the data. Used both for the
+ * displayed result and for the Color_Data lot-genealogy enrichment (which
+ * needs the derived WOL / Batch keys before calling the backend).
+ */
+const bakeComputedColumns = (result: QueryResult, computed: ComputedColumn[]): QueryResult => {
+  if (computed.length === 0) return result
+  const existing = new Set(result.columns.map((col) => col.name))
+  const applied = computed.filter((col) => {
+    if (existing.has(col.name)) return false
+    existing.add(col.name)
+    return true
+  })
+  if (applied.length === 0) return result
+  const columns = [...result.columns, ...applied.map((col) => ({ name: col.name, type: '' }))]
+  const rows = result.rows.map((row) => {
+    const derived: Record<string, unknown> = { ...row }
+    for (const col of applied) {
+      try {
+        // Evaluate against the accumulating row so chained columns can
+        // reference earlier calculated columns.
+        derived[col.name] = evaluateFormula(col.expression, derived)
+      } catch {
+        derived[col.name] = null
+      }
+    }
+    return derived
+  })
+  return { ...result, columns, rows }
 }
 
 /** Group key so repeated runs of the same query collapse to one "Recent runs" row. */
@@ -400,16 +435,44 @@ function quoteSql(value: string): string {
   return `'${normalized.replace(/'/g, "''")}'`
 }
 
-/** Oracle TO_DATE() literal for a date/datetime value. A date-only or
- *  datetime-local value (e.g. '2024-01-15', '2024-01-15T10:30') is normalized
- *  to a full timestamp so the 'YYYY-MM-DD HH24:MI:SS' mask always matches —
- *  comparing a DATE column to a bare string otherwise raises ORA-01861. */
-function toDateSql(value: string): string {
+/** Date-literal form the live SQL preview uses for a connection: Oracle needs
+ *  TO_DATE(), Access/Jet needs '#...#', everything else compares plain quoted
+ *  strings (mirrors the backend's resolve_dbms gating). */
+type SqlDateDialect = 'plain' | 'oracle' | 'access'
+
+/** Normalize a date-only or datetime-local value (e.g. '2024-01-15',
+ *  '2024-01-15T10:30') to a full 'YYYY-MM-DD HH:MM:SS' timestamp: a bare date
+ *  gets a midnight time and a minute-precision value gets ':00' seconds, so a
+ *  fixed-format date literal always parses. */
+function normalizeTimestamp(value: string): string {
   const v = value.trim().replace(/(\d)T(\d)/g, '$1 $2')
-  let ts = v
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) ts = `${v} 00:00:00`
-  else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v)) ts = `${v}:00`
-  return `TO_DATE(${quoteSql(ts)}, 'YYYY-MM-DD HH24:MI:SS')`
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v} 00:00:00`
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v)) return `${v}:00`
+  return v
+}
+
+/** Oracle TO_DATE() literal — comparing a DATE column to a bare string
+ *  otherwise raises ORA-01861. */
+function toDateSql(value: string): string {
+  return `TO_DATE(${quoteSql(normalizeTimestamp(value))}, 'YYYY-MM-DD HH24:MI:SS')`
+}
+
+/** Access/Jet date literal. Jet rejects a single-quoted string in a criteria
+ *  expression against a Date/Time column ("Data type mismatch in criteria
+ *  expression", -3030); '#...#' is the accepted form. */
+function toJetDateSql(value: string): string {
+  return `#${normalizeTimestamp(value)}#`
+}
+
+/** Pick the date-literal dialect for a connection. Access file connections
+ *  carry no database_type, so the resolved DBMS name and the connection kind
+ *  are consulted as well. */
+function sqlDateDialect(connection: DbConnection | null | undefined): SqlDateDialect {
+  const type = (connection?.database_type ?? '').toLowerCase()
+  if (type === 'oracle') return 'oracle'
+  const dbms = (connection?.resolved_dbms ?? '').toLowerCase()
+  if (type === 'jet' || connection?.type === 'access' || dbms.includes('access')) return 'access'
+  return 'plain'
 }
 
 /** Split a list into fixed-size chunks (e.g. two template fields per row). */
@@ -472,25 +535,31 @@ function renderFabSqlPreview(
   values: Record<string, string>,
   operators: Record<string, string>,
   extraFilters: ExtraFilterRow[] = [],
-  useToDate = false,
+  dateDialect: SqlDateDialect = 'plain',
 ): string {
   const templateSql = option.sql ?? ''
   // Only render when the template carries a '{}' injection point or a '<>'
   // FROM placeholder (Process_Data).
   if (!templateSql.includes('{}') && !templateSql.includes('<>')) return ''
 
-  /** Render one condition fragment ('' when it must be omitted). Date/datetime
-   *  columns are wrapped in Oracle TO_DATE() (ORA-01861) **only** for Oracle
-   *  connections; other servers compare them as plain quoted literals. */
+  /** Quote a value for the WHERE fragment; date/datetime values use the
+   *  connection's date-literal form. */
+  const wrapValue = (value: string, isDate: boolean): string => {
+    if (!isDate) return quoteSql(value)
+    if (dateDialect === 'oracle') return toDateSql(value)
+    if (dateDialect === 'access') return toJetDateSql(value)
+    return quoteSql(value)
+  }
+
+  /** Render one condition fragment ('' when it must be omitted). */
   const render = (column: string, op: string, raw: string, rawTo = '', isDate = false): string => {
-    const useDate = isDate && useToDate
     const lower = op.toLowerCase()
     if (lower === 'is null' || lower === 'is not null') return `${column} ${lower.toUpperCase()}`
     if (!raw.trim()) return ''
     if (lower === 'between') {
       if (!rawTo.trim()) return ''
-      const a = useDate ? toDateSql(raw) : quoteSql(raw)
-      const b = useDate ? toDateSql(rawTo) : quoteSql(rawTo)
+      const a = wrapValue(raw, isDate)
+      const b = wrapValue(rawTo, isDate)
       return `${column} BETWEEN ${a} AND ${b}`
     }
     if (lower === 'like' || lower === 'not like') {
@@ -505,10 +574,10 @@ function renderFabSqlPreview(
         .map((part) => part.trim())
         .filter(Boolean)
       if (!parts.length) return ''
-      const rendered = parts.map((part) => (useDate ? toDateSql(part) : quoteSql(part))).join(', ')
+      const rendered = parts.map((part) => wrapValue(part, isDate)).join(', ')
       return `${column} ${lower === 'not in' ? 'NOT IN' : 'IN'} (${rendered})`
     }
-    return `${column} ${lower} ${useDate ? toDateSql(raw) : quoteSql(raw)}`
+    return `${column} ${lower} ${wrapValue(raw, isDate)}`
   }
 
   // Templates with a '<>' FROM placeholder (Process_Data) use the selected
@@ -1048,6 +1117,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   }, [savedChannelSets, fabValues.operation])
 
   // ---- Execution / results ----
+  /** FabLIMS template currently selected; its SQL is mirrored into the editor.
+   *  Declared here (before the results memos) so its derived columns can be
+   *  applied to the result as soon as a query returns. */
+  const selectedFabOption = fabTemplates.find((o) => o.name === fabOption) ?? null
   const [result, setResult] = useState<QueryResult | null>(null)
   /** User-added calculated columns (grid formula helper). Shared with the charts. */
   const [computedColumns, setComputedColumns] = useState<ComputedColumn[]>([])
@@ -1067,6 +1140,12 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const [resultTab, setResultTab] = useState<'grid' | 'summary'>('grid')
   /** Drill-through conditions pushed from the Summary tab onto the results grid. */
   const [drillFilters, setDrillFilters] = useState<GridDrillFilter[]>([])
+  /** Color_Data auto-enrichment: one entry per stage, newest state wins. */
+  const [enrichSteps, setEnrichSteps] = useState<ColorEnrichStep[]>([])
+  /** True while the FabLIMS lot genealogy is being loaded onto the grid. */
+  const [enriching, setEnriching] = useState(false)
+  /** Non-fatal enrichment failure (the queried rows stay in the grid). */
+  const [enrichError, setEnrichError] = useState<string | null>(null)
 
   // Calculated columns only make sense for the result they were built on, so
   // drop them as soon as a new result arrives.
@@ -1081,27 +1160,22 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     if (filters.length > 0) setResultTab('grid')
   }, [])
 
+  /** Derived columns declared by the selected template (e.g. Color_Data parses
+   *  LD_item / WOL / Batch / Sample_type out of NAME). Kept out of the
+   *  `computedColumns` state so they survive the per-result reset and apply to
+   *  every result the template returns — including re-runs and exports. */
+  const templateComputedColumns = useMemo<ComputedColumn[]>(() => {
+    const specs = useTemplate ? selectedFabOption?.computed_columns ?? [] : []
+    return specs.map((spec) => ({ name: spec.name, expression: spec.expression }))
+  }, [useTemplate, selectedFabOption])
+
   /** Bake computed columns into the result so the grid header (type chip) and
    *  the chart field list both see them as regular columns. */
   const effectiveResult = useMemo<QueryResult | null>(() => {
     if (!result) return null
-    if (computedColumns.length === 0) return result
-    const columns = [...result.columns, ...computedColumns.map((col) => ({ name: col.name, type: '' }))]
-    const rows = result.rows.map((row) => {
-      const derived: Record<string, unknown> = { ...row }
-      for (const col of computedColumns) {
-        try {
-          // Evaluate against the accumulating row so chained columns can
-          // reference earlier calculated columns.
-          derived[col.name] = evaluateFormula(col.expression, derived)
-        } catch {
-          derived[col.name] = null
-        }
-      }
-      return derived
-    })
-    return { ...result, columns, rows }
-  }, [result, computedColumns])
+    // Template columns come first so user-added columns can reference them.
+    return bakeComputedColumns(result, [...templateComputedColumns, ...computedColumns])
+  }, [result, computedColumns, templateComputedColumns])
 
   // ---- Manual data upload ----
   const [uploading, setUploading] = useState(false)
@@ -1222,17 +1296,18 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   })
 
   // Publish the current builder query / SQL / grid rows so the Analyze tab can reuse them.
+  // Publish the *effective* result so computed/added columns travel with the grid.
   useEffect(() => {
     publishWorkspaceSnapshot({
       connectionId,
       builderQuery: buildQuery(builderSnapshot()),
       sqlText,
       table,
-      columns: (result?.columns ?? []).map((col) => col.name),
-      rows: result?.rows ?? [],
+      columns: (effectiveResult?.columns ?? []).map((col) => col.name),
+      rows: effectiveResult?.rows ?? [],
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionId, table, selectedColumns, filters, derivedColumns, dateColumn, dateFrom, dateTo, limit, sqlText, result])
+  }, [connectionId, table, selectedColumns, filters, derivedColumns, dateColumn, dateFrom, dateTo, limit, sqlText, effectiveResult])
 
   // ---- Load connections ----
   const loadConnections = useCallback(() => {
@@ -1493,6 +1568,55 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     })
   }
 
+  /**
+   * After a Color_Data query, automatically append the FabLIMS lot genealogy:
+   * derive WOL / Batch / Sample_type from NAME, then add Product (matched on
+   * WOL) and Raw_item (matched on Batch). The color query's row count is
+   * preserved — one row per color record, unmatched values left empty.
+   *
+   * Enrichment is a convenience: if the genealogy cannot be loaded the queried
+   * rows are returned unchanged so the user is never left without data.
+   */
+  const maybeEnrichColorData = async (source: QueryResult): Promise<QueryResult> => {
+    if (templateKey.toUpperCase() !== 'COLORDB') return source
+    if (source.rows.length === 0) return source
+    // WOL / Batch / Sample_type come from the Color_Data template's computed
+    // columns; bake them in first so the backend only has to add the genealogy.
+    const baked = bakeComputedColumns(source, templateComputedColumns)
+    if (!baked.columns.some((col) => col.name.toUpperCase() === 'NAME')) return source
+
+    setEnriching(true)
+    setEnrichSteps([])
+    setEnrichError(null)
+    try {
+      const enriched = await api.enrichColorData(
+        { rows: baked.rows, columns: baked.columns },
+        (step) =>
+          setEnrichSteps((prev) => {
+            const next = [...prev]
+            const index = next.findIndex((entry) => entry.step === step.step)
+            if (index >= 0) next[index] = step
+            else next.push(step)
+            return next
+          }),
+      )
+      const summary = enriched.summary
+      setNotice(
+        `Lot genealogy added — ${summary.wol_matched.toLocaleString()}/${summary.wol_total.toLocaleString()} WOL → Product, ` +
+          `${summary.batch_matched.toLocaleString()}/${summary.batch_total.toLocaleString()} Batch → Raw_item ` +
+          `(${summary.genealogy_rows.toLocaleString()} genealogy rows${summary.cached ? ', cached' : ''}).`,
+      )
+      return enriched
+    } catch (err) {
+      setEnrichError(
+        err instanceof Error ? err.message : 'Failed to load the FabLIMS lot genealogy.',
+      )
+      return source
+    } finally {
+      setEnriching(false)
+    }
+  }
+
   /** Cancel the in-flight query run. Retries briefly while the backend may
    *  not have registered the run yet (e.g. the connection is still opening). */
   const handleCancelQuery = async () => {
@@ -1525,6 +1649,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       const response = await api.runQuery(query, (rows) => setQueryProgress(rows), (id) => {
         runIdRef.current = id
       })
+      // The query is done — hand the results area over to the enrichment stepper.
+      setRunning(false)
+      setQueryProgress(null)
       let final = response
       try {
         final = await maybeTransform(response)
@@ -1535,6 +1662,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         setError(transformErr instanceof Error ? transformErr.message : 'Transform failed')
         final = response
       }
+      final = await maybeEnrichColorData(final)
       setGridHistory([])
       setResult(final)
       setUploadActive(false)
@@ -1562,6 +1690,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           runIdRef.current = id
         },
       )
+      // The query is done — hand the results area over to the enrichment stepper.
+      setRunning(false)
+      setQueryProgress(null)
       let final = response
       try {
         final = await maybeTransform(response)
@@ -1572,6 +1703,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         setError(transformErr instanceof Error ? transformErr.message : 'Transform failed')
         final = response
       }
+      final = await maybeEnrichColorData(final)
       setGridHistory([])
       setResult(final)
       setUploadActive(false)
@@ -2314,6 +2446,54 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           </Tabs>
         </Box>
 
+        {/* Color_Data auto-enrichment progress: one line per stage, collapsing
+            to the snackbar summary once the genealogy has been added. */}
+        {(enriching || enrichError) && (
+          <Alert
+            severity={enrichError ? 'warning' : 'info'}
+            onClose={enrichError ? () => setEnrichError(null) : undefined}
+            sx={{ mx: { xs: 1, sm: 1.5 }, mt: 1, borderRadius: 1.5 }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              {enrichError ? 'Lot genealogy not loaded' : 'Adding FabLIMS lot genealogy…'}
+            </Typography>
+            {enrichError ? (
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
+                {enrichError}
+              </Typography>
+            ) : (
+              <>
+                <Stack spacing={0.25} sx={{ mt: 0.75 }}>
+                  {enrichSteps.map((step) => (
+                    <Stack key={step.step} direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+                      <Box
+                        sx={{
+                          width: 18,
+                          pt: '3px',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {step.status === 'done' ? (
+                          <CheckCircleIcon sx={{ fontSize: 16, color: 'success.main' }} />
+                        ) : (
+                          <CircularProgress size={12} />
+                        )}
+                      </Box>
+                      <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
+                        {step.label}
+                        {step.detail ? ` — ${step.detail}` : ''}
+                      </Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+                <LinearProgress sx={{ mt: 1, borderRadius: 1 }} />
+              </>
+            )}
+          </Alert>
+        )}
+
         <Box sx={{ position: 'relative', minHeight: 240 }}>
           {/* Both views stay mounted so their settings survive switching tabs —
               e.g. a pivot keeps its Rows/Columns/Values and axis filters after
@@ -2408,8 +2588,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     </Paper>
   )
 
-  // FabLIMS template currently selected; its SQL is mirrored into the editor.
-  const selectedFabOption = fabTemplates.find((o) => o.name === fabOption) ?? null
   /** Columns users can add as extra parameters. Parsed from the base SQL's
    *  SELECT list; for a `SELECT *` base the primary table's columns are
    *  fetched from the database instead. */
@@ -2547,15 +2725,15 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   // Live preview: mirror the filled FabLIMS parameters into the SQL editor.
   useEffect(() => {
     if (mode !== 'sql' || !selectedFabOption) return
-    // Only Oracle wraps date columns in TO_DATE(); other servers compare dates
-    // as plain quoted literals (mirrors the backend's resolve_dbms gating).
-    const useToDate = (selectedConnection?.database_type ?? '').toLowerCase() === 'oracle'
+    // Date literals are dialect-specific — Oracle needs TO_DATE(), Access/Jet
+    // needs '#...#', other servers compare plain quoted strings (mirrors the
+    // backend's resolve_dbms gating).
     const preview = renderFabSqlPreview(
       selectedFabOption,
       fabValues,
       fabOperators,
       fabExtraFilters,
-      useToDate,
+      sqlDateDialect(selectedConnection),
     )
     if (preview) setSqlText(preview)
     // eslint-disable-next-line react-hooks/exhaustive-deps
