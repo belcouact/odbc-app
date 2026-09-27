@@ -3,7 +3,7 @@
 """
 analyze-color-data.py
 
-Lab colour explorer for Color_Data: one self-contained HTML page with five tabs.
+Lab colour explorer for Color_Data: one self-contained HTML page with six tabs.
 
   1. Stats          - overview charts: sample-type mix (pie), LD_item count
                       per textile, distinct Raw batches per Raw_item, measurements
@@ -33,6 +33,13 @@ Lab colour explorer for Color_Data: one self-contained HTML page with five tabs.
                       are scored with CIEDE2000. A baseline input highlights
                       pairs below it; clicking a row shows the two samples'
                       colours.
+  6. Match Pantone  - pick a Pantone TCX colour (the 2,310-colour library is
+                      embedded in this script), optionally narrow the search
+                      to a face textile — the first 4 characters of an
+                      LD_item (Gore item) or of a Raw_item (supplier textile)
+                      — and the tab reports the nearest item by CIEDE2000:
+                      the nearest LD_item when the chosen textile has one,
+                      otherwise the nearest unmatched Raw_item.
 
 Every tab shows the colour as a large swatch in its own column.
 
@@ -49,6 +56,7 @@ Two ways to run it:
 """
 
 import argparse
+import io
 import json
 import math
 import os
@@ -75,6 +83,16 @@ LAMINATE = "Laminate"
 # Payload sizes reported at the end (helps spot a query that returned the wrong
 # table long before the page is opened).
 ROUND_DP = 2
+
+# Pantone TCX colour library for the Match Pantone tab.  The colour values
+# are NOT stored in this script: they live in backend/templates/Pantone_TCX.xlsx,
+# which is uploaded to the app's public Supabase bucket.  load_pantone() lazily
+# downloads the workbook once, extracts the rows and caches them as JSON beside
+# the app's other local files; later runs reuse that cache and never touch the
+# network.  Row layout: [Pantone, Name, Chinese, Hex, L, a, b].
+PANTONE_XLSX_URL = ("https://llbxyhphblhplfpgyjht.supabase.co/storage/v1/object/"
+                    "public/odbc-app/pantone/Pantone_TCX.xlsx")
+_pantone_cache = None
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +473,39 @@ th.sortable:hover{background:#e2e9f2}
 .cchip{display:inline-flex;align-items:center;gap:6px;background:var(--card);
        border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px}
 .empty{color:var(--muted);font-size:13px;padding:12px}
+/* ---- Match Pantone ---- */
+.pt-layout{display:grid;gap:12px;grid-template-columns:1fr;align-items:start}
+.pt-layout>*{min-width:0}
+.pt-rail,.pt-panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}
+.pt-label{display:block;font-size:12px;font-weight:600;color:var(--brand);margin:12px 0 4px}
+.pt-rail .pt-label:first-child,.pt-panel .pt-step{margin-top:0}
+.pt-step{font-size:14px;font-weight:700;color:var(--brand);text-decoration:underline;margin:0 0 8px}
+.pt-radios{display:flex;flex-wrap:wrap;gap:4px}
+.pt-radios label{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);
+                 border-radius:8px;padding:8px 10px;min-height:48px;cursor:pointer;font-size:13px}
+.pt-radios label:has(input:checked){border-color:var(--brand);background:#eef2f7}
+.pt-rail input[type=search]{width:100%}
+.pt-panel select{width:100%}
+.pt-grid{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(48px,1fr))}
+.pt-sw{aspect-ratio:1/1;min-width:48px;border:none;border-radius:6px;
+       cursor:pointer;padding:0;position:relative}
+.pt-sw.sel::after{content:'\2713';position:absolute;right:3px;bottom:1px;font-size:13px;
+                  color:#fff;text-shadow:0 0 3px rgba(0,0,0,.85)}
+.pt-out{border:1px solid var(--line);border-radius:8px;padding:10px;min-height:120px;background:#fff}
+.pt-out .table-wrap{margin:0}
+.pt-hint2{color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px}
+.pt-x{font-size:18px}
+.pt-note{font-size:12px;color:var(--muted);margin:8px 0 0}
+.pt-note a{min-height:48px;display:inline-flex;align-items:center}
+.pt-bottom{display:grid;gap:12px;grid-template-columns:1fr;margin-top:12px}
+.pt-bottom>*{min-width:0}
+.pt-ctrl{display:grid;gap:12px;grid-template-columns:1fr}
+.pt-ctrl>*{min-width:0}
+.pt-panel input[type=number]{width:100%;max-width:160px}
+@media(min-width:1024px){
+  .pt-layout{grid-template-columns:215px minmax(0,1fr)}
+  .pt-ctrl{grid-template-columns:minmax(0,1fr) 230px}
+}
 @media(min-width:768px){
   h1{font-size:18px}
   .sub{font-size:12px}
@@ -477,6 +528,7 @@ th.sortable:hover{background:#e2e9f2}
     <button class="tab" data-view="un" role="tab">Unmatched Raw</button>
     <button class="tab" data-view="lam" role="tab">Laminate</button>
     <button class="tab" data-view="cmp" role="tab">&#916;E Compare</button>
+    <button class="tab" data-view="pt" role="tab">Match Pantone</button>
   </div>
 </header>
 
@@ -640,6 +692,65 @@ th.sortable:hover{background:#e2e9f2}
       <span class="pinfo" id="cmpInfo"></span>
     </div>
   </section>
+
+  <section id="v-pt" class="view">
+    <p class="hint">Match a Pantone TCX colour to your measured textiles. Pick a
+      colour in Step&nbsp;1 (filter by lightness group, search by ID/name, or
+      page through 100 colours at a time), narrow Step&nbsp;2 to a face textile
+      (Gore item is the first 4 characters of the LD_item), and set a
+      &Delta;E00 threshold limit in Step&nbsp;3 (default 1.0). The output
+      reports the nearest item by CIEDE2000: the nearest LD_item when the
+      chosen textile has one, otherwise the nearest unmatched Raw_item &mdash;
+      or no match when nothing falls within the threshold.</p>
+    <div class="pt-layout">
+      <div class="pt-rail">
+        <span class="pt-label">Colour lightness</span>
+        <div class="pt-radios" id="ptLight">
+          <label><input type="radio" name="ptL" value="" checked>All</label>
+          <label><input type="radio" name="ptL" value="11">11</label>
+          <label><input type="radio" name="ptL" value="12">12</label>
+          <label><input type="radio" name="ptL" value="13">13</label>
+          <label><input type="radio" name="ptL" value="14">14</label>
+          <label><input type="radio" name="ptL" value="15">15</label>
+          <label><input type="radio" name="ptL" value="16">16</label>
+          <label><input type="radio" name="ptL" value="17">17</label>
+          <label><input type="radio" name="ptL" value="18">18</label>
+          <label><input type="radio" name="ptL" value="19">19</label>
+        </div>
+        <label class="pt-label" for="ptSearch">Pantone ID</label>
+        <input id="ptSearch" type="search" placeholder="e.g. 13-1106 or butter">
+      </div>
+      <div class="pt-panel">
+        <p class="pt-step">Step 1: specify a Pantone color</p>
+        <div class="pt-note" id="ptSelInfo">No colour selected</div>
+        <div class="pt-grid" id="ptGrid"></div>
+        <div class="pager">
+          <button type="button" id="ptPrev">&#8592; Prev</button>
+          <button type="button" id="ptNext">Next &#8594;</button>
+          <span class="pinfo" id="ptPageInfo"></span>
+        </div>
+      </div>
+    </div>
+    <div class="pt-bottom">
+      <div class="pt-ctrl">
+        <div class="pt-panel">
+          <p class="pt-step">Step 2: select an item</p>
+          <label class="pt-label" for="ptGore">Gore item (textile)</label>
+          <select id="ptGore"></select>
+        </div>
+        <div class="pt-panel">
+          <p class="pt-step">Step 3: threshold limit</p>
+          <label class="pt-label" for="ptThr">&Delta;E00 threshold</label>
+          <input id="ptThr" type="number" min="0" step="0.1" value="1.0" inputmode="decimal">
+          <p class="pt-note">Nearest item wins when its &Delta;E00 is within this limit.</p>
+        </div>
+      </div>
+      <div class="pt-panel">
+        <p class="pt-step">Output</p>
+        <div class="pt-out" id="ptOut"></div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <div class="modal" id="modal">
@@ -702,6 +813,7 @@ var LAM = DATA.lam;
 var LD = DATA.ld || {};
 var META = DATA.meta;
 var RAWBATCH = DATA.rawbatch || {};
+var PANTONE = @@PANTONE@@;   /* TCX library rows: [id, name, zh, hex, L, a, b] */
 
 var PAGE = 100;
 
@@ -1631,6 +1743,159 @@ document.addEventListener('keydown',function(e){
   if(document.getElementById('pairModal').style.display!=='none'){ closePair(); return; }
   if(document.getElementById('modal').style.display==='block') closeItem(); });
 
+/* ---- Match Pantone tab ---- */
+var PT_LIST=PANTONE.map(function(r,i){
+  return {i:i,id:String(r[0]),name:String(r[1]),zh:String(r[2]),
+          hex:String(r[3]),L:Number(r[4]),a:Number(r[5]),b:Number(r[6])};
+});
+var PT_GORE=document.getElementById('ptGore'),
+    PT_THR=document.getElementById('ptThr'),
+    PT_OUT=document.getElementById('ptOut'),
+    PT_INFO=document.getElementById('ptSelInfo'),
+    PT_SEL=-1, PT_PAGE=0, PT_PER=100;
+
+function ptFillSelects(){
+  function prefixes(list){
+    var m={};
+    list.forEach(function(it){
+      var p=String(it[0]).slice(0,4).toUpperCase();
+      if(!m[p]) m[p]={p:p,c:0};
+      m[p].c++;
+    });
+    return Object.keys(m).map(function(k){ return m[k]; })
+      .sort(function(x,y){ return x.p<y.p?-1:1; });
+  }
+  PT_GORE.innerHTML='<option value="">All textiles</option>'
+    +prefixes(ITEMS).map(function(o){
+      return '<option value="'+esc(o.p)+'">'+esc(o.p)
+        +' ('+o.c+' LD item'+(o.c===1?'':'s')+')</option>';
+    }).join('');
+  /* Form-state restoration (F5) can leave a select with selectedIndex -1. */
+  PT_GORE.selectedIndex=0;
+}
+function ptFiltered(){
+  var lg=document.querySelector('input[name="ptL"]:checked').value,
+      q=document.getElementById('ptSearch').value.trim().toLowerCase();
+  return PT_LIST.filter(function(c){
+    if(lg && c.id.slice(0,2)!==lg) return false;
+    if(q && (c.id+' '+c.name+' '+c.zh).toLowerCase().indexOf(q)<0) return false;
+    return true;
+  });
+}
+function ptRenderGrid(){
+  var list=ptFiltered(), pages=Math.max(1,Math.ceil(list.length/PT_PER));
+  if(PT_PAGE>=pages) PT_PAGE=pages-1;
+  if(PT_PAGE<0) PT_PAGE=0;
+  PT_INFO.textContent=list.length
+    ? list.length.toLocaleString()+' colours \u00b7 '
+      +(PT_SEL<0?'none selected':PT_LIST[PT_SEL].id+' '+PT_LIST[PT_SEL].name)
+    : 'No colours match the filter';
+  document.getElementById('ptGrid').innerHTML=list
+    .slice(PT_PAGE*PT_PER,PT_PAGE*PT_PER+PT_PER)
+    .map(function(c){
+      return '<button type="button" class="pt-sw'+(c.i===PT_SEL?' sel':'')
+        +'" data-i="'+c.i+'" style="background:'+hexOf(c.hex)
+        +'" title="'+esc(c.id+' '+c.name)+'" aria-label="'+esc(c.id)+'"></button>';
+    }).join('');
+  document.getElementById('ptPageInfo').textContent=list.length
+    ? 'Page '+(PT_PAGE+1)+' of '+pages
+    : '0 colours';
+  document.getElementById('ptPrev').disabled=PT_PAGE<=0;
+  document.getElementById('ptNext').disabled=PT_PAGE>=pages-1;
+}
+function ptCandidates(){
+  var g=PT_GORE.value, out=[];
+  function pre(v){ return String(v).slice(0,4).toUpperCase(); }
+  function add(mode,list){ list.forEach(function(it){ out.push([mode,it]); }); }
+  if(g){
+    add('ld',ITEMS.filter(function(it){ return pre(it[0])===g; }));
+    if(!out.length) add('un',UNITEMS.filter(function(it){ return pre(it[0])===g; }));
+  } else {
+    add('ld',ITEMS); add('un',UNITEMS);
+  }
+  return out;
+}
+function ptOutput(){
+  if(PT_SEL<0){
+    PT_OUT.innerHTML='<div class="pt-hint2"><span class="pt-x">\u2297</span>'
+      +'Select a Pantone colour to see the nearest item.</div>';
+    return;
+  }
+  var c=PT_LIST[PT_SEL];
+  var cands=ptCandidates().filter(function(row){
+    var it=row[1]; return it[2]!=='' && it[3]!=='' && it[4]!=='';
+  });
+  if(!cands.length){
+    PT_OUT.innerHTML='<div class="pt-hint2"><span class="pt-x">\u2297</span>'
+      +'No items with Lab data for this textile selection.</div>';
+    return;
+  }
+  var thr=parseFloat(PT_THR.value);
+  if(!(thr>=0)) thr=1.0; /* blank or invalid -> default */
+  var bestLD=null, bestUN=null;
+  cands.forEach(function(row){
+    var it=row[1], d=deltaE00(c.L,c.a,c.b,it[2],it[3],it[4]);
+    if(row[0]==='ld'){ if(!bestLD || d<bestLD.de) bestLD={mode:'ld',it:it,de:d}; }
+    else if(!bestUN || d<bestUN.de) bestUN={mode:'un',it:it,de:d};
+  });
+  var best=(bestLD && bestLD.de<=thr) ? bestLD
+          : (bestUN && bestUN.de<=thr) ? bestUN : null;
+  if(!best){
+    var near=!bestLD ? bestUN : (!bestUN || bestLD.de<bestUN.de) ? bestLD : bestUN;
+    PT_OUT.innerHTML='<div class="pt-hint2"><span class="pt-x">\u2297</span>'
+      +'No match within \u0394E00 \u2264 '+thr.toFixed(2)+' for '+esc(c.id)+' '
+      +esc(c.name)+'. Nearest candidate: '+esc(near.it[0])+' at \u0394E00 '
+      +near.de.toFixed(2)+'.</div>';
+    return;
+  }
+  var ld=best.mode==='ld', it=best.it;
+  PT_OUT.innerHTML=
+    '<div class="table-wrap"><table class="pt-table"><thead><tr>'
+    +'<th></th><th>Item</th><th>Swatch</th><th>Hex</th>'
+    +'<th>L*</th><th>a*</th><th>b*</th>'
+    +'</tr></thead><tbody>'
+    +'<tr><th>Pantone</th><td>'+esc(c.id)+' '+esc(c.name)+'</td>'
+    +'<td>'+swatchLg(c.hex)+'</td><td>'+esc(c.hex)+'</td>'
+    +'<td>'+num(c.L)+'</td><td>'+num(c.a)+'</td><td>'+num(c.b)+'</td></tr>'
+    +'<tr><th>Nearest '+(ld?'LD_item':'Raw_item')+'</th><td>'+esc(it[0])+'</td>'
+    +'<td>'+swatchLg(it[5])+'</td><td>'+esc(it[5])+'</td>'
+    +'<td>'+num(it[2])+'</td><td>'+num(it[3])+'</td><td>'+num(it[4])+'</td></tr>'
+    +'</tbody></table></div>'
+    +'<p class="pt-note">\u0394E00 (CIEDE2000) = <b>'+best.de.toFixed(2)
+    +'</b> (threshold '+thr.toFixed(2)+') \u00b7 '
+    +(ld ? Number(it[6]).toLocaleString()+' matched Raw samples'
+         : 'no LD_item within the threshold \u00b7 '
+           +Number(it[1]).toLocaleString()+' Raw samples')
+    +' \u00b7 <a href="#" class="pt-see" data-mode="'+best.mode
+    +'" data-item="'+esc(it[0])+'">See details</a></p>';
+}
+function ptSetSel(i){
+  PT_SEL=Number(i);
+  ptRenderGrid(); ptOutput();
+}
+ptFillSelects();
+ptRenderGrid(); ptOutput();
+document.getElementById('ptLight').addEventListener('change',function(){
+  PT_PAGE=0; ptRenderGrid(); });
+document.getElementById('ptSearch').addEventListener('input',function(){
+  PT_PAGE=0; ptRenderGrid(); });
+document.getElementById('ptPrev').addEventListener('click',function(){
+  PT_PAGE-=1; ptRenderGrid(); });
+document.getElementById('ptNext').addEventListener('click',function(){
+  PT_PAGE+=1; ptRenderGrid(); });
+document.getElementById('ptGrid').addEventListener('click',function(e){
+  var b=e.target.closest('.pt-sw');
+  if(b) ptSetSel(b.getAttribute('data-i')); });
+PT_GORE.addEventListener('change',function(){
+  ptOutput(); });
+PT_THR.addEventListener('input',function(){
+  ptOutput(); });
+PT_OUT.addEventListener('click',function(e){
+  var a=e.target.closest('a.pt-see');
+  if(!a) return;
+  e.preventDefault();
+  openDetail(a.getAttribute('data-mode'),a.getAttribute('data-item')); });
+
 window.addEventListener('resize',function(){ if(ITEM_CHART) ITEM_CHART.resize(); });
 
 document.getElementById('meta').textContent=
@@ -1668,6 +1933,86 @@ def echarts_source() -> str:
     return "<script>" + js.replace("</script", "<\\/script") + "</script>"
 
 
+def _pantone_cache_path() -> Path:
+    """JSON cache location for the extracted Pantone TCX rows."""
+    root = os.environ.get("APPDATA") or tempfile.gettempdir()
+    return Path(root) / "ODBCQueryApp" / "pantone_tcx_cache.json"
+
+
+def _urlopen_resilient(request, timeout):
+    """app.update's retry/proxy-fallback opener when importable (rides out the
+    corporate network's flaky direct egress); plain urlopen otherwise."""
+    try:
+        from app.update import _urlopen_with_fallback
+        return _urlopen_with_fallback(request, timeout=timeout)
+    except Exception:  # noqa: BLE001 - standalone CLI: app package not importable
+        return urllib.request.urlopen(request, timeout=timeout)
+
+
+def _parse_pantone_xlsx(data: bytes) -> list:
+    """Pantone_TCX.xlsx bytes -> [[id, name, zh, hex, L, a, b], ...] rows."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    rows = []
+    for row in wb.active.iter_rows(min_row=2, values_only=True):
+        cells = (list(row) + [None] * 7)[:7]
+        pid = _text(cells[0])
+        lab = (_num(cells[4]), _num(cells[5]), _num(cells[6]))
+        if not pid or any(v is None for v in lab):
+            continue
+        hexv = _text(cells[3])
+        rows.append([pid, _text(cells[1]), _text(cells[2]),
+                     hexv if hexv.startswith("#") else "#" + hexv,
+                     round(lab[0], 2), round(lab[1], 2), round(lab[2], 2)])
+    return rows
+
+
+def load_pantone() -> list:
+    """Rows for the Match Pantone tab — lazy loaded: reuse the local JSON
+    cache when present, otherwise download Pantone_TCX.xlsx from the public
+    Supabase bucket once, extract the values and cache them.
+
+    Returns [] (with a warning) when the library cannot be loaded, so the
+    rest of the report still generates.
+    """
+    global _pantone_cache
+    if _pantone_cache is not None:
+        return _pantone_cache
+
+    cache = _pantone_cache_path()
+    if cache.is_file():
+        try:
+            rows = json.loads(cache.read_text(encoding="utf-8"))
+            if isinstance(rows, list) and len(rows) > 1000:
+                return rows
+        except (OSError, ValueError):
+            print("Warning: the Pantone cache is unreadable — downloading again.")
+
+    print("Downloading the Pantone TCX library from Supabase (first run only)…")
+    rows = []
+    try:
+        request = urllib.request.Request(
+            PANTONE_XLSX_URL, headers={"Cache-Control": "no-cache"})
+        with _urlopen_resilient(request, timeout=120) as response:
+            data = response.read()
+        rows = _parse_pantone_xlsx(data)
+        print(f"  loaded {len(rows)} Pantone TCX colours.")
+    except Exception as exc:  # noqa: BLE001 - never block the whole report
+        print(f"Warning: could not load the Pantone TCX library ({exc}); "
+              f"the Match Pantone tab will be empty.")
+
+    if rows:
+        try:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps(rows, ensure_ascii=False),
+                             encoding="utf-8")
+        except OSError:
+            pass  # the cache is only an optimisation — re-download next time
+    _pantone_cache = rows
+    return rows
+
+
 def main():
     started = time.perf_counter()
     rows = globals().get("data")
@@ -1699,9 +2044,12 @@ def main():
 
     data_js = json.dumps(payload, ensure_ascii=False,
                          separators=(",", ":")).replace("</", "<\\/")
+    pantone_js = json.dumps(load_pantone(), ensure_ascii=False,
+                            separators=(",", ":")).replace("</", "<\\/")
     html = (HTML_TEMPLATE
             .replace("<script>@@ECHARTS@@</script>", echarts_source())
-            .replace("@@DATA@@", data_js))
+            .replace("@@DATA@@", data_js)
+            .replace("@@PANTONE@@", pantone_js))
 
     out_path = Path(output_arg) if output_arg else resolve_output_dir()
     if out_path.is_dir() or not out_path.suffix:
@@ -1714,12 +2062,12 @@ def main():
     print(f"LD items: {meta['items']} | Raw matched: {meta['raw']} | "
           f"Unmatched Raw items: {meta['unmatched_items']} "
           f"({meta['unmatched_raw']} rows) | Laminate: {meta['lam']}")
-    print(f"Tabs  : 4 (LD heat map, Unmatched Raw, Laminate, DE Compare)")
+    print(f"Tabs  : 5 (LD heat map, Unmatched Raw, Laminate, DE Compare, Match Pantone)")
     print(f"Size  : {out_path.stat().st_size / 1024 / 1024:.1f} MB "
           f"in {time.perf_counter() - started:.1f}s")
     # Remind the user where the report was saved, then open it in the browser.
     print(f"Charts generated: {out_path}")
-    webbrowser.open(out_path.as_uri())
+    webbrowser.open(out_path.resolve().as_uri())
 
 
 if __name__ == "__main__":
