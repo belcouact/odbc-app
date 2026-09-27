@@ -453,6 +453,13 @@ th.sortable:hover{background:#e2e9f2}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:10px}
 .card-title{font-size:13px;font-weight:600;color:var(--brand);margin:2px 4px 6px}
 #itemChart{width:100%;height:300px}
+/* Square container: symmetric Δa/Δb axes + square box keep the tolerance
+   circle round on every screen width. */
+#abChart{width:min(100%,420px);aspect-ratio:1/1;margin:0 auto}
+#abToggles{display:flex;gap:8px;margin:0 4px 8px}
+#abToggles button{flex:1;min-height:48px;padding:8px 10px;border:1px solid #d0d5dd;
+  border-radius:7px;background:#fff;font-weight:600;font-size:13px;color:#344054;cursor:pointer}
+#abToggles button.active{background:#344054;color:#fff;border-color:#344054}
 .chart-grid{display:grid;gap:10px;grid-template-columns:1fr}
 .chart{width:100%;height:300px}
 .chart-scroll{max-height:480px;overflow:auto}
@@ -511,6 +518,7 @@ th.sortable:hover{background:#e2e9f2}
   .sub{font-size:12px}
   main{padding:14px}
   #itemChart{height:360px}
+  #abChart{width:min(100%,480px)}
   .chart{height:340px}
 }
 </style>
@@ -762,6 +770,14 @@ th.sortable:hover{background:#e2e9f2}
     <div class="modal-body">
       <div class="chiprow" id="itemChips"></div>
       <div class="stats" id="itemStats"></div>
+      <div class="card" id="abCard" style="display:none">
+        <div class="card-title" id="abCardTitle">&#916;a*/&#916;b* vs reference</div>
+        <div id="abToggles">
+          <button id="abQc" type="button">QC View &#177;1.5</button>
+          <button id="abFull" type="button">Full Range</button>
+        </div>
+        <div id="abChart"></div>
+      </div>
       <div class="card" id="deCard">
         <div class="card-title" id="deCardTitle">&#916;E vs LD mean over time</div>
         <div id="itemChart"></div>
@@ -1468,8 +1484,10 @@ buildStats();
                 The ΔE reference (any LD_item of the same textile) is selectable;
                 ΔE is recomputed client-side against the chosen item's mean.
    mode 'un'  : table of an unmatched Raw_item's own samples (no reference). */
-var curMode='ld', itemPage=0, ITEM_CHART=null, ITEM_REF=null,
+var curMode='ld', itemPage=0, ITEM_CHART=null, AB_CHART=null, ITEM_REF=null,
     ITEM_WORK=[], ITEM_VIEW=[], ITEM_FENCE=Infinity,
+    AB_QC=0.7, AB_FULL=false, AB_R=7.5, AB_HUE=0, AB_RREF=null,
+    AB_PTS=[], AB_BAD=[],
     itemCol=0, itemDir=1, itemQ='';
 
 function itemFiltered(){
@@ -1499,9 +1517,18 @@ function computeFence(){
   var q1=pct(des,0.25), q3=pct(des,0.75), iqr=q3-q1;
   ITEM_FENCE = iqr>0 ? q3+1.5*iqr : des[des.length-1];
 }
+/* The modal's active ΔE reference: the dropdown pick while the peer selector
+   is visible, otherwise the opened item's own mean LD colour. A hidden
+   selector keeps the previously opened item's value, so visibility decides. */
+function activeRef(){
+  var wrap=document.getElementById('refWrap'),
+      sel=document.getElementById('refSel');
+  return (curMode==='ld'&&wrap&&wrap.style.display!=='none'
+          &&LDREFS[sel.value])||ITEM_REF;
+}
 /* ΔE of every Raw sample vs the selected reference LD sample. */
 function recomputeDE(){
-  var rref=LDREFS[document.getElementById('refSel').value];
+  var rref=activeRef();
   if(!rref) return;
   ITEM_WORK.forEach(function(r){
     r[7]=(r[2]===''||r[3]===''||r[4]==='')
@@ -1520,7 +1547,7 @@ function renderChips(){
       +'<span class="cchip">No matching LD_item</span>';
     return;
   }
-  var rref=LDREFS[document.getElementById('refSel').value]||ITEM_REF;
+  var rref=activeRef();
   chips.innerHTML=
     '<span class="cchip">\u0394E reference '+swatch(rref.hex)
     +' <span class="hex">'+esc(rref.name||rref.item)+'</span></span>'
@@ -1606,9 +1633,13 @@ function openDetail(mode,item){
   if(mode==='ld'){
     document.getElementById('deCard').style.display='block';
     buildItemChart();
+    document.getElementById('abCard').style.display='block';
+    buildAbChart();
   } else {
     if(ITEM_CHART){ ITEM_CHART.dispose(); ITEM_CHART=null; }
+    if(AB_CHART){ AB_CHART.dispose(); AB_CHART=null; }
     document.getElementById('deCard').style.display='none';
+    document.getElementById('abCard').style.display='none';
   }
 }
 function itemArrow(){
@@ -1652,10 +1683,10 @@ function buildItemChart(){
     return [p[0], Math.min(p[1],clipMax), p[2], p[1]];
   });
   var nOut=des.filter(function(v){ return v>ITEM_FENCE; }).length;
-  var rr=LDREFS[document.getElementById('refSel').value];
-  var refName=rr?rr.name:ITEM_REF.item;
+  var rr=activeRef();
+  var refName=(rr.name||rr.item)+(rr===ITEM_REF?' mean':'');
   document.getElementById('deCardTitle').textContent=
-    '\u0394E vs '+refName+(rr?'':' mean')+' by batch \u2014 '+pts.length.toLocaleString()
+    '\u0394E vs '+refName+' by batch \u2014 '+pts.length.toLocaleString()
     +' sample'+(pts.length===1?'':'s')
     +(nOut?' \u00b7 '+nOut.toLocaleString()+' outlier'+(nOut===1?'':'s')
            +' in red':'')
@@ -1689,6 +1720,154 @@ function buildItemChart(){
                 position:'insideEndTop'}}]}}
     ]
   });
+}
+/* dCIELab map, a faithful port of templates/professional_dcielab_echart_v3.html:
+   diagonal CIELAB sector shading (yellow toward +b, red toward +a, blue toward
+   -b, green toward -a), a cross drawn along the reference hue direction, a
+   solid blue QC ring and a QC / full-range view toggle. Quality control sits
+   at 0.7: samples past the ring are red, the rest blue. The centre marker is
+   the selected ΔE reference sample. */
+function abCircle(r){
+  var a=[];
+  for(var i=0;i<=240;i++){
+    var t=2*Math.PI*i/240;
+    a.push([r*Math.cos(t),r*Math.sin(t)]);
+  }
+  return a;
+}
+/* Smallest "nice" tick value covering v, so the full-range view adapts to the
+   data spread instead of a hardcoded +/-7.5. */
+function abNice(v){
+  var s=[.5,1,1.5,2,2.5,3,3.5,4,4.5,5,6,7,8,9,10,12,15,20,25,30,40,50,
+         60,80,100];
+  for(var i=0;i<s.length;i++) if(s[i]>=v) return s[i];
+  return Math.ceil(v/100)*100;
+}
+/* Four 90-degree wedges clipped by the square plotting range, each centred on
+   a cardinal Lab direction and bounded by the 45-degree diagonals. */
+function abShade(params,api){
+  var R=api.value(0);
+  function P(x,y){ return api.coord([x,y]); }
+  function poly(points,fill){ return {type:'polygon',
+    shape:{points:points.map(function(q){ return P(q[0],q[1]); })},
+    style:{fill:fill,stroke:null}}; }
+  return {type:'group',children:[
+    poly([[0,0],[-R,R],[R,R]],'rgba(250,204,21,.22)'),
+    poly([[0,0],[R,R],[R,-R]],'rgba(239,68,68,.16)'),
+    poly([[0,0],[R,-R],[-R,-R]],'rgba(59,130,246,.17)'),
+    poly([[0,0],[-R,-R],[-R,R]],'rgba(34,197,94,.17)')]};
+}
+/* Cross through the origin along the reference hue direction. */
+function abCross(params,api){
+  var o=api.coord([0,0]), px=api.coord([1,0]), py=api.coord([0,1]);
+  var sx=Math.abs(px[0]-o[0]), sy=Math.abs(py[1]-o[1]);
+  var vx=sx*Math.cos(AB_HUE), vy=-sy*Math.sin(AB_HUE);
+  var m=Math.sqrt(vx*vx+vy*vy); vx/=m; vy/=m;
+  var wx=-vy, wy=vx,
+      L=Math.min(params.coordSys.width,params.coordSys.height)*.40;
+  function ln(x,y){ return {type:'line',
+    shape:{x1:o[0]-x*L,y1:o[1]-y*L,x2:o[0]+x*L,y2:o[1]+y*L},
+    style:{stroke:'#111827',lineWidth:2}}; }
+  return {type:'group',children:[ln(vx,vy),ln(wx,wy)]};
+}
+function abOpt(full){
+  var R=full?AB_R:1.5, I=full?null:.5;
+  var boxEl=document.getElementById('abChart');
+  var wide=boxEl&&boxEl.clientWidth>=380;
+  var xn=wide?'\u0394a*    GREEN  \u2190                              \u2192  RED'
+             :'\u0394a*  GREEN \u2190      \u2192  RED';
+  var yn=wide?'\u0394b*    BLUE  \u2190                              \u2192  YELLOW'
+             :'\u0394b*  BLUE \u2190      \u2192  YELLOW';
+  return {animation:false,
+    tooltip:{confine:true,trigger:'item',formatter:function(p){
+      if(p.seriesName==='Reference')
+        return '<b>Reference</b><br>'+esc(AB_RREF.name||AB_RREF.item)
+          +'<br>L* '+num(AB_RREF.L)+' \u00b7 a* '+num(AB_RREF.a)
+          +' \u00b7 b* '+num(AB_RREF.b);
+      var v=p.value;
+      return '<b>'+esc(p.data.name||'')+'</b>'
+        +(p.data.batch?'<br>Batch '+esc(p.data.batch):'')
+        +'<br>\u0394a*: '+num(v[0],2)+'<br>\u0394b*: '+num(v[1],2)
+        +'<br>\u0394E00: '+num(v[2],2);
+    }},
+    grid:{left:78,right:42,top:42,bottom:78},
+    xAxis:{type:'value',min:-R,max:R,interval:I,name:xn,
+      nameLocation:'middle',nameGap:46,
+      nameTextStyle:{fontSize:13,fontWeight:700,color:'#344054'},
+      axisLine:{onZero:true,lineStyle:{color:'#667085',width:1.4}},
+      axisLabel:{color:'#667085'},
+      splitLine:{lineStyle:{color:'#cbd5e1',width:1,type:'dashed'}}},
+    yAxis:{type:'value',min:-R,max:R,interval:I,name:yn,
+      nameLocation:'middle',nameRotate:90,nameGap:50,
+      nameTextStyle:{fontSize:13,fontWeight:700,color:'#344054'},
+      axisLine:{onZero:true,lineStyle:{color:'#667085',width:1.4}},
+      axisLabel:{color:'#667085'},
+      splitLine:{lineStyle:{color:'#cbd5e1',width:1,type:'dashed'}}},
+    series:[
+      {type:'custom',coordinateSystem:'cartesian2d',data:[[R]],silent:true,
+       z:0,renderItem:abShade},
+      {type:'line',data:abCircle(AB_QC),showSymbol:false,silent:true,z:4,
+       lineStyle:{color:'#2563eb',width:2}},
+      {type:'custom',coordinateSystem:'cartesian2d',data:[[0]],silent:true,
+       z:6,renderItem:abCross},
+      {name:'Reference',type:'scatter',data:[[0,0]],symbolSize:11,z:12,
+       itemStyle:{color:'#fff',borderColor:'#475467',borderWidth:2}},
+      {name:'Pass',type:'scatter',data:AB_PTS,symbolSize:5,z:10,
+       itemStyle:{color:'#1570ef',borderColor:'#fff',borderWidth:1}},
+      {name:'Fail',type:'scatter',data:AB_BAD,symbolSize:6,z:10,
+       itemStyle:{color:'#d92d20',borderColor:'#fff',borderWidth:1}}
+    ]};
+}
+function abSet(full){
+  AB_FULL=full;
+  if(AB_CHART) AB_CHART.setOption(abOpt(full),true);
+  abButtons();
+}
+function abButtons(){
+  var q=document.getElementById('abQc'), f=document.getElementById('abFull');
+  if(!q||!f) return;
+  q.className=AB_FULL?'':'active';
+  f.className=AB_FULL?'active':'';
+}
+function buildAbChart(){
+  var box=document.getElementById('abChart');
+  if(AB_CHART){ AB_CHART.dispose(); AB_CHART=null; }
+  if(curMode!=='ld') return;
+  var rref=activeRef();
+  var pts=[], bad=[];
+  ITEM_WORK.forEach(function(r){
+    if(r[3]===''||r[4]==='') return;         // needs a* and b*
+    var da=r[3]-rref.a, db=r[4]-rref.b;
+    var d={name:r[1],
+           value:[Math.round(da*100)/100,Math.round(db*100)/100,r[7]],
+           batch:r[6]||''};
+    (r[7]!==''&&r[7]>AB_QC?bad:pts).push(d);
+  });
+  var card=document.getElementById('abCard');
+  if(!pts.length&&!bad.length){ card.style.display='none'; return; }
+  /* Full-range view adapts to the data spread: cover QC ring and all dots,
+     rounded up to a nice tick, instead of a fixed +/-7.5. */
+  var m=AB_QC;
+  pts.concat(bad).forEach(function(d){
+    m=Math.max(m,Math.abs(d.value[0]),Math.abs(d.value[1]));
+  });
+  AB_R=Math.max(1.5,abNice(m*1.05));
+  document.getElementById('abFull').textContent='Full Range \u00b1'+AB_R;
+  card.style.display='block';
+  var tot=pts.length+bad.length;
+  document.getElementById('abCardTitle').textContent=
+    '\u0394a*/\u0394b* vs '+(rref.name||rref.item)+' \u2014 '
+    +tot.toLocaleString()+' sample'+(tot===1?'':'s')
+    +(bad.length?' \u00b7 '+bad.length.toLocaleString()
+                +' over QC '+AB_QC+' in red':'')
+    +' \u00b7 blue ring = QC '+AB_QC;
+  AB_HUE=Math.atan2(rref.b,rref.a);
+  AB_RREF=rref; AB_PTS=pts; AB_BAD=bad;
+  AB_CHART=echarts.init(box,null,{renderer:'canvas'});
+  AB_CHART.setOption(abOpt(AB_FULL),true);
+  document.getElementById('abQc').onclick=function(){ abSet(false); };
+  document.getElementById('abFull').onclick=function(){ abSet(true); };
+  abButtons();
 }
 function renderItem(){
   ITEM_VIEW=itemFiltered();
@@ -1725,13 +1904,15 @@ document.getElementById('itemHead').addEventListener('click',function(e){
 document.getElementById('refSel').addEventListener('change',function(){
   recomputeDE(); computeFence();
   itemCol=7; itemDir=-1; itemPage=0;
-  itemArrow(); renderChips(); renderStats(); renderItem(); buildItemChart(); });
+  itemArrow(); renderChips(); renderStats(); renderItem();
+  buildItemChart(); buildAbChart(); });
 document.getElementById('iPrev').addEventListener('click',function(){
   if(itemPage>0){ itemPage--; renderItem(); }});
 document.getElementById('iNext').addEventListener('click',function(){
   if((itemPage+1)*PAGE<ITEM_VIEW.length){ itemPage++; renderItem(); }});
 function closeItem(){
   if(ITEM_CHART){ ITEM_CHART.dispose(); ITEM_CHART=null; }
+  if(AB_CHART){ AB_CHART.dispose(); AB_CHART=null; }
   document.getElementById('modal').style.display='none';
   document.body.style.overflow='';
 }
@@ -1896,7 +2077,10 @@ PT_OUT.addEventListener('click',function(e){
   e.preventDefault();
   openDetail(a.getAttribute('data-mode'),a.getAttribute('data-item')); });
 
-window.addEventListener('resize',function(){ if(ITEM_CHART) ITEM_CHART.resize(); });
+window.addEventListener('resize',function(){
+  if(ITEM_CHART) ITEM_CHART.resize();
+  if(AB_CHART) AB_CHART.resize();
+});
 
 document.getElementById('meta').textContent=
   META.items.toLocaleString()+' LD items \u00b7 '+META.raw.toLocaleString()

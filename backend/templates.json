@@ -1,5 +1,5 @@
 {
-  "published": "2026-09-27T15:21:17",
+  "published": "2026-09-27T17:19:15",
   "templates": [
     {
       "name": "analyze-color-data.py",
@@ -32,7 +32,7 @@
           "ΔE Compare: like-colour pairs within a textile, with baseline highlighting and a side-by-side colour popup"
         ]
       },
-      "size": "90 KB",
+      "size": "98 KB",
       "updated": "2026-09-27",
       "example": null
     },

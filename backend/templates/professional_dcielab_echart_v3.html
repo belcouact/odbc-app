@@ -1,0 +1,36 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dCIELab ECharts V3</title><script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;padding:20px;background:#eef2f6;font-family:Segoe UI,Arial,sans-serif;color:#273142}.wrap{max-width:1240px;margin:auto;background:#fff;border:1px solid #d8dee8;border-radius:12px;box-shadow:0 8px 24px #10182814}.head{padding:18px 24px 12px;border-bottom:1px solid #e5e7eb}.head h2{margin:0 0 5px}.sub{font-size:12px;color:#667085}.body{display:grid;grid-template-columns:minmax(0,1fr) 260px}.chartbox{padding:16px;display:flex;justify-content:center;align-items:flex-start}#chart{width:760px;height:760px;max-width:100%}.side{padding:18px;border-left:1px solid #e5e7eb;background:#fbfcfd}.card{padding:12px;border:1px solid #e5e7eb;border-radius:8px;background:white;margin-bottom:11px}.k{font-size:11px;color:#667085}.v{font-size:16px;font-weight:700;margin-top:3px}button{width:100%;margin-top:8px;padding:9px;border:1px solid #d0d5dd;border-radius:7px;background:white;font-weight:600}button.active{background:#344054;color:#fff}.note{font-size:11px;line-height:1.5;color:#667085;margin-top:15px}@media(max-width:900px){.body{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid #e5e7eb}}</style></head>
+<body><div class="wrap"><div class="head"><h2>dCIELab Color Difference Map</h2><div class="sub">D65 / 10° · Standard L* 55.0, a* 38.0, b* 31.0 · equal Δa*/Δb* geometry</div></div><div class="body"><div class="chartbox"><div id="chart"></div></div><aside class="side"><div class="card"><div class="k">SELECTED</div><div class="v">Lot B-104</div></div><div class="card"><div class="k">ΔE00</div><div class="v">0.82 · PASS</div></div><div class="card"><div class="k">DIRECTION</div><div class="v">Redder · Bluer</div></div><button id="qc" class="active">QC View ±1.5</button><button id="full">Full Range ±7.5</button><div class="note">Background follows directional CIELAB sectors like the reference screenshot: Yellow is centered on +Δb*, Red on +Δa*, Blue on −Δb*, Green on −Δa*. Sector boundaries are diagonal rays through the origin.</div></aside></div></div>
+<script>
+const dom=document.getElementById('chart'), chart=echarts.init(dom);
+const std={a:38,b:31}, hue=Math.atan2(std.b,std.a), tol=.8;
+const data=[
+{name:'B-101',value:[-.32,.18,.56],s:'P'},{name:'B-102',value:[.24,.31,.64],s:'P'},{name:'B-103',value:[-.41,-.27,.70],s:'P'},{name:'B-104',value:[.18,-.43,.82],s:'S'},{name:'B-105',value:[.61,.24,.96],s:'P'},{name:'B-106',value:[-.14,-.68,.91],s:'P'},{name:'B-107',value:[.73,-.21,1.12],s:'F'},{name:'B-108',value:[-.69,.48,1.18],s:'F'},{name:'B-109',value:[-5.5,6.8,8.91],s:'F'}];
+function circle(r){let a=[];for(let i=0;i<=240;i++){let t=2*Math.PI*i/240;a.push([r*Math.cos(t),r*Math.sin(t)])}return a}
+function sc(s,c,n){return{type:'scatter',data:data.filter(d=>d.s===s),symbolSize:n,z:10,itemStyle:{color:c,borderColor:'#fff',borderWidth:2},tooltip:{formatter:p=>`<b>Lot ${p.data.name}</b><br>Δa*: ${p.value[0]}<br>Δb*: ${p.value[1]}<br>ΔE00: ${p.value[2]}`}}}
+// Draw four 90-degree wedges clipped by the square plotting range.
+// Each wedge is centered on a cardinal Lab direction and bounded by ±45° diagonals.
+function shadeRender(params,api){let R=api.value(0), O=api.coord([0,0]);
+ function P(x,y){return api.coord([x,y])}
+ function poly(points,fill){return{type:'polygon',shape:{points:points.map(q=>P(q[0],q[1]))},style:{fill,stroke:null}}}
+ return{type:'group',children:[
+  poly([[0,0],[-R,R],[R,R]],'rgba(250,204,21,.22)'),       // Yellow, top triangle
+  poly([[0,0],[R,R],[R,-R]],'rgba(239,68,68,.16)'),       // Red, right triangle
+  poly([[0,0],[R,-R],[-R,-R]],'rgba(59,130,246,.17)'),    // Blue, bottom triangle
+  poly([[0,0],[-R,-R],[-R,R]],'rgba(34,197,94,.17)')      // Green, left triangle
+ ]}}
+function crossRender(params,api){let o=api.coord([0,0]), px=api.coord([1,0]), py=api.coord([0,1]);let sx=Math.abs(px[0]-o[0]),sy=Math.abs(py[1]-o[1]);let vx=sx*Math.cos(hue),vy=-sy*Math.sin(hue),m=Math.hypot(vx,vy);vx/=m;vy/=m;let wx=-vy,wy=vx,L=Math.min(params.coordSys.width,params.coordSys.height)*.40;let ln=(x,y)=>({type:'line',shape:{x1:o[0]-x*L,y1:o[1]-y*L,x2:o[0]+x*L,y2:o[1]+y*L},style:{stroke:'#111827',lineWidth:2}});return{type:'group',children:[ln(vx,vy),ln(wx,wy)]}}
+function opt(full){let R=full?7.5:1.5,I=full?1.5:.5;return{animation:false,tooltip:{confine:true},
+ grid:{left:78,right:42,top:42,bottom:78,width:600,height:600},
+ xAxis:{type:'value',min:-R,max:R,interval:I,name:'Δa*    GREEN  ←                              →  RED',nameLocation:'middle',nameGap:46,nameTextStyle:{fontSize:13,fontWeight:700,color:'#344054'},axisLine:{onZero:true,lineStyle:{color:'#667085',width:1.4}},axisLabel:{color:'#667085'},splitLine:{lineStyle:{color:'#cbd5e1',width:1,type:'dashed'}}},
+ yAxis:{type:'value',min:-R,max:R,interval:I,name:'Δb*    BLUE  ←                              →  YELLOW',nameLocation:'middle',nameRotate:90,nameGap:50,nameTextStyle:{fontSize:13,fontWeight:700,color:'#344054'},axisLine:{onZero:true,lineStyle:{color:'#667085',width:1.4}},axisLabel:{color:'#667085'},splitLine:{lineStyle:{color:'#cbd5e1',width:1,type:'dashed'}}},
+ series:[
+  {type:'custom',coordinateSystem:'cartesian2d',data:[[R]],silent:true,z:0,renderItem:shadeRender},
+  {type:'line',data:circle(tol),showSymbol:false,silent:true,z:4,lineStyle:{color:'#2563eb',width:2}},
+  {type:'custom',coordinateSystem:'cartesian2d',data:[[0]],silent:true,z:6,renderItem:crossRender},
+  {type:'scatter',data:[[0,0]],symbolSize:17,z:12,itemStyle:{color:'#fff',borderColor:'#475467',borderWidth:3}},
+  sc('P','#1570ef',12),sc('F','#d92d20',13),sc('S','#f79009',17)
+ ]}}
+function set(full){chart.setOption(opt(full),true);document.getElementById('qc').classList.toggle('active',!full);document.getElementById('full').classList.toggle('active',full)}
+document.getElementById('qc').onclick=()=>set(false);document.getElementById('full').onclick=()=>set(true);window.addEventListener('resize',()=>chart.resize());set(false);
+</script></body></html>
