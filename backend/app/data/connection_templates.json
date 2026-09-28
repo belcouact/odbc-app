@@ -37,7 +37,7 @@
           },
           {
             "name": "Sample_type",
-            "expression": "IF({LD_item}, 'LD', IF({WOL}, 'Laminate', IF({Batch}, 'Raw', 'Null')))"
+            "expression": "IF({LD_item}, 'LD', IF(REGEXEXTRACT({NAME}, '^B\\d{1,3}-', 0, 'i'), 'Laminate Master', IF({WOL}, 'Laminate Sample', IF({Batch}, 'Raw', 'Null'))))"
           },
           {
             "name": "Hex",

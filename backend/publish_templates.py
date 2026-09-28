@@ -84,6 +84,7 @@ EXAMPLE_FILES = {
     "analyze-tautona-data": "Laminate_Analysis.html",
     "analyze-machine-uptime": "machine_up_down_timeline.html",
     "analyze-lims-raw-genealogy": "raw_item_statistical_report.html",
+    "analyze-color-data": "color_data.html",
 }
 
 # Title, applicable data and the detail rows shown in the app's template table.

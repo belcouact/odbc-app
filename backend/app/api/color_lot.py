@@ -76,6 +76,10 @@ _BATCH_RE = re.compile(
     r"(?<![A-Za-z0-9])([A-Za-z][0-9]{5}|[0-9]{6})(?![A-Za-z0-9])", re.IGNORECASE
 )
 _LD_RE = re.compile(r"^(.*?)[-_](?:LD|Master)", re.IGNORECASE)
+# A laminate master plate is a B + 1-3 digits + '-' prefixed NAME (B0-, B00-,
+# B000- all occur); the other WOL-named rows are the laminate samples measured
+# on it.
+_LAM_MASTER_RE = re.compile(r"^B\d{1,3}-", re.IGNORECASE)
 
 # Logical column order of the appended genealogy block.
 _ENRICH_ORDER = ("WOL", "Batch", "Sample_type", "Product", "Raw_item", "Description")
@@ -153,11 +157,14 @@ def _derive_batch(name: str) -> str:
 
 
 def _sample_type(name: str, wol: str, batch: str) -> str:
-    """LD / Laminate / Raw / Null — mirrors the Color_Data template formula."""
+    """LD / Laminate Master / Laminate Sample / Raw / Null — mirrors the
+    Color_Data template formula."""
     if _LD_RE.search(name or ""):
         return "LD"
+    if _LAM_MASTER_RE.search(name or ""):
+        return "Laminate Master"
     if wol:
-        return "Laminate"
+        return "Laminate Sample"
     if batch:
         return "Raw"
     return "Null"

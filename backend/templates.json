@@ -1,5 +1,5 @@
 {
-  "published": "2026-09-27T17:19:15",
+  "published": "2026-09-28T14:26:59",
   "templates": [
     {
       "name": "analyze-color-data.py",
@@ -32,9 +32,14 @@
           "ΔE Compare: like-colour pairs within a textile, with baseline highlighting and a side-by-side colour popup"
         ]
       },
-      "size": "98 KB",
-      "updated": "2026-09-27",
-      "example": null
+      "size": "123 KB",
+      "updated": "2026-09-28",
+      "example": {
+        "name": "color_data.html",
+        "object": "templates/examples/color_data.html",
+        "label": "Color Data — Lab Colour Explorer",
+        "size": "11.5 MB"
+      }
     },
     {
       "name": "analyze-lims-raw-genealogy.py",

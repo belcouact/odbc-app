@@ -3,43 +3,51 @@
 """
 analyze-color-data.py
 
-Lab colour explorer for Color_Data: one self-contained HTML page with six tabs.
+Lab colour explorer for Color_Data: one self-contained HTML page with four tabs.
 
   1. Stats          - overview charts: sample-type mix (pie), LD_item count
                       per textile, distinct Raw batches per Raw_item, measurements
                       per month and a ΔE histogram of matched Raw samples vs
-                      their LD_item mean (0.7 target line).
-  2. LD heat map    - one row per LD_item in a searchable, sortable table
+                      their LD_item mean (0.8 target line).
+  2. Raw            - one row per LD_item in a searchable, sortable table
                       (100 rows per page), coloured by the mean colour of its
-                      LD samples. The Matched Raw column counts the Raw samples
+                      LD samples. The NAME column lists the item's distinct LD
+                      sample NAMEs; the Matched Raw column counts the Raw samples
                       referencing the item; the LD_item link opens a detail
                       view with the item's ΔE per batch # (CIEDE2000 of every
                       matched Raw sample vs a selectable reference LD_item's
                       mean colour — only items with matched Raw samples are
-                      listed — 0.7 target line, outliers beyond the
+                      listed — 0.8 target line, outliers beyond the
                       Q3+1.5×IQR fence in red, zoomable x-axis) above a
-                      searchable, sortable table of those samples.
-  3. Unmatched Raw  - table of Raw_items that do NOT match any LD_item,
-                      coloured by the mean colour of their own Raw samples;
-                      the Raw_item link lists those samples.
-  4. Laminate       - every Sample_type='Laminate' row in a searchable table
-                      with its Raw_item column; a ΔE reference dropdown lists
-                      the LD samples (by NAME) reachable through the rows'
-                      Raw_item and scores every laminate colour against the
-                      selected sample (CIEDE2000, last column).
-  5. ΔE Compare     - like-colour pairs within a textile (the LD_item prefix),
-                      pairing individual LD samples by NAME: only pairs whose
-                      straight Lab distance is within the like-colour cutoff
-                      are scored with CIEDE2000. A baseline input highlights
-                      pairs below it; clicking a row shows the two samples'
-                      colours.
-  6. Match Pantone  - pick a Pantone TCX colour (the 2,310-colour library is
+                      searchable, sortable table of those samples. Two buttons
+                      beside the search field open the ΔE Compare and Unmatched
+                      Raw dialogs (see below).
+  3. Laminate       - one row per laminate-master Product, coloured by the mean
+                      colour of that Product's master plates, with the count of
+                      distinct WOLs and laminate samples under it. The NAME
+                      column lists the Product's master-plate NAMEs. The Product
+                      link opens a detail view mirroring the Raw tab: the
+                      Product's laminate samples scored with CIEDE2000 against
+                      the Product's master-plate mean colour (1.0 target line
+                      and QC ring). An Unmatched Laminate button beside the
+                      search field lists the laminate rows that carry no Product.
+  4. Match Pantone  - pick a Pantone TCX colour (the 2,310-colour library is
                       embedded in this script), optionally narrow the search
                       to a face textile — the first 4 characters of an
                       LD_item (Gore item) or of a Raw_item (supplier textile)
                       — and the tab reports the nearest item by CIEDE2000:
                       the nearest LD_item when the chosen textile has one,
                       otherwise the nearest unmatched Raw_item.
+
+The ΔE Compare dialog (opened from the Raw tab) pairs like-colour LD
+samples within a textile (the LD_item prefix) by NAME: only pairs whose
+straight Lab distance is within the like-colour cutoff are scored with
+CIEDE2000. A baseline input highlights pairs below it; clicking a row shows
+the two samples' colours.
+
+The Unmatched Raw dialog (also opened from the Raw tab) tables the
+Raw_items that match no LD_item, coloured by the mean colour of their own Raw
+samples; the Raw_item link opens that item's detail view.
 
 Every tab shows the colour as a large swatch in its own column.
 
@@ -78,7 +86,11 @@ NUM_COLUMNS = ("L", "a", "b")
 
 LD = "LD"
 RAW = "Raw"
-LAMINATE = "Laminate"
+LAMINATE_MASTER = "Laminate Master"
+LAMINATE_SAMPLE = "Laminate Sample"
+# The Laminate tab holds both: a B##-prefixed NAME is a master plate, the other
+# WOL-named rows are the samples measured on it.
+LAMINATE_TYPES = (LAMINATE_MASTER, LAMINATE_SAMPLE)
 
 # Payload sizes reported at the end (helps spot a query that returned the wrong
 # table long before the page is opened).
@@ -207,21 +219,35 @@ def build_payload(records) -> dict:
     """Turn the grid rows into the compact payload the page consumes.
 
     items:   [LD_item, n_ld, mean_L, mean_a, mean_b, hex,
-              (matched-Raw count filled at runtime)]
+              (matched-Raw count filled at runtime), LD sample NAMEs]
     ld:      {LD_item: [[date, name, L, a, b, hex, Batch], ...]}  (every LD sample)
     raw:     {LD_item: [[date, name, L, a, b, hex, Batch], ...]}  (matched only)
     unitems: [Raw_item, n_raw, mean_L, mean_a, mean_b, hex]       (no matching LD_item)
     unraw:   {Raw_item: [[date, name, L, a, b, hex, Batch], ...]}
     rawbatch: {Raw_item: distinct non-empty Batch count}  (matched + unmatched)
     lam:     [[date, name, L, a, b, hex, WOL, Batch, Product, Description,
-               Raw_item, matched LD_item], ...]
+               Raw_item, Sample_type], ...]
+    lamprod: [Product, WOL count, mean_L, mean_a, mean_b, hex,
+              laminate samples, master plates, master plate NAMEs]
+              (one per master Product)
+    export_cols / export: the LD and Raw measurement rows verbatim, in source
+              order, for the Raw tab's Excel export.
     """
     ld_acc = defaultdict(lambda: [0, 0.0, 0.0, 0.0])   # item -> n, sum L, a, b
     ld_samples = defaultdict(list)   # item -> every LD sample row (for NAME refs)
     raw_rows = []
     lam_rows = []
+    # Per-Product accumulator for the Laminate tab: the distinct WOLs and
+    # laminate samples measured under a Product, plus the running sums used for
+    # the master-plate mean (the reference the samples are scored against) and
+    # the sample-mean fallback when a Product has no master plate with Lab.
+    lamprod_acc = defaultdict(lambda: {"wol": set(), "samples": 0, "masters": 0,
+                                       "names": set(),
+                                       "ml": 0.0, "ma": 0.0, "mb": 0.0, "mn": 0,
+                                       "sl": 0.0, "sa": 0.0, "sb": 0.0, "sn": 0})
     counts = defaultdict(int)
     ld_rows = 0
+    export_rows = []
 
     for record in records:
         sample_type = _text(record.get("Sample_type"))
@@ -231,6 +257,18 @@ def build_payload(records) -> dict:
         hex_value = _text(record.get("Hex"))
         date = _iso_date(record.get("DATE"))
         name = _text(record.get("NAME"))
+
+        # Each LD / Raw measurement row is also kept verbatim for the Raw tab's
+        # Excel export — the tab's own heat maps only summarise these rows.
+        if sample_type in (LD, RAW):
+            export_rows.append([
+                date, name, _r(l), _r(a), _r(b),
+                hex_value or (lab_to_hex(l, a, b) if None not in (l, a, b) else ""),
+                _text(record.get("Batch")), _text(record.get("LD_item")),
+                _text(record.get("Raw_item")), _text(record.get("WOL")),
+                _text(record.get("Product")), _text(record.get("Description")),
+                sample_type,
+            ])
 
         if sample_type == LD:
             ld_rows += 1
@@ -261,13 +299,37 @@ def build_payload(records) -> dict:
             ]))
             continue
 
-        if sample_type == LAMINATE:
+        if sample_type in LAMINATE_TYPES:
+            wol = _text(record.get("WOL"))
+            product = _text(record.get("Product"))
             lam_rows.append([
                 date, name, _r(l), _r(a), _r(b), hex_value,
-                _text(record.get("WOL")), _text(record.get("Batch")),
-                _text(record.get("Product")), _text(record.get("Description")),
-                _text(record.get("Raw_item")),
+                wol, _text(record.get("Batch")),
+                product, _text(record.get("Description")),
+                _text(record.get("Raw_item")), sample_type,
             ])
+            if product:
+                acc = lamprod_acc[product]
+                if sample_type == LAMINATE_MASTER:
+                    # The master plate feeds the Product's reference colour.
+                    acc["masters"] += 1
+                    if name:
+                        acc["names"].add(name)
+                    if None not in (l, a, b):
+                        acc["ml"] += l
+                        acc["ma"] += a
+                        acc["mb"] += b
+                        acc["mn"] += 1
+                else:
+                    # Only the samples are scored (and counted) in the tab.
+                    acc["samples"] += 1
+                    if wol:
+                        acc["wol"].add(wol)
+                    if None not in (l, a, b):
+                        acc["sl"] += l
+                        acc["sa"] += a
+                        acc["sb"] += b
+                        acc["sn"] += 1
 
     # LD_item reference colours (mean of the item's LD replicates).
     items = []
@@ -277,9 +339,11 @@ def build_payload(records) -> dict:
                                   round(sum_a / n, ROUND_DP),
                                   round(sum_b / n, ROUND_DP))
         # index 6 is a placeholder — the page fills it with the matched-Raw
-        # count at runtime.
+        # count at runtime; index 7 lists the item's distinct LD sample NAMEs.
+        ld_names = sorted({r[1] for r in ld_samples[item] if r[1]})
         items.append([item, n, mean_l, mean_a, mean_b,
-                      lab_to_hex(mean_l, mean_a, mean_b), 0])
+                      lab_to_hex(mean_l, mean_a, mean_b), 0,
+                      ", ".join(ld_names)])
 
     # Raw rows join to LD_items on the item code. The join is case-insensitive
     # (codes are uppercase, but one stray lowercase letter must not silently
@@ -289,13 +353,6 @@ def build_payload(records) -> dict:
     known_map = {}
     for it in items:
         known_map.setdefault(it[0].upper(), it[0])
-
-    # Laminate rows carry the Raw_item they were measured on; resolve it to
-    # the matching LD_item (canonical spelling, '' when nothing matches) so
-    # the page's ΔE reference dropdown can list the LD samples (grouped by
-    # LD_item) that are reachable through the laminate data.
-    for row in lam_rows:
-        row.append(known_map.get(row[10].upper(), ""))
 
     raw_by_item = defaultdict(list)
     un_by_item = defaultdict(list)
@@ -338,6 +395,31 @@ def build_payload(records) -> dict:
         else:
             unitems.append([item, len(rows_), None, None, None, ""])
 
+    # One row per Product seen on a laminate master plate. The reference colour
+    # is the mean of that Product's master plates; a Product with no master Lab
+    # falls back to the mean of its own samples (hex '' when neither exists).
+    lamprod = []
+    for product in sorted(lamprod_acc):
+        acc = lamprod_acc[product]
+        n, sum_l, sum_a, sum_b = (acc["mn"], acc["ml"], acc["ma"], acc["mb"])
+        if not n:
+            n, sum_l, sum_a, sum_b = (acc["sn"], acc["sl"], acc["sa"], acc["sb"])
+        if n:
+            mean_l = round(sum_l / n, ROUND_DP)
+            mean_a = round(sum_a / n, ROUND_DP)
+            mean_b = round(sum_b / n, ROUND_DP)
+            hex_out = lab_to_hex(mean_l, mean_a, mean_b)
+        else:
+            mean_l = mean_a = mean_b = None
+            hex_out = ""
+        lamprod.append([product, len(acc["wol"]), mean_l, mean_a, mean_b,
+                        hex_out, acc["samples"], acc["masters"],
+                        ", ".join(sorted(acc["names"]))])
+
+    # Laminate rows that name no Product cannot be grouped under one, so they
+    # are listed separately by the page's "Unmatched Laminate" dialog.
+    unmatched_lam = sum(1 for r in lam_rows if not r[8])
+
     # Newest laminate first: the table opens on the most recent measurements.
     lam_rows.sort(key=lambda r: r[0], reverse=True)
 
@@ -352,6 +434,8 @@ def build_payload(records) -> dict:
             "unmatched_items": len(unitems),
             "unmatched_raw": unmatched_raw,
             "lam": len(lam_rows),
+            "lamprod": len(lamprod),
+            "unmatched_lam": unmatched_lam,
             "skipped": len(records) - ld_rows - len(raw_rows) - len(lam_rows),
             "total": len(records),
             "sample_types": dict(sorted(counts.items())),
@@ -365,6 +449,11 @@ def build_payload(records) -> dict:
         "unraw": dict(un_by_item),
         "rawbatch": {k: len(v) for k, v in sorted(rawbatch.items())},
         "lam": lam_rows,
+        "lamprod": lamprod,
+        "export_cols": ["DATE", "NAME", "L", "a", "b", "Hex", "Batch",
+                        "LD_item", "Raw_item", "WOL", "Product",
+                        "Description", "Sample_type"],
+        "export": export_rows,
     }
 
 
@@ -399,11 +488,19 @@ input,select{font-size:14px;min-height:48px;padding:9px 10px;border-radius:8px;
              border:1px solid var(--line);background:#fff;color:inherit}
 .controls input[type=search]{flex:1 1 200px;min-width:0}
 .count{color:var(--muted);font-size:12px;margin-left:auto}
+.ctlbtn{flex:0 0 auto;min-height:48px;padding:9px 14px;border:1px solid var(--line);
+        border-radius:8px;background:#fff;color:var(--brand);font-size:13px;
+        font-weight:600;cursor:pointer}
+.ctlbtn:hover{background:#eef2f7}
 .sw-lg{display:inline-block;width:48px;height:28px;border-radius:6px;
-       border:1px solid rgba(0,0,0,.25);vertical-align:middle}
+       vertical-align:middle}
 .itemlink{color:var(--brand);font-weight:600;text-decoration:underline;cursor:pointer;
           display:inline-block;padding:16px 8px;margin:-16px -8px}
 .inl{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+/* Reference dropdown: long LD_item / Product labels must not blow out the
+   control row on narrow screens. */
+#refWrap{max-width:100%;min-width:0}
+#refSel{flex:0 1 auto;min-width:0;max-width:100%}
 #cmpBaseline,#cmpCutoff{width:92px}
 #cmpTable td.de{font-family:ui-monospace,Consolas,monospace}
 #cmpTable td.lo{background:#c9ead1}
@@ -419,8 +516,7 @@ input,select{font-size:14px;min-height:48px;padding:9px 10px;border-radius:8px;
 .pairgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
 .paircard{background:var(--card);border:1px solid var(--line);border-radius:10px;
           padding:12px;text-align:center}
-.paircard .big{display:block;width:100%;aspect-ratio:1/1;border-radius:8px;
-          border:1px solid rgba(0,0,0,.25)}
+.paircard .big{display:block;width:100%;aspect-ratio:1/1;border-radius:8px}
 .paircard .pname{font-weight:600;margin:8px 0 0;word-break:break-all}
 .pairdelta{font-size:14px;font-weight:600;margin:8px 0}
 .pairdelta.lo{color:#1d7a34}
@@ -438,7 +534,7 @@ th.sortable{cursor:pointer;user-select:none}
 th.sortable:hover{background:#e2e9f2}
 .arrow{color:var(--brand);font-size:10px}
 .sw{display:inline-block;width:22px;height:22px;border-radius:5px;
-    border:1px solid rgba(0,0,0,.25);vertical-align:middle}
+    vertical-align:middle}
 .hex{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#334}
 .wrapcell{white-space:normal;max-width:280px}
 .pager{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 2px}
@@ -454,8 +550,11 @@ th.sortable:hover{background:#e2e9f2}
 .card-title{font-size:13px;font-weight:600;color:var(--brand);margin:2px 4px 6px}
 #itemChart{width:100%;height:300px}
 /* Square container: symmetric Δa/Δb axes + square box keep the tolerance
-   circle round on every screen width. */
-#abChart{width:min(100%,420px);aspect-ratio:1/1;margin:0 auto}
+   circle round on every screen width. The per-channel distribution chart sits
+   beside it and wraps below on narrow screens. */
+.ab-row{display:flex;gap:14px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+#abChart{flex:0 1 420px;width:100%;max-width:420px;aspect-ratio:1/1}
+#distChart{flex:0 1 420px;width:100%;max-width:420px;height:420px}
 #abToggles{display:flex;gap:8px;margin:0 4px 8px}
 #abToggles button{flex:1;min-height:48px;padding:8px 10px;border:1px solid #d0d5dd;
   border-radius:7px;background:#fff;font-weight:600;font-size:13px;color:#344054;cursor:pointer}
@@ -469,6 +568,8 @@ th.sortable:hover{background:#e2e9f2}
   .chart-grid .wide{grid-column:1/-1}
 }
 .modal{display:none;position:fixed;inset:0;z-index:50;overflow:auto;background:rgba(10,18,28,.55)}
+/* The item detail modal sits above the list dialogs it can be opened from. */
+#modal{z-index:60}
 .modal-box{min-height:100%;background:var(--bg)}
 .modal-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;
             justify-content:space-between;padding:10px 12px;background:var(--brand);color:#fff}
@@ -518,7 +619,8 @@ th.sortable:hover{background:#e2e9f2}
   .sub{font-size:12px}
   main{padding:14px}
   #itemChart{height:360px}
-  #abChart{width:min(100%,480px)}
+  #abChart,#distChart{flex-basis:480px;max-width:480px}
+  #distChart{height:480px}
   .chart{height:340px}
 }
 </style>
@@ -532,10 +634,8 @@ th.sortable:hover{background:#e2e9f2}
   </div>
   <div class="tabs" role="tablist">
     <button class="tab active" data-view="stats" role="tab">Stats</button>
-    <button class="tab" data-view="map" role="tab">LD heat map</button>
-    <button class="tab" data-view="un" role="tab">Unmatched Raw</button>
+    <button class="tab" data-view="map" role="tab">Raw</button>
     <button class="tab" data-view="lam" role="tab">Laminate</button>
-    <button class="tab" data-view="cmp" role="tab">&#916;E Compare</button>
     <button class="tab" data-view="pt" role="tab">Match Pantone</button>
   </div>
 </header>
@@ -574,6 +674,10 @@ th.sortable:hover{background:#e2e9f2}
       and their &#916;E trend against the item's mean colour.</p>
     <div class="controls">
       <input id="mSearch" type="search" placeholder="Search LD_item or #hex…">
+      <button id="mDE" type="button" class="ctlbtn">&#916;E Compare</button>
+      <button id="mUN" type="button" class="ctlbtn">Unmatched Raw</button>
+      <button id="mXLS" type="button" class="ctlbtn"
+        title="Download every LD and Raw sample row as an Excel workbook">Export LD/Raw</button>
       <span class="count" id="mCount"></span>
     </div>
     <div class="table-wrap">
@@ -581,6 +685,7 @@ th.sortable:hover{background:#e2e9f2}
         <thead><tr>
           <th>Colour</th>
           <th class="sortable" data-c="0">LD_item</th>
+          <th class="sortable" data-c="7">NAME</th>
           <th class="sortable" data-c="1">LD samples</th>
           <th class="sortable" data-c="6">Matched Raw</th>
           <th class="sortable" data-c="2">L*</th>
@@ -598,63 +703,29 @@ th.sortable:hover{background:#e2e9f2}
     </div>
   </section>
 
-  <section id="v-un" class="view">
-    <p class="hint">Raw_items whose Raw_item matches no LD_item, coloured by the
-      mean colour of their own Raw samples. Select a Raw_item to list those
-      samples.</p>
-    <div class="controls">
-      <input id="uSearch" type="search" placeholder="Search Raw_item or #hex…">
-      <span class="count" id="uCount"></span>
-    </div>
-    <div class="table-wrap">
-      <table id="uTable">
-        <thead><tr>
-          <th>Colour</th>
-          <th class="sortable" data-c="0">Raw_item</th>
-          <th class="sortable" data-c="1">Raw samples</th>
-          <th class="sortable" data-c="2">L*</th>
-          <th class="sortable" data-c="3">a*</th>
-          <th class="sortable" data-c="4">b*</th>
-          <th class="sortable" data-c="5">Hex</th>
-        </tr></thead>
-        <tbody id="uBody"></tbody>
-      </table>
-    </div>
-    <div class="pager">
-      <button id="uPrev">&#8592; Prev</button>
-      <button id="uNext">Next &#8594;</button>
-      <span class="pinfo" id="uInfo"></span>
-    </div>
-  </section>
-
   <section id="v-lam" class="view">
-    <p class="hint">Every Sample_type='Laminate' record, with the swatch from its
-      Hex column. Pick a &#916;E reference to score every row against that
-      LD_item's mean colour &mdash; the dropdown lists the LD_items reachable
-      through the rows' Raw_item.</p>
+    <p class="hint">One row per laminate-master Product (Sample_type='Laminate
+      Master', a B##-prefixed NAME), coloured by the mean colour of that
+      Product's master plates. WOL counts the distinct WOLs measured under the
+      Product, Laminate samples the sample rows. Select a Product to score its
+      laminate samples against the master-plate mean colour (spec 1.0).</p>
     <div class="controls">
-      <input id="lSearch" type="search" placeholder="Search name, WOL, batch, product, description or #hex…">
-      <label class="inl">&#916;E reference
-        <select id="lamSel" aria-label="Delta E reference">
-          <option value="" disabled selected>Select LD_item</option>
-        </select></label>
+      <input id="lSearch" type="search" placeholder="Search Product or #hex…">
+      <button id="lUN" type="button" class="ctlbtn">Unmatched Laminate</button>
       <span class="count" id="lCount"></span>
     </div>
     <div class="table-wrap">
       <table id="lTable">
         <thead><tr>
-          <th class="sortable" data-c="0">Date</th>
-          <th class="sortable" data-c="1">Name</th>
-          <th class="sortable" data-c="5">Colour</th>
-          <th class="sortable" data-c="6">WOL</th>
-          <th class="sortable" data-c="7">Batch</th>
-          <th class="sortable" data-c="10">Raw item</th>
-          <th class="sortable" data-c="8">Product</th>
-          <th class="sortable" data-c="9">Description</th>
+          <th>Colour</th>
+          <th class="sortable" data-c="0">Product</th>
+          <th class="sortable" data-c="8">NAME</th>
+          <th class="sortable" data-c="1">WOL</th>
+          <th class="sortable" data-c="6">Laminate samples</th>
           <th class="sortable" data-c="2">L*</th>
           <th class="sortable" data-c="3">a*</th>
           <th class="sortable" data-c="4">b*</th>
-          <th class="sortable" data-c="12" id="lamDETh" style="display:none">&#916;E</th>
+          <th class="sortable" data-c="5">Hex</th>
         </tr></thead>
         <tbody id="lBody"></tbody>
       </table>
@@ -663,41 +734,6 @@ th.sortable:hover{background:#e2e9f2}
       <button id="lPrev">&#8592; Prev</button>
       <button id="lNext">Next &#8594;</button>
       <span class="pinfo" id="lInfo"></span>
-    </div>
-  </section>
-
-  <section id="v-cmp" class="view">
-    <p class="hint">Like-colour pairs within a textile (the first 4 characters
-      of the LD_item). Each pair is two individual LD samples, labelled by
-      NAME &mdash; one LD_item can carry several NAMEs. Pairs whose straight
-      Lab distance is within the like-colour cutoff are scored with CIEDE2000
-      &mdash; distant colours are never compared, which keeps big textiles
-      fast. Set a baseline: pairs below it are highlighted green. Click a row
-      to compare the two samples' colours side by side.</p>
-    <div class="controls">
-      <select id="cmpTextile" aria-label="Textile"></select>
-      <label class="inl">Like-colour cutoff
-        <input id="cmpCutoff" type="number" step="1" min="0" value="10"></label>
-      <label class="inl">Baseline &#916;E
-        <input id="cmpBaseline" type="number" step="0.1" min="0" value="1.0"></label>
-      <span class="count" id="cmpCount"></span>
-    </div>
-    <div class="table-wrap">
-      <table id="cmpTable">
-        <thead><tr>
-          <th>Colour A</th>
-          <th class="sortable" data-c="0">NAME A</th>
-          <th>Colour B</th>
-          <th class="sortable" data-c="1">NAME B</th>
-          <th class="sortable" data-c="2">&#916;E</th>
-        </tr></thead>
-        <tbody id="cmpBody"></tbody>
-      </table>
-    </div>
-    <div class="pager">
-      <button id="cmpPrev">&#8592; Prev</button>
-      <button id="cmpNext">Next &#8594;</button>
-      <span class="pinfo" id="cmpInfo"></span>
     </div>
   </section>
 
@@ -776,7 +812,10 @@ th.sortable:hover{background:#e2e9f2}
           <button id="abQc" type="button">QC View &#177;1.5</button>
           <button id="abFull" type="button">Full Range</button>
         </div>
-        <div id="abChart"></div>
+        <div class="ab-row">
+          <div id="abChart"></div>
+          <div id="distChart"></div>
+        </div>
       </div>
       <div class="card" id="deCard">
         <div class="card-title" id="deCardTitle">&#916;E vs LD mean over time</div>
@@ -802,6 +841,49 @@ th.sortable:hover{background:#e2e9f2}
   </div>
 </div>
 
+<div class="modal" id="cmpModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>&#916;E Compare</h2>
+      <button class="close" id="cmpClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Like-colour pairs within a textile (the first 4 characters
+        of the LD_item). Each pair is two individual LD samples, labelled by
+        NAME &mdash; one LD_item can carry several NAMEs. Pairs whose straight
+        Lab distance is within the like-colour cutoff are scored with CIEDE2000
+        &mdash; distant colours are never compared, which keeps big textiles
+        fast. Set a baseline: pairs below it are highlighted green. Click a row
+        to compare the two samples' colours side by side.</p>
+      <div class="controls">
+        <select id="cmpTextile" aria-label="Textile"></select>
+        <label class="inl">Like-colour cutoff
+          <input id="cmpCutoff" type="number" step="1" min="0" value="10"></label>
+        <label class="inl">Baseline &#916;E
+          <input id="cmpBaseline" type="number" step="0.1" min="0" value="1.0"></label>
+        <span class="count" id="cmpCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="cmpTable">
+          <thead><tr>
+            <th>Colour A</th>
+            <th class="sortable" data-c="0">NAME A</th>
+            <th>Colour B</th>
+            <th class="sortable" data-c="1">NAME B</th>
+            <th class="sortable" data-c="2">&#916;E</th>
+          </tr></thead>
+          <tbody id="cmpBody"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button id="cmpPrev">&#8592; Prev</button>
+        <button id="cmpNext">Next &#8594;</button>
+        <span class="pinfo" id="cmpInfo"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="pairModal">
   <div class="modal-box">
     <div class="modal-head">
@@ -819,6 +901,84 @@ th.sortable:hover{background:#e2e9f2}
   </div>
 </div>
 
+<div class="modal" id="unModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>Unmatched Raw</h2>
+      <button class="close" id="unClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Raw_items whose Raw_item matches no LD_item, coloured by the
+        mean colour of their own Raw samples. Select a Raw_item to list those
+        samples.</p>
+      <div class="controls">
+        <input id="uSearch" type="search" placeholder="Search Raw_item or #hex…">
+        <span class="count" id="uCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="uTable">
+          <thead><tr>
+            <th>Colour</th>
+            <th class="sortable" data-c="0">Raw_item</th>
+            <th class="sortable" data-c="1">Raw samples</th>
+            <th class="sortable" data-c="2">L*</th>
+            <th class="sortable" data-c="3">a*</th>
+            <th class="sortable" data-c="4">b*</th>
+            <th class="sortable" data-c="5">Hex</th>
+          </tr></thead>
+          <tbody id="uBody"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button id="uPrev">&#8592; Prev</button>
+        <button id="uNext">Next &#8594;</button>
+        <span class="pinfo" id="uInfo"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="unlamModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>Unmatched Laminate</h2>
+      <button class="close" id="unlamClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Laminate rows that carry no Product, so the Laminate grid
+        has no Product to group them under. Listed newest first.</p>
+      <div class="controls">
+        <input id="nlSearch" type="search" placeholder="Search NAME, WOL, batch, Raw_item…">
+        <span class="count" id="nlCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="nlTable">
+          <thead><tr>
+            <th>Colour</th>
+            <th class="sortable" data-c="0">Date</th>
+            <th class="sortable" data-c="1">NAME</th>
+            <th class="sortable" data-c="6">WOL</th>
+            <th class="sortable" data-c="7">Batch</th>
+            <th class="sortable" data-c="11">Sample_type</th>
+            <th class="sortable" data-c="9">Description</th>
+            <th class="sortable" data-c="10">Raw_item</th>
+            <th class="sortable" data-c="2">L*</th>
+            <th class="sortable" data-c="3">a*</th>
+            <th class="sortable" data-c="4">b*</th>
+            <th class="sortable" data-c="5">Hex</th>
+          </tr></thead>
+          <tbody id="nlBody"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button id="nlPrev">&#8592; Prev</button>
+        <button id="nlNext">Next &#8594;</button>
+        <span class="pinfo" id="nlInfo"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 var DATA = @@DATA@@;
 var ITEMS = DATA.items;
@@ -826,12 +986,18 @@ var RAW = DATA.raw;
 var UNITEMS = DATA.unitems;
 var UNRAW = DATA.unraw;
 var LAM = DATA.lam;
+var LAMPROD = DATA.lamprod || [];
 var LD = DATA.ld || {};
 var META = DATA.meta;
 var RAWBATCH = DATA.rawbatch || {};
 var PANTONE = @@PANTONE@@;   /* TCX library rows: [id, name, zh, hex, L, a, b] */
 
 var PAGE = 100;
+
+/* QC specs: a Raw sample must sit within 0.8 of its LD_item mean, a laminate
+   sample within 1.0 of its Product's master-plate mean. */
+var SPEC_RAW = 0.8, SPEC_LAM = 1.0;
+function specFor(mode){ return mode === 'lam' ? SPEC_LAM : SPEC_RAW; }
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -842,6 +1008,9 @@ function swatch(v){ var h=hexOf(v);
 function swatchLg(v){ var h=hexOf(v);
   return '<span class="sw-lg" style="background:'+(h||'repeating-linear-gradient(45deg,#ddd,#ddd 4px,#fff 4px,#fff 8px)')+'"></span>'; }
 function num(v,d){ if(v===''||v==null||isNaN(v)) return '\u2013'; return Number(v).toFixed(d==null?2:d); }
+/* Signed 2-dp value for the delta-L / delta-a / delta-b table cells ('+0.35'). */
+function dnum(v){ if(v===''||v==null||isNaN(v)) return '\u2013';
+  var n=Number(v); return (n>0?'+':'')+n.toFixed(2); }
 function day(v){ return String(v||'').slice(0,10) || '\u2013'; }
 function clock(v){ return String(v||'').slice(11,19); }
 
@@ -877,6 +1046,11 @@ var ITEM_BY={}, UN_BY={};
 ITEMS.forEach(function(it){
   ITEM_BY[it[0]]={item:it[0],n:it[1],L:it[2],a:it[3],b:it[4],hex:it[5],rows:[]};
 });
+/* Case-insensitive LD_item lookup: a Product's Raw_item may differ in case
+   from the LD_item code, and the laminate modal's reference dropdown resolves
+   the choice back to the item's mean colour through this map. */
+var LD_CI={};
+ITEMS.forEach(function(it){ LD_CI[it[0].toUpperCase()]=ITEM_BY[it[0]]; });
 UNITEMS.forEach(function(it){
   UN_BY[it[0]]={item:it[0],n:it[1],L:it[2],a:it[3],b:it[4],hex:it[5],rows:[]};
 });
@@ -914,6 +1088,31 @@ Object.keys(LD_BY).forEach(function(item){
   LD_BY[item].sort(function(x,y){ return x.name<y.name?-1:x.name>y.name?1:0; });
 });
 
+/* ---- laminate Products ----
+   Payload row: [Product, WOL count, mean L*, a*, b*, hex, laminate samples,
+   master plates] — the LD-heat-map index convention (0 name, 1 count, 2/3/4
+   Lab, 5 hex, 6 count) so the shared table factory works unchanged. The
+   reference colour is the Product's master-plate mean; LAM rows carry the
+   Product at index 8 and the Sample_type at index 11, so the modal lists
+   exactly the product's laminate sample rows (index 12 stays free for the
+   client-side ΔE). */
+var LAMPROD_BY={};
+LAMPROD.forEach(function(it){
+  LAMPROD_BY[it[0]]={item:it[0],name:it[0],wol:it[1],L:it[2],a:it[3],b:it[4],
+    hex:it[5],n:it[6],masters:it[7],rows:[],raw:[]};
+});
+LAM.forEach(function(r){
+  var ref=LAMPROD_BY[r[8]];
+  if(!ref) return;
+  /* The Product's Raw_item(s) — on both master and sample rows — feed the
+     modal's "Raw" reference choices. */
+  if(r[10] && ref.raw.indexOf(r[10])<0) ref.raw.push(r[10]);
+  if(r[11]==='Laminate Sample') ref.rows.push(r);
+});
+/* Laminate rows with no Product: no master plate or sample can be grouped, so
+   the Laminate grid drops them. The Unmatched Laminate dialog lists them. */
+var UNLAM=LAM.filter(function(r){ return !r[8]; });
+
 function pct(sorted,p){
   if(!sorted.length) return null;
   var i=(sorted.length-1)*p, lo=Math.floor(i), hi=Math.ceil(i);
@@ -937,7 +1136,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(b){
 
 /* ---- tabs 1 & 2: LD item and unmatched Raw item tables ----
    Same searchable / sortable / paginated table pattern as the Laminate tab.
-   Item row layout (LD): 0 LD_item, 1 LD samples, 6 Matched Raw,
+   Item row layout (LD): 0 LD_item, 7 NAME, 1 LD samples, 6 Matched Raw,
                          2 L*, 3 a*, 4 b*, 5 Hex.
    Item row layout (Un): 0 Raw_item, 1 Raw samples, 2 L*, 3 a*, 4 b*, 5 Hex. */
 function ldRowHtml(it){
@@ -945,6 +1144,7 @@ function ldRowHtml(it){
   return '<tr>'
     +'<td>'+swatchLg(hex)+'</td>'
     +'<td><a href="#" class="itemlink" data-mode="ld" data-item="'+esc(it[0])+'">'+esc(it[0])+'</a></td>'
+    +'<td class="wrapcell">'+esc(it[7]||'\u2013')+'</td>'
     +'<td>'+it[1].toLocaleString()+'</td>'
     +'<td>'+it[6].toLocaleString()+'</td>'
     +'<td>'+num(it[2])+'</td><td>'+num(it[3])+'</td><td>'+num(it[4])+'</td>'
@@ -963,13 +1163,17 @@ function unRowHtml(it){
 }
 function setupItemTable(o){
   var rows=o.items.slice(), page=0, col=-1, dir=1;
+  /* An optional initial sort ({col, dir}) so a table can open on its most
+     interesting column instead of the payload's arbitrary order. */
+  if(o.sort){ col=o.sort.col; dir=o.sort.dir||1; }
   function applyFilter(){
     var q=(document.getElementById(o.search).value||'').trim().toLowerCase();
     var hexQuery=/^#?[0-9a-f]{6}$/.test(q) ? (q.charAt(0)==='#'?q:'#'+q) : '';
     rows=o.items.filter(function(it){
       if(!q) return true;
       if(hexQuery && hexOf(it[5])===hexQuery) return true;
-      return it[0].toLowerCase().indexOf(q)!==-1;
+      var key=o.searchKey ? String(o.searchKey(it)) : it[0];
+      return key.toLowerCase().indexOf(q)!==-1;
     });
     if(col>=0){
       var c=col,d=dir;
@@ -1023,135 +1227,72 @@ function setupItemTable(o){
     e.preventDefault();
     openDetail(a.getAttribute('data-mode'), a.getAttribute('data-item'));
   });
+  /* Reflect the initial sort on its header so the default ordering is visible
+     and the next click on that header still just toggles the direction. */
+  if(col>=0){
+    var th0=document.querySelector('#'+o.table+' th.sortable[data-c="'+col+'"]');
+    if(th0){
+      var sp0=document.createElement('span'); sp0.className='arrow';
+      sp0.textContent=(dir===1?'\u25B2':'\u25BC'); th0.appendChild(sp0);
+    }
+  }
   refresh();
 }
 setupItemTable({mode:'ld',items:ITEMS,plural:'LD items',table:'mTable',body:'mBody',
   search:'mSearch',count:'mCount',prev:'mPrev',next:'mNext',info:'mInfo',
-  rowHtml:ldRowHtml});
+  rowHtml:ldRowHtml,sort:{col:6,dir:-1}});
 setupItemTable({mode:'un',items:UNITEMS,plural:'unmatched Raw items',table:'uTable',body:'uBody',
   search:'uSearch',count:'uCount',prev:'uPrev',next:'uNext',info:'uInfo',
   rowHtml:unRowHtml});
 
-/* ---- tab 3: laminate table ----
-   Row layout: 0 date, 1 name, 2 L*, 3 a*, 4 b*, 5 hex, 6 WOL, 7 batch,
-   8 product, 9 description, 10 Raw_item, 11 matched LD_item,
-   12 ΔE vs the selected reference (filled when one is picked). */
-var lamRows=LAM.slice(), lamPage=0, lamCol=-1, lamDir=1, lamRef='';
-function lamCell(r,c){
-  switch(Number(c)){
-    case 0: return day(r[0])+(clock(r[0])?' '+clock(r[0]):'');
-    case 1: return r[1];
-    case 2: return num(r[2],2);
-    case 3: return num(r[3],2);
-    case 4: return num(r[4],2);
-    case 5: return r[5];
-    case 6: return r[6];
-    case 7: return r[7];
-    case 8: return r[8];
-    case 10: return r[10];
-    default: return r[9];
-  }
+/* ---- tab 3: laminate Products ----
+   One row per laminate-master Product, mirroring the Raw tab: the Product
+   link opens the detail modal (mode 'lam') that scores the Product's laminate
+   samples against the mean colour of its master plates (spec 1.0). Item row
+   layout: 0 Product, 8 NAME (the master plates), 1 WOL, 6 Laminate samples,
+   2 L*, 3 a*, 4 b*, 5 Hex. */
+function lamRowHtml(it){
+  var hex=hexOf(it[5]);
+  return '<tr>'
+    +'<td>'+swatchLg(hex)+'</td>'
+    +'<td><a href="#" class="itemlink" data-mode="lam" data-item="'+esc(it[0])
+    +'">'+esc(it[0])+'</a></td>'
+    +'<td class="wrapcell">'+esc(it[8]||'\u2013')+'</td>'
+    +'<td>'+it[1].toLocaleString()+'</td>'
+    +'<td>'+it[6].toLocaleString()+'</td>'
+    +'<td>'+num(it[2])+'</td><td>'+num(it[3])+'</td><td>'+num(it[4])+'</td>'
+    +'<td class="hex">'+esc(hex||'\u2013')+'</td>'
+    +'</tr>';
 }
-function lamSearch(){
-  var q=(document.getElementById('lSearch').value||'').trim().toLowerCase();
-  if(!q){ lamRows=LAM.slice(); }
-  else {
-    lamRows=LAM.filter(function(r){
-      for(var i=0;i<11;i++){ if(String(r[i]).toLowerCase().indexOf(q)!==-1) return true; }
-      return false;
-    });
-  }
-  if(lamCol>=0){
-    var c=lamCol,d=lamDir;
-    lamRows.sort(function(x,y){
-      var va=x[c], vb=y[c];
-      if(va===''||va==null) return 1;
-      if(vb===''||vb==null) return -1;
-      if(typeof va==='number'&&typeof vb==='number') return d*(va-vb);
-      return d*String(va).localeCompare(String(vb));
-    });
-  }
-  lamPage=0; renderLam();
-}
-function renderLam(){
-  var from=lamPage*PAGE, to=Math.min(from+PAGE, lamRows.length);
-  var html=[];
-  for(var i=from;i<to;i++){
-    var r=lamRows[i];
-    html.push('<tr>'
-      +'<td>'+esc(lamCell(r,0))+'</td>'
-      +'<td>'+esc(lamCell(r,1))+'</td>'
-      +'<td>'+swatchLg(r[5])+'</td>'
-      +'<td>'+esc(lamCell(r,6)||'\u2013')+'</td>'
-      +'<td>'+esc(lamCell(r,7)||'\u2013')+'</td>'
-      +'<td>'+esc(lamCell(r,10)||'\u2013')+'</td>'
-      +'<td>'+esc(lamCell(r,8)||'\u2013')+'</td>'
-      +'<td class="wrapcell">'+esc(lamCell(r,9)||'\u2013')+'</td>'
-      +'<td>'+esc(lamCell(r,2))+'</td><td>'+esc(lamCell(r,3))+'</td><td>'+esc(lamCell(r,4))+'</td>'
-      +(lamRef?'<td>'+(r[12]===''||r[12]==null?'\u2013':num(r[12],2))+'</td>':'')
-      +'</tr>');
-  }
-  document.getElementById('lBody').innerHTML=html.join('');
-  document.getElementById('lCount').textContent=lamRows.length.toLocaleString()
-    +' of '+LAM.length.toLocaleString()+' laminate rows';
-  document.getElementById('lInfo').textContent=lamRows.length
-    ? 'Rows '+(from+1)+'\u2013'+to+' of '+lamRows.length.toLocaleString()
-    : 'No matching rows';
-  document.getElementById('lPrev').disabled=lamPage<=0;
-  document.getElementById('lNext').disabled=to>=lamRows.length;
-}
-document.getElementById('lSearch').addEventListener('input',lamSearch);
-document.getElementById('lPrev').addEventListener('click',function(){
-  if(lamPage>0){ lamPage--; renderLam(); }});
-document.getElementById('lNext').addEventListener('click',function(){
-  if((lamPage+1)*PAGE<lamRows.length){ lamPage++; renderLam(); }});
-Array.prototype.forEach.call(document.querySelectorAll('#lTable th.sortable'),function(th){
-  th.addEventListener('click',function(){
-    var c=Number(th.getAttribute('data-c'));
-    if(lamCol===c){ lamDir=-lamDir; } else { lamCol=c; lamDir=1; }
-    Array.prototype.forEach.call(document.querySelectorAll('#lTable th.sortable .arrow'),
-      function(a){ a.remove(); });
-    var sp=document.createElement('span'); sp.className='arrow';
-    sp.textContent=(lamDir===1?'\u25B2':'\u25BC'); th.appendChild(sp);
-    lamSearch();
-  });
-});
+setupItemTable({mode:'lam',items:LAMPROD,plural:'laminate Products',
+  table:'lTable',body:'lBody',search:'lSearch',count:'lCount',prev:'lPrev',
+  next:'lNext',info:'lInfo',rowHtml:lamRowHtml,sort:{col:6,dir:-1}});
 
-/* ΔE reference dropdown: grouped by the LD_items actually reachable through
-   the laminate rows' Raw_item (index 11, resolved in the payload); every
-   option is an individual LD sample labelled by its NAME. Nothing is selected
-   by default, so the ΔE column stays hidden until a pick. */
-(function(){
-  var seen={}, opts=[];
-  LAM.forEach(function(r){
-    if(r[11] && !seen[r[11]]){ seen[r[11]]=1; opts.push(r[11]); }
-  });
-  opts.sort();
-  var sel=document.getElementById('lamSel');
-  opts.forEach(function(n){
-    var grp=(LD_BY[n]||[]); if(!grp.length) return;
-    var og=document.createElement('optgroup'); og.label=n;
-    grp.forEach(function(o){
-      var el=document.createElement('option');
-      el.value=o.key; el.textContent=o.name;
-      og.appendChild(el);
-    });
-    sel.appendChild(og);
-  });
-  sel.addEventListener('change',function(){
-    lamRef=this.value;
-    var ref=LDREFS[lamRef];
-    document.getElementById('lamDETh').style.display=lamRef?'':'none';
-    if(ref){
-      LAM.forEach(function(r){
-        r[12]=(r[2]===''||r[3]===''||r[4]==='')
-          ? '' : Math.round(deltaE00(r[2],r[3],r[4],ref.L,ref.a,ref.b)*100)/100;
-      });
-    }
-    lamPage=0;
-    lamSearch();
-  });
-})();
+/* Unmatched Laminate: laminate rows carrying no Product, shown as flat sample
+   rows (there is no Product to group them under). Row layout matches LAM:
+   0 date, 1 NAME, 2/3/4 Lab, 5 hex, 6 WOL, 7 Batch, 9 Description,
+   10 Raw_item, 11 Sample_type. */
+function unlamRowHtml(r){
+  var hex=hexOf(r[5]);
+  return '<tr>'
+    +'<td>'+swatchLg(hex)+'</td>'
+    +'<td>'+esc(day(r[0]))+'</td>'
+    +'<td class="wrapcell">'+esc(r[1]||'\u2013')+'</td>'
+    +'<td>'+esc(r[6]||'\u2013')+'</td>'
+    +'<td>'+esc(r[7]||'\u2013')+'</td>'
+    +'<td>'+esc(r[11]||'\u2013')+'</td>'
+    +'<td class="wrapcell">'+esc(r[9]||'\u2013')+'</td>'
+    +'<td>'+esc(r[10]||'\u2013')+'</td>'
+    +'<td>'+num(r[2])+'</td><td>'+num(r[3])+'</td><td>'+num(r[4])+'</td>'
+    +'<td class="hex">'+esc(hex||'\u2013')+'</td>'
+    +'</tr>';
+}
+setupItemTable({mode:'unlam',items:UNLAM,plural:'unmatched laminate rows',
+  table:'nlTable',body:'nlBody',search:'nlSearch',count:'nlCount',
+  prev:'nlPrev',next:'nlNext',info:'nlInfo',rowHtml:unlamRowHtml,
+  searchKey:function(r){
+    return [r[0],r[1],r[6],r[7],r[9],r[10],r[11]].join(' ');
+  }});
 
 /* ---- tab 4: like-colour pairs within a textile ----
    A textile = the first 4 characters of the LD_item. Pairs are formed between
@@ -1274,6 +1415,20 @@ document.getElementById('cmpBody').addEventListener('click',function(e){
 cmpArrow(document.querySelector('#cmpTable th.sortable[data-c="2"]'));
 refreshCmp();
 
+/* ΔE Compare lives in a modal now, opened from the Raw tab's ΔE button. */
+function openCmp(){
+  document.getElementById('cmpModal').style.display='block';
+  document.body.style.overflow='hidden';
+}
+function closeCmp(){
+  document.getElementById('cmpModal').style.display='none';
+  document.body.style.overflow='';
+}
+document.getElementById('mDE').addEventListener('click',openCmp);
+document.getElementById('cmpClose').addEventListener('click',closeCmp);
+document.getElementById('cmpModal').addEventListener('click',function(e){
+  if(e.target.id==='cmpModal') closeCmp(); });
+
 /* Pair popup: the two LD samples' colours side by side — big square swatch
    cards on top, a details table (LD_item / NAME / hex / Lab) below. */
 function pairCard(ref){
@@ -1320,6 +1475,144 @@ function closePair(){
 document.getElementById('pairClose').addEventListener('click',closePair);
 document.getElementById('pairModal').addEventListener('click',function(e){
   if(e.target.id==='pairModal') closePair(); });
+
+/* Unmatched Raw: the Raw_items that match no LD_item. Same dialog pattern as
+   ΔE Compare — opened from the Raw tab's Unmatched Raw button. */
+function openUn(){
+  document.getElementById('unModal').style.display='block';
+  document.body.style.overflow='hidden';
+}
+function closeUn(){
+  document.getElementById('unModal').style.display='none';
+  document.body.style.overflow='';
+}
+document.getElementById('mUN').addEventListener('click',openUn);
+document.getElementById('unClose').addEventListener('click',closeUn);
+document.getElementById('unModal').addEventListener('click',function(e){
+  if(e.target.id==='unModal') closeUn(); });
+
+/* Export LD / Raw to Excel. Every LD and Raw measurement row (captured
+   verbatim by the generator) is written as a real .xlsx. An .xlsx is a ZIP of
+   XML parts, so the sheet is packed with STORE (uncompressed) entries here —
+   no library, and Excel opens the file without the format-mismatch prompt a
+   CSV or an HTML "xls" would raise. */
+var EX_COLS = DATA.export_cols || [];
+var EX_ROWS = DATA.export || [];
+
+var CRC_TABLE=(function(){
+  var t=new Uint32Array(256), c, n, k;
+  for(n=0;n<256;n++){ c=n;
+    for(k=0;k<8;k++){ c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); }
+    t[n]=c>>>0; }
+  return t; })();
+function crc32(u8){
+  var c=0xFFFFFFFF;
+  for(var i=0;i<u8.length;i++){ c=CRC_TABLE[(c^u8[i])&0xFF]^(c>>>8); }
+  return (c^0xFFFFFFFF)>>>0; }
+function utf8(s){ return new TextEncoder().encode(s); }
+function le16(n){ return [n&255,(n>>>8)&255]; }
+function le32(n){ return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]; }
+/* files: [{name, data:Uint8Array}] -> the bytes of a ZIP archive. */
+function zipStore(files){
+  var body=[], dir=[], i, off=0, nm, dt, crc, lh;
+  for(i=0;i<files.length;i++){
+    nm=utf8(files[i].name); dt=files[i].data; crc=crc32(dt);
+    lh=[].concat([80,75,3,4], le16(20), le16(0), le16(0), le16(0), le16(0),
+      le32(crc), le32(dt.length), le32(dt.length), le16(nm.length), le16(0));
+    body.push(new Uint8Array(lh), nm, dt);
+    dir.push({nm:nm, crc:crc, len:dt.length, off:off});
+    off += lh.length + nm.length + dt.length;
+  }
+  var cdStart=off, cdLen=0, ch, d;
+  for(i=0;i<dir.length;i++){
+    d=dir[i];
+    ch=[].concat([80,75,1,2], le16(20), le16(20), le16(0), le16(0), le16(0),
+      le16(0), le32(d.crc), le32(d.len), le32(d.len), le16(d.nm.length),
+      le16(0), le16(0), le16(0), le16(0), le32(0), le32(d.off));
+    body.push(new Uint8Array(ch), d.nm);
+    cdLen += ch.length + d.nm.length;
+  }
+  body.push(new Uint8Array([].concat([80,75,5,6], le16(0), le16(0),
+    le16(dir.length), le16(dir.length), le32(cdLen), le32(cdStart), le16(0))));
+  var total=0;
+  for(i=0;i<body.length;i++) total += body[i].length;
+  var out=new Uint8Array(total), pos=0;
+  for(i=0;i<body.length;i++){ out.set(body[i],pos); pos += body[i].length; }
+  return out;
+}
+function xesc(s){ return String(s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]; }); }
+function colRef(i){
+  var s=''; i++;
+  while(i>0){ s=String.fromCharCode(65+((i-1)%26))+s; i=Math.floor((i-1)/26); }
+  return s; }
+function xcell(ref,v){
+  if(typeof v==='number'&&isFinite(v)) return '<c r="'+ref+'"><v>'+v+'</v></c>';
+  var s=(v==null?'':String(v));
+  return s==='' ? '<c r="'+ref+'"/>'
+    : '<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+xesc(s)
+      +'</t></is></c>'; }
+function sheetXml(cols,rows){
+  var all=[cols].concat(rows), xml=['<?xml version="1.0" encoding="UTF-8"'
+    +' standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/'
+    +'spreadsheetml/2006/main"><sheetData>'], r, c, cells;
+  for(r=0;r<all.length;r++){
+    cells=[];
+    for(c=0;c<all[r].length;c++) cells.push(xcell(colRef(c)+(r+1), all[r][c]));
+    xml.push('<row r="'+(r+1)+'">'+cells.join('')+'</row>');
+  }
+  xml.push('</sheetData></worksheet>');
+  return xml.join('');
+}
+function exportLdRaw(){
+  if(!EX_ROWS.length) return;
+  var head='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  var files=[
+    {name:'[Content_Types].xml', data:utf8(head
+      +'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+      +'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      +'<Default Extension="xml" ContentType="application/xml"/>'
+      +'<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      +'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+      +'</Types>')},
+    {name:'_rels/.rels', data:utf8(head
+      +'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      +'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+      +'</Relationships>')},
+    {name:'xl/workbook.xml', data:utf8(head
+      +'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+      +' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      +'<sheets><sheet name="LD and Raw" sheetId="1" r:id="rId1"/></sheets></workbook>')},
+    {name:'xl/_rels/workbook.xml.rels', data:utf8(head
+      +'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      +'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+      +'</Relationships>')},
+    {name:'xl/worksheets/sheet1.xml', data:utf8(sheetXml(EX_COLS, EX_ROWS))}
+  ];
+  var blob=new Blob([zipStore(files)],
+    {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url; a.download='LD-Raw-data.xlsx';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 0);
+}
+document.getElementById('mXLS').addEventListener('click',exportLdRaw);
+
+/* Unmatched Laminate: laminate rows carrying no Product, listed as flat
+   sample rows because there is no Product to group them under. */
+function openUnLam(){
+  document.getElementById('unlamModal').style.display='block';
+  document.body.style.overflow='hidden';
+}
+function closeUnLam(){
+  document.getElementById('unlamModal').style.display='none';
+  document.body.style.overflow='';
+}
+document.getElementById('lUN').addEventListener('click',openUnLam);
+document.getElementById('unlamClose').addEventListener('click',closeUnLam);
+document.getElementById('unlamModal').addEventListener('click',function(e){
+  if(e.target.id==='unlamModal') closeUnLam(); });
 
 /* ---- Stats tab ----
    Stats is the default view, so the charts are built immediately on load
@@ -1439,8 +1732,7 @@ function buildStats(){
     }
     all.sort(function(a,b){ return a-b; });
     var step=0.1,
-        cap=Math.max(step,Math.ceil(Math.min(all[all.length-1],
-                    pct(all,0.99))/step)*step),
+        cap=3.0,   /* x-axis stops at 2.9-3.0; larger ΔE values fold into '>3.0' */
         bins=[], over=0, i, v;
     for(i=0;i*step<cap-1e-9;i++) bins.push(0);
     for(i=0;i<all.length;i++){
@@ -1448,7 +1740,7 @@ function buildStats(){
       if(v>=cap){ over++; continue; }
       bins[Math.min(bins.length-1,Math.floor(v/step))]++;
     }
-    var mi=Math.floor(0.7/step);          // bin holding the 0.7 target
+    var mi=Math.floor(SPEC_RAW/step);      // bin holding the 0.8 target
     var labels=bins.map(function(_,j){
       return (j*step).toFixed(1)+'\u2013'+((j+1)*step).toFixed(1); });
     labels.push('>'+cap.toFixed(1));
@@ -1462,9 +1754,9 @@ function buildStats(){
                data:bins.concat([over]),
                itemStyle:{color:function(p){
                  return p.dataIndex<mi?'#4e79a7':'#e15759'; }},
-               markLine:0.7<cap?{silent:true,symbol:'none',data:[{xAxis:mi,
+               markLine:SPEC_RAW<cap?{silent:true,symbol:'none',data:[{xAxis:mi,
                  lineStyle:{color:'#d64541',type:'dashed',width:1.2},
-                 label:{formatter:'Target 0.7',fontSize:10,color:'#d64541',
+                 label:{formatter:'Target '+SPEC_RAW,fontSize:10,color:'#d64541',
                         position:'insideEndTop'}}]}:undefined}
       ]
     }));
@@ -1484,9 +1776,10 @@ buildStats();
                 The ΔE reference (any LD_item of the same textile) is selectable;
                 ΔE is recomputed client-side against the chosen item's mean.
    mode 'un'  : table of an unmatched Raw_item's own samples (no reference). */
-var curMode='ld', itemPage=0, ITEM_CHART=null, AB_CHART=null, ITEM_REF=null,
+var curMode='ld', itemPage=0, ITEM_CHART=null, AB_CHART=null, DIST_CHART=null,
+    ITEM_REF=null,
     ITEM_WORK=[], ITEM_VIEW=[], ITEM_FENCE=Infinity,
-    AB_QC=0.7, AB_FULL=false, AB_R=7.5, AB_HUE=0, AB_RREF=null,
+    AB_QC=SPEC_RAW, AB_FULL=false, AB_R=7.5, AB_HUE=0, AB_RREF=null,
     AB_PTS=[], AB_BAD=[],
     itemCol=0, itemDir=1, itemQ='';
 
@@ -1511,32 +1804,62 @@ function itemFiltered(){
 /* Outliers: boxplot upper fence Q3 + 1.5×IQR over all ΔE values. */
 function computeFence(){
   var des=[];
-  if(curMode==='ld') ITEM_WORK.forEach(function(r){ if(r[7]!=='') des.push(r[7]); });
+  if(curMode==='ld'||curMode==='lam')
+    ITEM_WORK.forEach(function(r){ if(r[7]!=='') des.push(r[7]); });
   des.sort(function(x,y){ return x-y; });
   if(des.length<4){ ITEM_FENCE=Infinity; return; }
   var q1=pct(des,0.25), q3=pct(des,0.75), iqr=q3-q1;
   ITEM_FENCE = iqr>0 ? q3+1.5*iqr : des[des.length-1];
 }
-/* The modal's active ΔE reference: the dropdown pick while the peer selector
-   is visible, otherwise the opened item's own mean LD colour. A hidden
-   selector keeps the previously opened item's value, so visibility decides. */
+/* ΔE cell highlight: the laminate modal flags every sample past the 1.0
+   laminate spec, the LD modal keeps the boxplot outlier fence. */
+function hlThreshold(){ return curMode==='lam' ? SPEC_LAM : ITEM_FENCE; }
+/* The modal's active ΔE reference: the dropdown pick while the selector is
+   visible, otherwise the opened item's own reference colour (the LD item mean,
+   or the Product's master-plate mean). A hidden selector keeps the previously
+   opened item's value, so visibility decides. */
 function activeRef(){
   var wrap=document.getElementById('refWrap'),
       sel=document.getElementById('refSel');
-  return (curMode==='ld'&&wrap&&wrap.style.display!=='none'
-          &&LDREFS[sel.value])||ITEM_REF;
+  if(!wrap||wrap.style.display==='none'||!sel) return ITEM_REF;
+  if(curMode==='ld') return LDREFS[sel.value]||ITEM_REF;
+  if(curMode==='lam')
+    return sel.value==='lam'
+      ? ITEM_REF : (LD_CI[String(sel.value).toUpperCase()]||ITEM_REF);
+  return ITEM_REF;
 }
 /* ΔE of every Raw sample vs the selected reference LD sample. */
 function recomputeDE(){
   var rref=activeRef();
   if(!rref) return;
+  var ok=rref.L!=null&&rref.L!==''&&rref.a!==''&&rref.b!=='';
   ITEM_WORK.forEach(function(r){
-    r[7]=(r[2]===''||r[3]===''||r[4]==='')
-      ? '' : Math.round(deltaE00(r[2],r[3],r[4],rref.L,rref.a,rref.b)*100)/100;
+    var has=ok&&r[2]!==''&&r[3]!==''&&r[4]!=='';
+    r[7]=has?Math.round(deltaE00(r[2],r[3],r[4],rref.L,rref.a,rref.b)*100)/100:'';
+    /* Per-channel offsets vs the same reference, shown at the table's end. */
+    r[8]=has?Math.round((r[2]-rref.L)*100)/100:'';
+    r[9]=has?Math.round((r[3]-rref.a)*100)/100:'';
+    r[10]=has?Math.round((r[4]-rref.b)*100)/100:'';
   });
 }
 function renderChips(){
   var chips=document.getElementById('itemChips');
+  if(curMode==='lam'){
+    var lr=activeRef(), self=(lr===ITEM_REF);
+    chips.innerHTML=
+      '<span class="cchip">\u0394E reference '+swatch(lr.hex)
+      +' <span class="hex">'+esc(lr.name||lr.item)+(self?' mean':'')+'</span></span>'
+      +'<span class="cchip">L* '+num(lr.L)+'</span>'
+      +'<span class="cchip">a* '+num(lr.a)+'</span>'
+      +'<span class="cchip">b* '+num(lr.b)+'</span>'
+      +(self
+        ? '<span class="cchip">'+(lr.masters
+            ? lr.masters.toLocaleString()+' master plate'+(lr.masters===1?'':'s')
+            : 'no master plate \u2014 sample mean')+'</span>'
+          +'<span class="cchip">'+lr.wol.toLocaleString()+' WOL</span>'
+        : '<span class="cchip">LD_item reference</span>');
+    return;
+  }
   if(curMode!=='ld'){
     chips.innerHTML=
       '<span class="cchip">Mean of Raw samples '+swatch(ITEM_REF.hex)
@@ -1560,7 +1883,7 @@ function renderStats(){
   var box=document.getElementById('itemStats');
   function stat(k,v){ return '<div class="stat"><div class="k">'+k
     +'</div><div class="v">'+v+'</div></div>'; }
-  if(curMode!=='ld'){
+  if(curMode==='un'){
     box.innerHTML=stat('Raw samples', ITEM_WORK.length.toLocaleString());
     return;
   }
@@ -1568,31 +1891,47 @@ function renderStats(){
   ITEM_WORK.forEach(function(r){ if(r[7]!=='') deVals.push(r[7]); });
   deVals.sort(function(x,y){ return x-y; });
   var nOut=deVals.filter(function(v){ return v>ITEM_FENCE; }).length;
+  var lbl=curMode==='lam'?'Laminate samples':'Matching Raw samples';
   box.innerHTML=deVals.length
-    ? stat('Matching Raw samples', ITEM_WORK.length.toLocaleString())
+    ? stat(lbl, ITEM_WORK.length.toLocaleString())
       +stat('Median \u0394E', num(pct(deVals,0.5),2))
       +stat('P95 \u0394E', num(pct(deVals,0.95),2))
       +stat('Worst \u0394E', num(deVals[deVals.length-1],2))
       +stat('Outliers', nOut.toLocaleString())
-    : stat('Matching Raw samples','0');
+    : stat(lbl,'0');
 }
 function openDetail(mode,item){
-  var ref = mode==='ld' ? ITEM_BY[item] : UN_BY[item];
+  var ref = mode==='ld' ? ITEM_BY[item]
+          : mode==='lam' ? LAMPROD_BY[item] : UN_BY[item];
   if(!ref) return;
+  var scored=(mode==='ld'||mode==='lam');   // modes that carry a ΔE column
   curMode=mode; ITEM_REF=ref; itemQ='';
+  AB_QC=specFor(mode);                      // QC ring: raw 0.8, laminate 1.0
   document.getElementById('iSearch').value='';
-  ITEM_WORK=ref.rows.map(function(r){ return r.slice(); });
+  document.getElementById('iSearch').placeholder=
+    mode==='lam' ? 'Search laminate sample or WOL' : 'Search Raw sample or batch';
+  /* Laminate sample rows carry WOL at 6, Batch at 7 and Sample_type at 11;
+     collapse them onto the Raw-sample layout (…, hex, WOL, ΔE) so the shared
+     table, chart and stats code works unchanged. */
+  ITEM_WORK=ref.rows.map(function(r){
+    return mode==='lam' ? [r[0],r[1],r[2],r[3],r[4],r[5],r[6],''] : r.slice();
+  });
   document.getElementById('itemHead').innerHTML=
     '<th class="sortable" data-c="0">Date</th>'
-    +'<th class="sortable" data-c="1">Raw sample</th>'
-    +'<th>Item</th>'
+    +'<th class="sortable" data-c="1">'
+    +(mode==='lam'?'Laminate sample':'Raw sample')+'</th>'
+    +'<th>'+(mode==='lam'?'Product':'Item')+'</th>'
     +'<th>Swatch</th>'
-    +'<th class="sortable" data-c="5">Hex</th>'
-    +(mode==='ld'?'<th class="sortable" data-c="7">&#916;E</th>':'')
-    +'<th class="sortable" data-c="6">Batch</th>'
+    /* Scored modes drop Hex and WOL/Batch and add per-channel ΔL/Δa/Δb. */
+    +(scored?'':'<th class="sortable" data-c="5">Hex</th>')
+    +(scored?'<th class="sortable" data-c="7">&#916;E</th>':'')
+    +(scored?'':'<th class="sortable" data-c="6">'+(mode==='lam'?'WOL':'Batch')+'</th>')
     +'<th class="sortable" data-c="2">L*</th>'
     +'<th class="sortable" data-c="3">a*</th>'
-    +'<th class="sortable" data-c="4">b*</th>';
+    +'<th class="sortable" data-c="4">b*</th>'
+    +(scored?'<th class="sortable" data-c="8">&#916;L</th>'
+            +'<th class="sortable" data-c="9">&#916;a</th>'
+            +'<th class="sortable" data-c="10">&#916;b</th>':'');
   var wrap=document.getElementById('refWrap');
   if(mode==='ld'){
     var pre=item.slice(0,4).toUpperCase();
@@ -1616,12 +1955,34 @@ function openDetail(mode,item){
       var def=(LD_BY[item]||[])[0];
       sel.value=def?def.key:(sel.options.length?sel.options[0].value:'');
     } else wrap.style.display='none';
-    recomputeDE();
+    itemCol=7; itemDir=-1;
+  } else if(mode==='lam'){
+    /* Reference choices, grouped: the Product's own master-plate mean (the
+       default), or any LD_item that matches one of the Product's Raw_items.
+       Nothing to compare against when no Raw_item resolves to an LD_item, so
+       the selector stays hidden and the master mean is used. */
+    var ritems=[], seen={};
+    (ref.raw||[]).forEach(function(code){
+      var it=LD_CI[String(code).toUpperCase()];
+      if(it && !seen[it.item]){ seen[it.item]=1; ritems.push(it); }
+    });
+    ritems.sort(function(x,y){ return x.item<y.item?-1:x.item>y.item?1:0; });
+    if(ritems.length){
+      wrap.style.display='';
+      var lsel=document.getElementById('refSel');
+      lsel.innerHTML='<optgroup label="Laminate"><option value="lam">'
+        +esc(ref.name)+' (master mean)</option></optgroup>'
+        +'<optgroup label="Raw">'+ritems.map(function(it){
+          return '<option value="'+esc(it.item)+'">'+esc(it.item)+'</option>';
+        }).join('')+'</optgroup>';
+      lsel.value='lam';
+    } else wrap.style.display='none';
     itemCol=7; itemDir=-1;
   } else {
     wrap.style.display='none';
     itemCol=0; itemDir=-1;
   }
+  if(scored) recomputeDE();
   itemArrow();
   document.getElementById('modalTitle').textContent=item;
   computeFence();
@@ -1630,14 +1991,16 @@ function openDetail(mode,item){
   document.getElementById('modal').style.display='block';
   document.body.style.overflow='hidden';
   itemPage=0; renderItem();
-  if(mode==='ld'){
+  if(scored){
     document.getElementById('deCard').style.display='block';
     buildItemChart();
     document.getElementById('abCard').style.display='block';
     buildAbChart();
+    buildDistChart();
   } else {
     if(ITEM_CHART){ ITEM_CHART.dispose(); ITEM_CHART=null; }
     if(AB_CHART){ AB_CHART.dispose(); AB_CHART=null; }
+    if(DIST_CHART){ DIST_CHART.dispose(); DIST_CHART=null; }
     document.getElementById('deCard').style.display='none';
     document.getElementById('abCard').style.display='none';
   }
@@ -1657,11 +2020,12 @@ function itemArrow(){
 function buildItemChart(){
   var box=document.getElementById('itemChart');
   if(ITEM_CHART){ ITEM_CHART.dispose(); ITEM_CHART=null; }
-  if(curMode!=='ld') return;
+  if(curMode!=='ld'&&curMode!=='lam') return;
+  var SPEC=specFor(curMode), byLabel=curMode==='lam'?'WOL':'batch';
   var raw=[];
   ITEM_WORK.forEach(function(r){
-    if(r[7]===''||r[6]==='') return;         // needs a batch # and a ΔE
-    raw.push([r[6], r[7], r[1]]);            // [batch, ΔE, Raw sample]
+    if(r[7]===''||r[6]==='') return;         // needs a WOL/batch # and a ΔE
+    raw.push([r[6], r[7], r[1]]);            // [WOL/batch, ΔE, sample]
   });
   if(!raw.length){
     document.getElementById('deCard').style.display='none';
@@ -1686,7 +2050,7 @@ function buildItemChart(){
   var rr=activeRef();
   var refName=(rr.name||rr.item)+(rr===ITEM_REF?' mean':'');
   document.getElementById('deCardTitle').textContent=
-    '\u0394E vs '+refName+' by batch \u2014 '+pts.length.toLocaleString()
+    '\u0394E vs '+refName+' by '+byLabel+' \u2014 '+pts.length.toLocaleString()
     +' sample'+(pts.length===1?'':'s')
     +(nOut?' \u00b7 '+nOut.toLocaleString()+' outlier'+(nOut===1?'':'s')
            +' in red':'')
@@ -1699,7 +2063,7 @@ function buildItemChart(){
       trigger:'item',
       formatter:function(p){
         return '<b>\u0394E '+num(p.value[3],2)+'</b><br>'+esc(p.value[2]||'')
-          +'<br>Batch '+esc(p.value[0])
+          +'<br>'+(byLabel==='WOL'?'WOL ':'Batch ')+esc(p.value[0])
           +(p.value[1]>ITEM_FENCE?'<br><b style="color:#d64541">Outlier</b>':'');
       }
     },
@@ -1711,12 +2075,13 @@ function buildItemChart(){
     dataZoom:[{type:'inside',xAxisIndex:0},
               {type:'slider',xAxisIndex:0,height:16,bottom:10}],
     series:[
-      {name:'Raw sample',type:'scatter',data:pts,symbolSize:6,clip:false,
+      {name:curMode==='lam'?'Laminate sample':'Raw sample',
+       type:'scatter',data:pts,symbolSize:6,clip:false,
        itemStyle:{opacity:0.6,color:function(p){
          return p.value[1]>ITEM_FENCE ? '#d64541' : '#4e79a7'; }},
-       markLine:{silent:true,symbol:'none',data:[{yAxis:0.7,
+       markLine:{silent:true,symbol:'none',data:[{yAxis:SPEC,
          lineStyle:{color:'#d64541',type:'dashed',width:1.2},
-         label:{formatter:'Target \u0394E 0.7',fontSize:10,color:'#d64541',
+         label:{formatter:'Target \u0394E '+SPEC,fontSize:10,color:'#d64541',
                 position:'insideEndTop'}}]}}
     ]
   });
@@ -1786,7 +2151,7 @@ function abOpt(full){
           +' \u00b7 b* '+num(AB_RREF.b);
       var v=p.value;
       return '<b>'+esc(p.data.name||'')+'</b>'
-        +(p.data.batch?'<br>Batch '+esc(p.data.batch):'')
+        +(p.data.batch?'<br>'+(curMode==='lam'?'WOL ':'Batch ')+esc(p.data.batch):'')
         +'<br>\u0394a*: '+num(v[0],2)+'<br>\u0394b*: '+num(v[1],2)
         +'<br>\u0394E00: '+num(v[2],2);
     }},
@@ -1832,8 +2197,9 @@ function abButtons(){
 function buildAbChart(){
   var box=document.getElementById('abChart');
   if(AB_CHART){ AB_CHART.dispose(); AB_CHART=null; }
-  if(curMode!=='ld') return;
+  if(curMode!=='ld'&&curMode!=='lam') return;
   var rref=activeRef();
+  if(rref.L==null||rref.L===''){ document.getElementById('abCard').style.display='none'; return; }
   var pts=[], bad=[];
   ITEM_WORK.forEach(function(r){
     if(r[3]===''||r[4]==='') return;         // needs a* and b*
@@ -1856,7 +2222,8 @@ function buildAbChart(){
   card.style.display='block';
   var tot=pts.length+bad.length;
   document.getElementById('abCardTitle').textContent=
-    '\u0394a*/\u0394b* vs '+(rref.name||rref.item)+' \u2014 '
+    '\u0394a*/\u0394b* map & \u0394L*/\u0394a*/\u0394b* spread vs '
+    +(rref.name||rref.item)+' \u2014 '
     +tot.toLocaleString()+' sample'+(tot===1?'':'s')
     +(bad.length?' \u00b7 '+bad.length.toLocaleString()
                 +' over QC '+AB_QC+' in red':'')
@@ -1869,26 +2236,153 @@ function buildAbChart(){
   document.getElementById('abFull').onclick=function(){ abSet(true); };
   abButtons();
 }
+/* ---- per-channel distribution ----
+   Three stacked histograms of the ΔL / Δa / Δb offsets against the active ΔE
+   reference, beside the dCIELab map. Each bar is tinted by the deviation it
+   stands for (dark/light for L, green/red for a, blue/yellow for b) rather
+   than by a pass/fail threshold, so the shape of the spread is readable at a
+   glance. */
+var DIST_METRICS=[
+  {key:8,label:'\u0394L*',axis:'\u0394L*, dark \u2194 light',
+   stops:[[-1,'#1e293b'],[0,'#94a3b8'],[1,'#e2e8f0']]},
+  {key:9,label:'\u0394a*',axis:'\u0394a*, green \u2194 red',
+   stops:[[-1,'#16a34a'],[0,'#94a3b8'],[1,'#dc2626']]},
+  {key:10,label:'\u0394b*',axis:'\u0394b*, blue \u2194 yellow',
+   stops:[[-1,'#2563eb'],[0,'#94a3b8'],[1,'#eab308']]}
+];
+/* Linear blend between two #rrggbb colours, u in [0,1]. */
+function mixHex(a,b,u){
+  var A=parseInt(a.slice(1),16), B=parseInt(b.slice(1),16);
+  function c(sh){ return Math.round(((A>>sh)&255)+(((B>>sh)&255)-((A>>sh)&255))*u); }
+  return 'rgb('+c(16)+','+c(8)+','+c(0)+')';
+}
+/* Colour for a normalised deviation t (-1 green/blue/dark .. +1 red/yellow/light). */
+function rampColor(stops,t){
+  t=Math.max(-1,Math.min(1,t));
+  for(var i=0;i<stops.length-1;i++){
+    var x=stops[i][0], y=stops[i+1][0];
+    if(t>=x&&t<=y)
+      return mixHex(stops[i][1],stops[i+1][1],y===x?0:(t-x)/(y-x));
+  }
+  return stops[stops.length-1][1];
+}
+/* Coarsest step from a fixed ladder that keeps the span near ~20 bins. */
+function binStepFor(half){
+  var s=[0.05,0.1,0.2,0.25,0.5,1,2,2.5,5,10];
+  for(var i=0;i<s.length;i++) if((2*half)/s[i]<=24) return s[i];
+  return 20*half/24;
+}
+function buildDistChart(){
+  var box=document.getElementById('distChart');
+  if(DIST_CHART){ DIST_CHART.dispose(); DIST_CHART=null; }
+  if(!box) return;
+  box.style.display='';
+  /* buildAbChart hides the whole card when the item has no comparable Lab
+     values; skip then, so a zero-width canvas is never initialised. */
+  var card=document.getElementById('abCard');
+  if(!card||card.style.display==='none'){ box.style.display='none'; return; }
+  if(curMode!=='ld'&&curMode!=='lam'){ box.style.display='none'; return; }
+  var rref=activeRef();
+  if(!rref||rref.L==null||rref.L===''){ box.style.display='none'; return; }
+  var vals=[[],[],[]], half=0, i, k, any=false;
+  ITEM_WORK.forEach(function(r){
+    for(k=0;k<3;k++){
+      var v=r[DIST_METRICS[k].key];
+      if(v===''||v==null||isNaN(v)) continue;
+      v=Number(v); vals[k].push(v); any=true;
+      if(Math.abs(v)>half) half=Math.abs(v);
+    }
+  });
+  if(!any){ box.style.display='none'; return; }
+  half=Math.max(0.5,abNice(half*1.02));
+  var step=binStepFor(half);
+  /* Force an odd bin count and re-fit the half-range: 0 then sits exactly on
+     the centre of the middle bin, so the zero separator can be placed with an
+     integer category index instead of a fractional one (ECharts rounds those). */
+  var nb=Math.max(1,2*Math.round(half/step)+1);
+  half=nb*step/2;
+  /* Decimals read off the step, so half-unit steps are not rounded into
+     misleading tick labels. */
+  var dec=Math.min(2,(String(step).split('.')[1]||'').length);
+  var centres=[], labels=[];
+  for(i=0;i<nb;i++){
+    var c=-half+step*(i+0.5);
+    centres.push(c); labels.push(c.toFixed(dec));
+  }
+  var series=[];
+  DIST_METRICS.forEach(function(m,mi){
+    var counts=[];
+    for(i=0;i<nb;i++) counts.push(0);
+    vals[mi].forEach(function(v){
+      var idx=Math.floor((v+half)/step);
+      if(idx<0) idx=0; else if(idx>=nb) idx=nb-1;
+      counts[idx]++;
+    });
+    series.push({name:m.label,type:'bar',barCategoryGap:0,
+      xAxisIndex:mi,yAxisIndex:mi,data:counts,
+      itemStyle:{color:function(p){
+                   return rampColor(m.stops,centres[p.dataIndex]/half); },
+                 borderColor:'rgba(15,23,42,.14)',borderWidth:1},
+      /* Odd bin count puts the middle category centre on 0, so this integer
+         index draws the zero separator exactly on the negative/positive split. */
+      markLine:{silent:true,symbol:'none',
+        lineStyle:{color:'rgba(15,23,42,.55)',width:1},
+        label:{show:false},
+        data:[{xAxis:(nb-1)/2}]}});
+  });
+  var grids=[],xAxes=[],yAxes=[],titles=[];
+  for(i=0;i<3;i++){
+    var top=6+i*31;
+    grids.push({left:46,right:12,top:top+'%',height:'22%'});
+    xAxes.push({type:'category',gridIndex:i,data:labels,
+      name:DIST_METRICS[i].axis,nameLocation:'middle',nameGap:20,
+      nameTextStyle:{fontSize:9,fontWeight:700,color:'#475467'},
+      axisTick:{show:false},axisLine:{lineStyle:{color:'#cbd5e1'}},
+      axisLabel:{fontSize:9,hideOverlap:true,interval:'auto',color:'#667085'}});
+    yAxes.push({type:'value',gridIndex:i,minInterval:1,
+      splitLine:{lineStyle:{color:'#eef2f7'}},
+      axisLabel:{fontSize:9,color:'#667085'}});
+    titles.push({text:DIST_METRICS[i].label,left:6,top:(top-4)+'%',
+      textStyle:{fontSize:11,fontWeight:700,color:'#344054'}});
+  }
+  DIST_CHART=echarts.init(box,null,{renderer:'canvas'});
+  DIST_CHART.setOption({animation:false,
+    tooltip:{trigger:'item',confine:true,formatter:function(p){
+      var lo=-half+step*p.dataIndex;
+      return '<b>'+esc(p.seriesName)+'</b><br>'+lo.toFixed(dec)
+        +' \u2192 '+(lo+step).toFixed(dec)
+        +'<br>'+p.value+' sample'+(p.value===1?'':'s');
+    }},
+    title:titles,grid:grids,xAxis:xAxes,yAxis:yAxes,series:series});
+}
 function renderItem(){
   ITEM_VIEW=itemFiltered();
   var from=itemPage*PAGE, to=Math.min(from+PAGE,ITEM_VIEW.length);
+  var scored=(curMode==='ld'||curMode==='lam');
+  var lbl=curMode==='lam'?'Laminate sample':'Raw sample';
   var html=[];
   for(var i=from;i<to;i++){
     var r=ITEM_VIEW[i], hex=hexOf(r[5]);
     html.push('<tr><td>'+esc(day(r[0]))+'</td><td>'+esc(r[1])+'</td>'
       +'<td>'+esc(ITEM_REF.item)+'</td>'
-      +'<td>'+swatchLg(r[5])+'</td><td class="hex">'+esc(hex||'\u2013')+'</td>'
-      +(curMode==='ld'?'<td class="'+(r[7]!==''&&r[7]>ITEM_FENCE?'out':'')
-                       +'">'+(r[7]===''?'\u2013':num(r[7],2))+'</td>':'')
-      +'<td>'+esc(r[6]||'\u2013')+'</td>'
-      +'<td>'+esc(num(r[2]))+'</td><td>'+esc(num(r[3]))+'</td><td>'+esc(num(r[4]))+'</td></tr>');
+      +'<td>'+swatchLg(r[5])+'</td>'
+      +(scored
+        ? '<td class="'+(r[7]!==''&&r[7]>hlThreshold()?'out':'')
+            +'">'+(r[7]===''?'\u2013':num(r[7],2))+'</td>'
+        : '<td class="hex">'+esc(hex||'\u2013')+'</td>')
+      +(scored?'':'<td>'+esc(r[6]||'\u2013')+'</td>')
+      +'<td>'+esc(num(r[2]))+'</td><td>'+esc(num(r[3]))+'</td><td>'+esc(num(r[4]))+'</td>'
+      +(scored?'<td>'+dnum(r[8])+'</td>'
+                       +'<td>'+dnum(r[9])+'</td>'
+                       +'<td>'+dnum(r[10])+'</td>':'')
+      +'</tr>');
   }
   document.getElementById('itemBody').innerHTML=html.length?html.join('')
-    : '<tr><td colspan="10" class="empty">No Raw samples.</td></tr>';
+    : '<tr><td colspan="11" class="empty">No '+lbl.toLowerCase()+'s.</td></tr>';
   document.getElementById('iInfo').textContent=ITEM_VIEW.length
     ? 'Rows '+(from+1)+'\u2013'+to+' of '+ITEM_VIEW.length.toLocaleString()
       +(itemQ?' (filtered)':'')
-    : 'No matching Raw samples';
+    : 'No matching '+lbl.toLowerCase()+'s';
   document.getElementById('iPrev').disabled=itemPage<=0;
   document.getElementById('iNext').disabled=to>=ITEM_VIEW.length;
 }
@@ -1905,7 +2399,7 @@ document.getElementById('refSel').addEventListener('change',function(){
   recomputeDE(); computeFence();
   itemCol=7; itemDir=-1; itemPage=0;
   itemArrow(); renderChips(); renderStats(); renderItem();
-  buildItemChart(); buildAbChart(); });
+  buildItemChart(); buildAbChart(); buildDistChart(); });
 document.getElementById('iPrev').addEventListener('click',function(){
   if(itemPage>0){ itemPage--; renderItem(); }});
 document.getElementById('iNext').addEventListener('click',function(){
@@ -1913,6 +2407,7 @@ document.getElementById('iNext').addEventListener('click',function(){
 function closeItem(){
   if(ITEM_CHART){ ITEM_CHART.dispose(); ITEM_CHART=null; }
   if(AB_CHART){ AB_CHART.dispose(); AB_CHART=null; }
+  if(DIST_CHART){ DIST_CHART.dispose(); DIST_CHART=null; }
   document.getElementById('modal').style.display='none';
   document.body.style.overflow='';
 }
@@ -1922,7 +2417,10 @@ document.getElementById('modal').addEventListener('click',function(e){
 document.addEventListener('keydown',function(e){
   if(e.key!=='Escape') return;
   if(document.getElementById('pairModal').style.display!=='none'){ closePair(); return; }
-  if(document.getElementById('modal').style.display==='block') closeItem(); });
+  if(document.getElementById('cmpModal').style.display==='block'){ closeCmp(); return; }
+  if(document.getElementById('modal').style.display==='block'){ closeItem(); return; }
+  if(document.getElementById('unModal').style.display==='block'){ closeUn(); return; }
+  if(document.getElementById('unlamModal').style.display==='block') closeUnLam(); });
 
 /* ---- Match Pantone tab ---- */
 var PT_LIST=PANTONE.map(function(r,i){
@@ -2080,6 +2578,7 @@ PT_OUT.addEventListener('click',function(e){
 window.addEventListener('resize',function(){
   if(ITEM_CHART) ITEM_CHART.resize();
   if(AB_CHART) AB_CHART.resize();
+  if(DIST_CHART) DIST_CHART.resize();
 });
 
 document.getElementById('meta').textContent=
@@ -2090,7 +2589,6 @@ document.getElementById('meta').textContent=
   +(META.date_min?' \u00b7 '+META.date_min+' to '+META.date_max:'')
   +(META.skipped?' \u00b7 '+META.skipped.toLocaleString()
     +' rows skipped (Sample_type \'Null\' or Raw without Raw_item)':'');
-renderLam();
 </script>
 </body>
 </html>
@@ -2245,8 +2743,10 @@ def main():
     print(f"Rows  : {meta['total']} ({meta['sample_types']})")
     print(f"LD items: {meta['items']} | Raw matched: {meta['raw']} | "
           f"Unmatched Raw items: {meta['unmatched_items']} "
-          f"({meta['unmatched_raw']} rows) | Laminate: {meta['lam']}")
-    print(f"Tabs  : 5 (LD heat map, Unmatched Raw, Laminate, DE Compare, Match Pantone)")
+          f"({meta['unmatched_raw']} rows) | Laminate: {meta['lam']} "
+          f"({meta['lamprod']} Products, {meta['unmatched_lam']} unmatched rows)")
+    print(f"Tabs  : 4 (Stats, Raw, Laminate, Match Pantone) "
+          f"+ DE Compare / Unmatched Raw / Unmatched Laminate dialogs")
     print(f"Size  : {out_path.stat().st_size / 1024 / 1024:.1f} MB "
           f"in {time.perf_counter() - started:.1f}s")
     # Remind the user where the report was saved, then open it in the browser.
