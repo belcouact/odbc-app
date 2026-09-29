@@ -2813,7 +2813,7 @@ var curMode='ld', itemPage=0, ITEM_CHART=null, AB_CHART=null, DIST_CHART=null,
     ITEM_REF=null,
     ITEM_WORK=[], ITEM_VIEW=[], ITEM_FENCE=Infinity,
     AB_QC=SPEC_RAW, AB_FULL=false, AB_R=7.5, AB_HUE=0, AB_RREF=null,
-    AB_PTS=[], AB_BAD=[],
+    AB_PTS=[], AB_BAD=[], AB_RING=null, AB_RING_R=1.5,
     itemCol=0, itemDir=1, itemQ='';
 
 function itemFiltered(){
@@ -2844,9 +2844,6 @@ function computeFence(){
   var q1=pct(des,0.25), q3=pct(des,0.75), iqr=q3-q1;
   ITEM_FENCE = iqr>0 ? q3+1.5*iqr : des[des.length-1];
 }
-/* ΔE cell highlight: the laminate modal flags every sample past the 1.0
-   laminate spec, the LD modal keeps the boxplot outlier fence. */
-function hlThreshold(){ return curMode==='lam' ? SPEC_LAM : ITEM_FENCE; }
 /* The modal's active ΔE reference: the dropdown pick while the selector is
    visible, otherwise the opened item's own reference colour (the LD item mean,
    or the Product's master-plate mean). A hidden selector keeps the previously
@@ -3121,17 +3118,30 @@ function buildItemChart(){
 }
 /* dCIELab map, a faithful port of templates/professional_dcielab_echart_v3.html:
    diagonal CIELAB sector shading (yellow toward +b, red toward +a, blue toward
-   -b, green toward -a), a cross drawn along the reference hue direction, a
-   solid blue QC ring and a QC / full-range view toggle. Quality control sits
-   at 0.7: samples past the ring are red, the rest blue. The centre marker is
-   the selected ΔE reference sample. */
-function abCircle(r){
-  var a=[];
-  for(var i=0;i<=240;i++){
-    var t=2*Math.PI*i/240;
-    a.push([r*Math.cos(t),r*Math.sin(t)]);
+   -b, green toward -a), a cross drawn along the reference hue direction, the
+   exact CMC tolerance boundary and a QC / full-range view toggle. Samples past
+   the boundary are red, the rest blue. The centre marker is the selected ΔE
+   reference sample. */
+/* The QC boundary, drawn at ΔL*=0 exactly as templates/cmc_21_dcielab.html does.
+   CMC(2:1) is not isotropic — SL, SC and SH all depend on the reference colour —
+   so the ring is not a circle of radius ΔE: it leans with the reference hue and
+   stretches where the metric is more forgiving. Each direction's radius is where
+   ΔE CMC reaches the tolerance, found by growing past it and bisecting back. */
+function abContour(ref,tol){
+  var pts=[], L=Number(ref.L), ra=Number(ref.a), rb=Number(ref.b), i, j;
+  function de(r,da,db){ return deltaECMC(L,ra,rb,L,ra+r*da,rb+r*db); }
+  for(i=0;i<=240;i++){
+    var t=2*Math.PI*i/240, da=Math.cos(t), db=Math.sin(t);
+    var lo=0, hi=1, mid, r;
+    while(hi<500&&de(hi,da,db)<tol) hi*=2;     /* grow until outside tolerance */
+    for(j=0;j<50;j++){                         /* then bisect the boundary */
+      mid=(lo+hi)/2;
+      if(de(mid,da,db)<tol) lo=mid; else hi=mid;
+    }
+    r=(lo+hi)/2;
+    pts.push([r*da,r*db]);
   }
-  return a;
+  return pts;
 }
 /* Smallest "nice" tick value covering v, so the full-range view adapts to the
    data spread instead of a hardcoded +/-7.5. */
@@ -3169,7 +3179,7 @@ function abCross(params,api){
   return {type:'group',children:[ln(vx,vy),ln(wx,wy)]};
 }
 function abOpt(full){
-  var R=full?AB_R:1.5, I=full?null:.5;
+  var R=full?AB_R:AB_RING_R, I=full?null:(AB_RING_R>4?1:0.5);
   var boxEl=document.getElementById('abChart');
   var wide=boxEl&&boxEl.clientWidth>=380;
   var xn=wide?'\u0394a*    GREEN  \u2190                              \u2192  RED'
@@ -3204,7 +3214,7 @@ function abOpt(full){
     series:[
       {type:'custom',coordinateSystem:'cartesian2d',data:[[R]],silent:true,
        z:0,renderItem:abShade},
-      {type:'line',data:abCircle(AB_QC),showSymbol:false,silent:true,z:4,
+      {type:'line',data:AB_RING,showSymbol:false,silent:true,z:4,
        lineStyle:{color:'#2563eb',width:2}},
       {type:'custom',coordinateSystem:'cartesian2d',data:[[0]],silent:true,
        z:6,renderItem:abCross},
@@ -3244,14 +3254,26 @@ function buildAbChart(){
   });
   var card=document.getElementById('abCard');
   if(!pts.length&&!bad.length){ card.style.display='none'; return; }
-  /* Full-range view adapts to the data spread: cover QC ring and all dots,
-     rounded up to a nice tick, instead of a fixed +/-7.5. */
-  var m=AB_QC;
+  /* The exact CMC boundary at this reference and QC limit. It reaches further
+     than a ΔE-radius circle would (SC exceeds 1 at mid chroma), so the axis has
+     to grow with it or the QC view would clip the ring. The ring depends only on
+     the reference colour and the limit, so it is built once here rather than on
+     every QC / full-range toggle. */
+  AB_RING=abContour(rref,AB_QC);
+  var ringR=0;
+  AB_RING.forEach(function(p){
+    ringR=Math.max(ringR,Math.abs(p[0]),Math.abs(p[1]));
+  });
+  AB_RING_R=Math.max(1.5,abNice(ringR*1.08));
+  /* Full-range view adapts to the data spread: cover the QC boundary and all
+     dots, rounded up to a nice tick, instead of a fixed +/-7.5. */
+  var m=ringR;
   pts.concat(bad).forEach(function(d){
     m=Math.max(m,Math.abs(d.value[0]),Math.abs(d.value[1]));
   });
   AB_R=Math.max(1.5,abNice(m*1.05));
   document.getElementById('abFull').textContent='Full Range \u00b1'+AB_R;
+  document.getElementById('abQc').textContent='QC View \u00b1'+AB_RING_R;
   card.style.display='block';
   var tot=pts.length+bad.length;
   document.getElementById('abCardTitle').textContent=
@@ -3260,7 +3282,7 @@ function buildAbChart(){
     +tot.toLocaleString()+' sample'+(tot===1?'':'s')
     +(bad.length?' \u00b7 '+bad.length.toLocaleString()
                 +' over QC '+AB_QC+' in red':'')
-    +' \u00b7 blue ring = QC '+AB_QC;
+    +' \u00b7 blue ring = CMC boundary at QC '+AB_QC;
   AB_HUE=Math.atan2(rref.b,rref.a);
   AB_RREF=rref; AB_PTS=pts; AB_BAD=bad;
   AB_CHART=echarts.init(box,null,{renderer:'canvas'});
@@ -3400,7 +3422,10 @@ function renderItem(){
       +'<td>'+esc(ITEM_REF.item)+'</td>'
       +'<td>'+swatchLg(r[5])+'</td>'
       +(scored
-        ? '<td class="'+(r[7]!==''&&r[7]>hlThreshold()?'out':'')
+        /* A ΔE past the sample's own spec — 0.8 against an LD_item mean, 1.0
+           against a laminate master mean — is the one number worth flagging,
+           so it is the only cell that turns red. */
+        ? '<td class="'+(r[7]!==''&&r[7]>specFor(curMode)?'out':'')
             +'">'+(r[7]===''?'\u2013':num(r[7],2))+'</td>'
         : '<td class="hex">'+esc(hex||'\u2013')+'</td>')
       +(scored?'':'<td>'+esc(r[6]||'\u2013')+'</td>')

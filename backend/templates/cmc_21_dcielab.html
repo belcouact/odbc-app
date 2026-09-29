@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dCIELab - CMC 2:1 Tolerance</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  html, body { margin:0; height:100%; background:#cfcfcf; font-family:Arial, Helvetica, sans-serif; }
+  #chart { width:760px; height:760px; margin:0 auto; }
+</style>
+</head>
+<body>
+<div id="chart"></div>
+<script>
+// ============================================================
+// Helpers
+// ============================================================
+function degToRad(deg) {
+    return deg * Math.PI / 180;
+}
+
+// ============================================================
+// CMC(l:c) colour difference
+// standardLab MUST be the standard / reference colour.
+// CMC is asymmetric: swapping standard and sample changes ΔE.
+// CMC 2:1  ->  l = 2, c = 1
+// ============================================================
+function deltaECMC(standardLab, sampleLab, l, c) {
+    var L1 = standardLab.L, a1 = standardLab.a, b1 = standardLab.b;
+    var L2 = sampleLab.L,   a2 = sampleLab.a,   b2 = sampleLab.b;
+
+    var dL = L2 - L1;
+    var da = a2 - a1;
+    var db = b2 - b1;
+
+    var C1 = Math.sqrt(a1 * a1 + b1 * b1);
+    var C2 = Math.sqrt(a2 * a2 + b2 * b2);
+    var dC = C2 - C1;
+
+    // dH^2 = da^2 + db^2 - dC^2  (clamped for float noise)
+    var dH = Math.sqrt(Math.max(0, da * da + db * db - dC * dC));
+
+    // Hue angle of the STANDARD, in degrees 0..360
+    var h1 = Math.atan2(b1, a1) * 180 / Math.PI;
+    if (h1 < 0) { h1 += 360; }
+
+    var SL = (L1 < 16) ? 0.511 : (0.040975 * L1) / (1 + 0.01765 * L1);
+    var SC = (0.0638 * C1) / (1 + 0.0131 * C1) + 0.638;
+
+    var T;
+    if (h1 >= 164 && h1 <= 345) {
+        T = 0.56 + Math.abs(0.2 * Math.cos(degToRad(h1 + 168)));
+    } else {
+        T = 0.36 + Math.abs(0.4 * Math.cos(degToRad(h1 + 35)));
+    }
+
+    var C14 = Math.pow(C1, 4);
+    var F = Math.sqrt(C14 / (C14 + 1900));
+    var SH = SC * (F * T + 1 - F);
+
+    var tL = dL / (l * SL);
+    var tC = dC / (c * SC);
+    var tH = dH / SH;
+
+    return Math.sqrt(tL * tL + tC * tC + tH * tH);
+}
+
+// ============================================================
+// Exact CMC tolerance contour in the Δa*–Δb* plane.
+// ΔL* is fixed at 0, so this is the chromatic cross-section
+// of the CMC tolerance volume.
+// For each direction, binary-search the radius where
+// ΔE CMC == tolerance.
+// ============================================================
+function generateCMCContour(standardLab, tolerance, l, c, angleStep) {
+    var points = [];
+
+    for (var angle = 0; angle <= 360; angle += angleStep) {
+        var rad  = degToRad(angle);
+        var dirA = Math.cos(rad);
+        var dirB = Math.sin(rad);
+
+        var low = 0, high = 1, sample, de, i, mid;
+
+        // expand until outside tolerance
+        while (high < 500) {
+            sample = {
+                L: standardLab.L,
+                a: standardLab.a + high * dirA,
+                b: standardLab.b + high * dirB
+            };
+            if (deltaECMC(standardLab, sample, l, c) >= tolerance) { break; }
+            high *= 2;
+        }
+
+        // binary search the boundary
+        for (i = 0; i < 60; i++) {
+            mid = (low + high) / 2;
+            sample = {
+                L: standardLab.L,
+                a: standardLab.a + mid * dirA,
+                b: standardLab.b + mid * dirB
+            };
+            de = deltaECMC(standardLab, sample, l, c);
+            if (de < tolerance) { low = mid; } else { high = mid; }
+        }
+
+        var r = (low + high) / 2;
+        points.push([r * dirA, r * dirB]);
+    }
+
+    return points;
+}
+
+// ============================================================
+// CONFIG  — change these two blocks only
+// ============================================================
+var standardLab = { L: 55, a: 35, b: 20 };   // your standard colour
+var l = 2, c = 1;                            // CMC 2:1
+var tolerance = 1.0;                         // ΔE CMC pass/fail limit
+
+// samples as [Δa*, Δb*] relative to the standard
+var rawSamples = [
+    { name: "Sample 1", value: [-0.30,  0.35] },
+    { name: "Sample 2", value: [-0.45, -0.20] },
+    { name: "Sample 3", value: [ 0.25, -0.55] },
+    { name: "Sample 4", value: [ 0.55,  0.25] },
+    { name: "Sample 5", value: [-0.75, -0.40] }
+];
+
+// ============================================================
+// Build data
+// ============================================================
+var boundary = generateCMCContour(standardLab, tolerance, l, c, 1);
+
+var samples = rawSamples.map(function (s) {
+    var sampleLab = {
+        L: standardLab.L,
+        a: standardLab.a + s.value[0],
+        b: standardLab.b + s.value[1]
+    };
+    var de = deltaECMC(standardLab, sampleLab, l, c);
+    return { name: s.name, value: s.value, cmc: de, pass: de <= tolerance };
+});
+
+// symmetric axis limit so X and Y share the same scale
+var maxVal = 0;
+boundary.forEach(function (p) {
+    maxVal = Math.max(maxVal, Math.abs(p[0]), Math.abs(p[1]));
+});
+samples.forEach(function (s) {
+    maxVal = Math.max(maxVal, Math.abs(s.value[0]), Math.abs(s.value[1]));
+});
+var axisLimit = Math.ceil(maxVal * 1.25 * 10) / 10;
+
+// ============================================================
+// Chart
+// ============================================================
+var chart = echarts.init(document.getElementById("chart"));
+
+chart.setOption({
+    animation: false,
+    backgroundColor: "#cfcfcf",
+
+    title: {
+        text: "dCIELab: CMC 2:1",
+        subtext: "Standard  L*=" + standardLab.L +
+                 "   a*=" + standardLab.a +
+                 "   b*=" + standardLab.b +
+                 "   |   ΔE CMC limit = " + tolerance,
+        left: "center",
+        top: 10,
+        textStyle: { color: "#000", fontSize: 18, fontWeight: "normal" },
+        subtextStyle: { color: "#444", fontSize: 11 }
+    },
+
+    tooltip: {
+        trigger: "item",
+        formatter: function (p) {
+            if (p.seriesName !== "Samples") { return ""; }
+            var d = p.data;
+            return "<b>" + d.name + "</b><br>" +
+                   "Δa*: " + d.value[0].toFixed(3) + "<br>" +
+                   "Δb*: " + d.value[1].toFixed(3) + "<br>" +
+                   "ΔE CMC(2:1): " + d.cmc.toFixed(3) + "<br>" +
+                   "Result: " + (d.pass ? "PASS" : "FAIL");
+        }
+    },
+
+    // square grid + identical axis ranges => a true circle stays a circle
+    grid: { width: 560, height: 560, left: "center", top: 120, containLabel: false },
+
+    xAxis: {
+        type: "value", min: -axisLimit, max: axisLimit, splitNumber: 8,
+        name: "Δa*  (Green ←→ Red)", nameLocation: "middle", nameGap: 32,
+        axisLine: { onZero: true, lineStyle: { color: "#000", width: 1.2 } },
+        axisLabel: { color: "#333", fontSize: 11,
+                     formatter: function (v) { return v.toFixed(1); } },
+        splitLine: { lineStyle: { color: "#888", type: "dashed", width: 0.7, opacity: 0.55 } }
+    },
+
+    yAxis: {
+        type: "value", min: -axisLimit, max: axisLimit, splitNumber: 8,
+        name: "Δb*  (Blue ←→ Yellow)", nameLocation: "middle", nameGap: 42,
+        axisLine: { onZero: true, lineStyle: { color: "#000", width: 1.2 } },
+        axisLabel: { color: "#333", fontSize: 11,
+                     formatter: function (v) { return v.toFixed(1); } },
+        splitLine: { lineStyle: { color: "#888", type: "dashed", width: 0.7, opacity: 0.55 } }
+    },
+
+    series: [
+        {
+            name: "CMC 2:1 Tolerance",
+            type: "line",
+            data: boundary,
+            showSymbol: false,
+            silent: true,
+            lineStyle: { color: "#0057ff", width: 2 },
+            areaStyle: { color: "rgba(0,87,255,0.03)" },
+            z: 5
+        },
+        {
+            name: "Standard",
+            type: "scatter",
+            data: [[0, 0]],
+            symbolSize: 12,
+            itemStyle: { color: "#fff", borderColor: "#000", borderWidth: 2 },
+            label: { show: true, position: "top", formatter: "Standard",
+                     fontWeight: "bold", fontSize: 11, color: "#111" },
+            z: 15
+        },
+        {
+            name: "Samples",
+            type: "scatter",
+            data: samples,
+            symbolSize: 10,
+            itemStyle: {
+                color: function (p) { return p.data.pass ? "#333333" : "#ff00cc"; },
+                borderColor: "#000", borderWidth: 1
+            },
+            label: {
+                show: true, position: "right", fontSize: 10, color: "#222",
+                formatter: function (p) {
+                    return p.data.name + "  CMC " + p.data.cmc.toFixed(2);
+                }
+            },
+            z: 20
+        }
+    ]
+});
+
+window.addEventListener("resize", function () { chart.resize(); });
+</script>
+</body>
+</html>
