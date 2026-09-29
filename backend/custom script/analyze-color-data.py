@@ -3,7 +3,7 @@
 """
 analyze-color-data.py
 
-Lab colour explorer for Color_Data: one self-contained HTML page with four tabs.
+Lab colour explorer for Color_Data: one self-contained HTML page with five tabs.
 
   1. Stats          - overview charts: sample-type mix (pie), LD_item count
                       per textile, distinct Raw batches per Raw_item, measurements
@@ -19,9 +19,9 @@ Lab colour explorer for Color_Data: one self-contained HTML page with four tabs.
                       mean colour — only items with matched Raw samples are
                       listed — 0.8 target line, outliers beyond the
                       Q3+1.5×IQR fence in red, zoomable x-axis) above a
-                      searchable, sortable table of those samples. Two buttons
-                      beside the search field open the ΔE Compare and Unmatched
-                      Raw dialogs (see below).
+                      searchable, sortable table of those samples. An Unmatched
+                      Raw button beside the search field opens the Unmatched Raw
+                      dialog (see below).
   3. Laminate       - one row per laminate-master Product, coloured by the mean
                       colour of that Product's master plates, with the count of
                       distinct WOLs and laminate samples under it. The NAME
@@ -31,7 +31,16 @@ Lab colour explorer for Color_Data: one self-contained HTML page with four tabs.
                       the Product's master-plate mean colour (1.0 target line
                       and QC ring). An Unmatched Laminate button beside the
                       search field lists the laminate rows that carry no Product.
-  4. Match Pantone  - pick a Pantone TCX colour (the 2,310-colour library is
+  4. LD Redundancy  - flags duplicate LD samples: the LD_items sharing a prefix
+                      (the first 4 characters, i.e. one textile) are clustered
+                      by CMC(2:1) against a Group ΔE input, and every cluster of
+                      n members leaves n−1 redundant. Four sub-views: Overall (a
+                      sortable per-textile table ending in the redundancy %),
+                      Groups (the clustered samples, paged), Matrix (the
+                      pairwise ΔE heat map) and Color (a colour grid). An Export
+                      redundant CSV button writes the flagged samples, and an ⓘ
+                      button explains the grouping.
+  5. Match Pantone  - pick a Pantone TCX colour (the 2,310-colour library is
                       embedded in this script), optionally narrow the search
                       to a face textile — the first 4 characters of an
                       LD_item (Gore item) or of a Raw_item (supplier textile)
@@ -39,11 +48,10 @@ Lab colour explorer for Color_Data: one self-contained HTML page with four tabs.
                       the nearest LD_item when the chosen textile has one,
                       otherwise the nearest unmatched Raw_item.
 
-The ΔE Compare dialog (opened from the Raw tab) pairs like-colour LD
-samples within a textile (the LD_item prefix) by NAME: only pairs whose
-straight Lab distance is within the like-colour cutoff are scored with
-CMC(2:1). A baseline input highlights pairs below it; clicking a row shows
-the two samples' colours.
+The LD Redundancy tab gathers the LD samples of one LD_item prefix that sit
+within the Group ΔE of each other into a group by complete linkage and keeps
+the group's medoid as the representative; the leftover members are redundant.
+Clicking a group's row shows the representative's colour against the member's.
 
 The Unmatched Raw dialog (also opened from the Raw tab) tables the
 Raw_items that match no LD_item, coloured by the mean colour of their own Raw
@@ -498,14 +506,6 @@ input,select{font-size:14px;min-height:48px;padding:9px 10px;border-radius:8px;
         border-radius:8px;background:#fff;color:var(--brand);font-size:13px;
         font-weight:600;cursor:pointer}
 .ctlbtn:hover{background:#eef2f7}
-/* The ΔE Compare action lives in the header tab strip, just before the Match
-   Pantone tab. It borrows the tab silhouette so the strip stays one row of
-   pills, but keeps the .ctlbtn class so the view-switching code (which binds
-   to .tab) ignores it. Mobile-first: 48px touch target on a phone, pulled
-   down to the 40px tab height on wider screens. */
-.tabs .ctlbtn{min-height:48px;padding:6px 14px;border-radius:18px;
-              border-color:rgba(255,255,255,.35);background:transparent;color:#fff}
-.tabs .ctlbtn:hover,.tabs .ctlbtn:active{background:rgba(255,255,255,.16)}
 .sw-lg{display:inline-block;width:48px;height:28px;border-radius:6px;
        vertical-align:middle}
 .itemlink{color:var(--brand);font-weight:600;text-decoration:underline;cursor:pointer;
@@ -537,7 +537,42 @@ input,select{font-size:14px;min-height:48px;padding:9px 10px;border-radius:8px;
 .gmemid{font-family:ui-monospace,Consolas,monospace;font-weight:600}
 .gmemde{color:var(--muted);font-size:11px}
 .gmore{color:var(--muted);font-size:11px}
-/* Groups | Matrix | Color segmented toggle inside the ΔE Compare modal. */
+/* Overall: one row per textile — its LD_item count, its groups of repeated
+   colour and how many of those items are redundant. */
+#cmpOverallTable td.tl{font-family:ui-monospace,Consolas,monospace;
+                       color:var(--brand);font-weight:600}
+#cmpOverallTable td.red{font-family:ui-monospace,Consolas,monospace}
+#cmpOverallTable td.pct{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
+/* "About this view" button in the LD Redundancy control row — opens the help
+   popup that replaced the long explanatory paragraph. */
+.infobtn{display:inline-flex;align-items:center;gap:8px;min-height:48px;
+         padding:9px 14px;border:1px solid var(--line);border-radius:8px;
+         background:#fff;color:var(--brand);font:inherit;font-size:13px;
+         font-weight:600;cursor:pointer}
+.infobtn:hover,.infobtn:active{background:#eef2f7}
+.infobtn-i{display:inline-flex;align-items:center;justify-content:center;
+           width:20px;height:20px;border-radius:50%;background:var(--brand);
+           color:#fff;font:italic 700 12px/1 Georgia,serif}
+@media(max-width:767px){
+  .infobtn{padding:0;width:48px;justify-content:center}
+  .infobtn .infobtn-txt{display:none}
+}
+.helpbody{max-width:780px;font-size:13px;line-height:1.65;color:#3c4653}
+.helpbody h3{font-size:13px;color:var(--brand);margin:18px 0 4px}
+.helpbody h3:first-child{margin-top:0}
+.helpbody p{margin:0 0 8px}
+.helpbody ul{margin:0 0 8px;padding-left:20px}
+.helpbody li{margin:0 0 5px}
+.helpbody b{color:#26313f}
+.helpbody code{font-family:ui-monospace,Consolas,monospace;background:#eef2f7;
+               border-radius:4px;padding:1px 5px}
+/* The help sheet is a centred popup, not the usual full-screen sheet. */
+#cmpHelpModal{z-index:65;align-items:center;justify-content:center;padding:16px}
+#cmpHelpModal .modal-box{min-height:0;width:min(720px,100%);max-height:100%;
+                         overflow:auto;border-radius:12px;
+                         scrollbar-width:none}
+#cmpHelpModal .modal-box::-webkit-scrollbar{display:none}
+/* Overall | Groups | Matrix | Color segmented toggle in the LD Redundancy tab. */
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;
      overflow:hidden}
 .segbtn{min-height:48px;padding:0 16px;border:0;background:#fff;font:inherit;
@@ -587,12 +622,12 @@ input,select{font-size:14px;min-height:48px;padding:9px 10px;border-radius:8px;
         border:1px solid var(--line);border-radius:10px;background:var(--card);
         padding:10px}
 .cggrid{display:grid;gap:8px;
-        grid-template-columns:repeat(auto-fill,minmax(76px,1fr))}
-.cgcard{display:flex;flex-direction:column;gap:4px;min-height:48px;padding:6px;
+        grid-template-columns:repeat(auto-fill,minmax(91px,1fr))}
+.cgcard{display:flex;flex-direction:column;gap:4px;min-height:58px;padding:6px;
         border:1px solid var(--line);border-radius:8px;background:#fff;
         font:inherit;cursor:pointer;text-align:center}
 .cgcard:hover,.cgcard:active{background:#eef2f7}
-.cgcard .cgchip{display:block;width:100%;min-height:44px;border-radius:6px;
+.cgcard .cgchip{display:block;width:100%;min-height:53px;border-radius:6px;
                 border:1px solid rgba(0,0,0,.08)}
 .cgcard .cgid{font:11px/1.3 ui-monospace,Consolas,monospace;color:#3c4653;
               word-break:break-all}
@@ -650,12 +685,14 @@ th.sortable:hover{background:#e2e9f2}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 .stat .k{font-size:11px;color:var(--muted)}
 .stat .v{font-size:17px;font-weight:700}
+.stat .s{font-size:12px;color:var(--muted);margin-top:2px}
 /* Stats-tab headline cards read as a KPI strip, so they run taller and larger
    than the same .stat cards reused inside the item-detail modal. */
 #statsTop .stat{padding:12px 14px;min-height:110px;display:flex;flex-direction:column;
                 justify-content:center}
 #statsTop .stat .k{font-size:13px}
 #statsTop .stat .v{font-size:28px;line-height:1.15}
+#statsTop .stat .s{font-size:13px;margin-top:4px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:10px}
 .card-title{font-size:13px;font-weight:600;color:var(--brand);margin:2px 4px 6px}
 #itemChart{width:100%;height:300px}
@@ -746,7 +783,7 @@ th.sortable:hover{background:#e2e9f2}
     <button class="tab active" data-view="stats" role="tab">Stats</button>
     <button class="tab" data-view="map" role="tab">Raw</button>
     <button class="tab" data-view="lam" role="tab">Laminate</button>
-    <button id="mDE" type="button" class="ctlbtn">&#916;E Compare</button>
+    <button class="tab" data-view="cmp" role="tab">LD Redundancy</button>
     <button class="tab" data-view="pt" role="tab">Match Pantone</button>
   </div>
 </header>
@@ -855,6 +892,89 @@ th.sortable:hover{background:#e2e9f2}
     </div>
   </section>
 
+  <section id="v-cmp" class="view">
+    <div class="controls">
+      <div class="seg" id="cmpViews" role="tablist" aria-label="View">
+        <button type="button" class="segbtn on" data-v="o" role="tab">Overall</button>
+        <button type="button" class="segbtn" data-v="g" role="tab">Groups</button>
+        <button type="button" class="segbtn" data-v="m" role="tab">Matrix</button>
+        <button type="button" class="segbtn" data-v="c" role="tab">Color</button>
+      </div>
+      <select id="cmpTextile" aria-label="Textile"></select>
+      <label class="inl">Group &#916;E
+        <input id="cmpBaseline" type="number" step="0.1" min="0" value="1.0"></label>
+      <button id="cmpExport" type="button" class="ctlbtn">Export redundant CSV</button>
+      <button type="button" class="infobtn" id="cmpHelp"
+              aria-haspopup="dialog"
+              title="About LD Redundancy and how grouping works">
+        <span class="infobtn-i" aria-hidden="true">i</span><span class="infobtn-txt">About this view</span>
+      </button>
+    </div>
+    <div id="cmpOverallPane">
+      <p class="count" id="cmpOverallSummary"></p>
+      <div class="table-wrap">
+        <table id="cmpOverallTable">
+          <thead><tr>
+            <th class="sortable" data-c="0">Textile</th>
+            <th class="sortable" data-c="1">LD_items</th>
+            <th class="sortable" data-c="2">Groups</th>
+            <th class="sortable" data-c="3">Redundant</th>
+            <th class="sortable" data-c="4">Redundancy %</th>
+          </tr></thead>
+          <tbody id="cmpOverallBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="cmpGroupsPane" hidden>
+      <p class="count" id="cmpSummary"></p>
+      <div class="table-wrap">
+        <table id="cmpTable">
+          <thead><tr>
+            <th>Colour</th>
+            <th class="sortable" data-c="0">Group</th>
+            <th class="sortable" data-c="1">Items</th>
+            <th>LD_items</th>
+            <th class="sortable" data-c="3">Intra-group &#916;E</th>
+            <th class="sortable" data-c="2">Redundant</th>
+          </tr></thead>
+          <tbody id="cmpBody"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button id="cmpPrev">&#8592; Prev</button>
+        <button id="cmpNext">Next &#8594;</button>
+        <span class="pinfo" id="cmpInfo"></span>
+      </div>
+    </div>
+    <div id="cmpMatrixPane" hidden>
+      <p class="count" id="cmpMatrixSummary"></p>
+      <div class="mxwrap" id="mxWrap">
+        <table class="mxtb" id="mxTable">
+          <thead><tr id="mxHead"></tr></thead>
+          <tbody id="mxBody"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="cmpMatrixEmpty" hidden></p>
+      <p class="mxlegend">
+        <span><span class="mxsw mxsw-on"></span>redundant (&#916;E &#8804; threshold)</span>
+        <span><span class="mxsw mxsw-off"></span>above threshold</span>
+        <span><span class="mxsw mxsw-self"></span>same item</span>
+        <span><span class="mxsw mxsw-up"></span>not measured &#8212; mirror of the half below</span>
+      </p>
+    </div>
+    <div id="cmpColorPane" hidden>
+      <p class="count" id="cmpColorSummary"></p>
+      <div class="cgwrap" id="cmpColorWrap">
+        <div class="cggrid" id="cmpColorGrid"></div>
+      </div>
+      <p class="mxlegend">
+        <span><span class="cgsw cgsw-ref"></span>reference &#8212; the first card you pick</span>
+        <span><span class="cgsw cgsw-pick"></span>second card &#8212; compared against the reference</span>
+      </p>
+    </div>
+    <div class="mxtip" id="cmpTip" hidden></div>
+  </section>
+
   <section id="v-pt" class="view">
     <p class="hint">Match a Pantone TCX colour to your measured textiles. Pick a
       colour in Step&nbsp;1 (filter by lightness group, search by ID/name, or
@@ -959,88 +1079,83 @@ th.sortable:hover{background:#e2e9f2}
   </div>
 </div>
 
-<div class="modal" id="cmpModal">
+<div class="modal" id="cmpHelpModal">
   <div class="modal-box">
     <div class="modal-head">
-      <h2>&#916;E Compare</h2>
-      <button class="close" id="cmpClose" aria-label="Close">&times;</button>
+      <h2>LD Redundancy Check &mdash; how grouping works</h2>
+      <button class="close" id="cmpHelpClose" aria-label="Close">&times;</button>
     </div>
     <div class="modal-body">
-      <p class="hint">Redundant LD_items within a textile (the first 4 characters
-        of the LD_item). One row is one group of items whose mean colours are
-        the same within the group &#916;E threshold &mdash; so a group of 12
-        means 11 items repeat a colour already specified. Items, not individual
-        samples, are compared, and grouping is complete-linkage: a group only
-        forms when every cross-pair stays within the threshold, so two distinct
-        colours cannot be chained together. Click a row to list its members and
-        compare any of them against the group representative. The <b>Matrix</b>
-        view plots the same groups as a square table &mdash; LD_item across the
-        top and down the side, the pair's &#916;E CMC(2:1) printed in the cells
-        below the diagonal, red when the pair is redundant &mdash; so each group
-        shows up as a solid block on the diagonal. The half above the diagonal
-        is left blank, since it would only repeat the half below. The
-        <b>Color</b> view lays every LD_item of the textile out as a colour
-        card &mdash; tap one card to make it the reference, then a second to open
-        the same side-by-side comparison.</p>
-      <div class="controls">
-        <div class="seg" id="cmpViews" role="tablist" aria-label="View">
-          <button type="button" class="segbtn on" data-v="g" role="tab">Groups</button>
-          <button type="button" class="segbtn" data-v="m" role="tab">Matrix</button>
-          <button type="button" class="segbtn" data-v="c" role="tab">Color</button>
-        </div>
-        <select id="cmpTextile" aria-label="Textile"></select>
-        <label class="inl">Group &#916;E
-          <input id="cmpBaseline" type="number" step="0.1" min="0" value="1.0"></label>
-        <button id="cmpExport" type="button" class="ctlbtn">Export redundant CSV</button>
+      <div class="helpbody">
+        <p>This tool finds <b>redundant colour specifications</b>: LD_items inside
+          one textile whose mean measured colour is the same &mdash; within a
+          tolerance you set &mdash; so a colour is specified more than once.</p>
+
+        <h3>What is an LD_item?</h3>
+        <p>An <b>LD_item</b> is a colour specification, identified by the first
+          four characters of the LD_item code. Many <i>samples</i> can be
+          measured for one LD_item; each LD_item is reduced to a single mean
+          L*a*b* colour before comparison. <b>Items, not individual samples, are
+          compared</b>, so two samples of the same item are never counted as a
+          group.</p>
+
+        <h3>What &ldquo;grouping&rdquo; means</h3>
+        <p>Grouping clusters the LD_items of one textile so that items of the
+          same colour fall into the same group. It uses <b>complete-linkage</b>
+          clustering on the &#916;E CMC(2:1) colour difference:</p>
+        <ul>
+          <li>A group only forms when <b>every cross-pair</b> between its members
+            stays within the group &#916;E threshold &mdash; not merely
+            neighbours in a chain.</li>
+          <li>So a group is a set of items that are <b>all mutually alike</b>.
+            Two distinct colours cannot be chained together through a run of
+            small steps, so a group is never a false merge.</li>
+          <li>Each group has one <b>representative</b> &mdash; its medoid, the
+            member closest to all the others. Every other member is a
+            <b>redundant</b> repeat of that colour.</li>
+        </ul>
+        <p>A group of <code>n</code> items therefore contributes
+          <code>n&minus;1</code> redundant items: one specification is needed,
+          and the other <code>n&minus;1</code> repeat a colour already specified.</p>
+
+        <h3>The group &#916;E threshold</h3>
+        <p>The <b>Group &#916;E</b> box sets the tolerance. Raising it pulls more
+          items into a group (more redundant); lowering it splits groups apart.
+          Changing it only re-clusters &mdash; the cached pairwise distances are
+          reused.</p>
+
+        <h3>The colour difference &#916;E CMC(2:1)</h3>
+        <p>Every comparison uses the CMC(2:1) colour-difference formula on the
+          items' mean L*a*b* values. Its default weights
+          (<code>l=2, c=1</code>) count lightness differences less than chroma,
+          matching how textile colours are usually judged.</p>
+
+        <h3>The Overall table</h3>
+        <p>One row per textile: its LD_item count, the number of groups of
+          repeated colour at the current threshold, and how many of its items are
+          redundant. <b>Redundancy %</b> is the redundant items as a share of
+          that textile's LD_items &mdash; higher means more duplicated
+          specification. Click any column heading to sort; the table opens sorted
+          by redundant count, highest first. Pick a textile name to jump to its
+          Groups view.</p>
+
+        <h3>The four views</h3>
+        <ul>
+          <li><b>Overall</b> &mdash; every textile in one sortable table, with the
+            totals across the whole dataset above it. The view the modal opens on.</li>
+          <li><b>Groups</b> &mdash; one row per group of repeated colour for the
+            selected textile. Click a row to list its members and compare any of
+            them against the group representative.</li>
+          <li><b>Matrix</b> &mdash; the same groups as a square table: LD_item
+            across the top and down the side, the pair's &#916;E printed below the
+            diagonal (red when the pair is redundant), so each group shows up as
+            a solid block on the diagonal. The half above the diagonal is blank,
+            since it would only repeat the half below.</li>
+          <li><b>Color</b> &mdash; every LD_item of the textile as a colour card;
+            tap one to set the reference, then a second to open the side-by-side
+            comparison.</li>
+        </ul>
       </div>
-      <div id="cmpGroupsPane">
-        <p class="count" id="cmpSummary"></p>
-        <div class="table-wrap">
-          <table id="cmpTable">
-            <thead><tr>
-              <th>Colour</th>
-              <th class="sortable" data-c="0">Group</th>
-              <th class="sortable" data-c="1">Items</th>
-              <th>LD_items</th>
-              <th class="sortable" data-c="3">Intra-group &#916;E</th>
-              <th class="sortable" data-c="2">Redundant</th>
-            </tr></thead>
-            <tbody id="cmpBody"></tbody>
-          </table>
-        </div>
-        <div class="pager">
-          <button id="cmpPrev">&#8592; Prev</button>
-          <button id="cmpNext">Next &#8594;</button>
-          <span class="pinfo" id="cmpInfo"></span>
-        </div>
-      </div>
-      <div id="cmpMatrixPane" hidden>
-        <p class="count" id="cmpMatrixSummary"></p>
-        <div class="mxwrap" id="mxWrap">
-          <table class="mxtb" id="mxTable">
-            <thead><tr id="mxHead"></tr></thead>
-            <tbody id="mxBody"></tbody>
-          </table>
-        </div>
-        <p class="empty" id="cmpMatrixEmpty" hidden></p>
-        <p class="mxlegend">
-          <span><span class="mxsw mxsw-on"></span>redundant (&#916;E &#8804; threshold)</span>
-          <span><span class="mxsw mxsw-off"></span>above threshold</span>
-          <span><span class="mxsw mxsw-self"></span>same item</span>
-          <span><span class="mxsw mxsw-up"></span>not measured &#8212; mirror of the half below</span>
-        </p>
-      </div>
-      <div id="cmpColorPane" hidden>
-        <p class="count" id="cmpColorSummary"></p>
-        <div class="cgwrap" id="cmpColorWrap">
-          <div class="cggrid" id="cmpColorGrid"></div>
-        </div>
-        <p class="mxlegend">
-          <span><span class="cgsw cgsw-ref"></span>reference &#8212; the first card you pick</span>
-          <span><span class="cgsw cgsw-pick"></span>second card &#8212; compared against the reference</span>
-        </p>
-      </div>
-      <div class="mxtip" id="cmpTip" hidden></div>
     </div>
   </div>
 </div>
@@ -1356,6 +1471,9 @@ function showView(name){
   Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(b){
     b.classList.toggle('active', b.getAttribute('data-view')===name);
   });
+  /* The matrix sizes its row window to the scroll frame, which has no height
+     while the view is hidden — re-measure once the LD Redundancy tab is up. */
+  if(name==='cmp'&&cmpView==='m') mxWindow(true);
 }
 Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(b){
   b.addEventListener('click',function(){ showView(b.getAttribute('data-view')); });
@@ -1790,6 +1908,76 @@ function refreshCmp(){
   cmpPage=0; cmpOpen={}; renderCmp();
   if(cmpView==='m') renderMatrix();
   else if(cmpView==='c') renderColor();
+  else if(cmpView==='o') renderOverall();
+}
+
+/* ---- Overall (Overall | Groups | Matrix | Color) ------------------------
+   Every textile in the data on one row: how many LD_items it carries, how
+   many groups of repeated colour they fall into at the current threshold,
+   how many of those items are redundant — each group of n contributes n-1 —
+   and that redundant count as a share of the LD_items. The line above the
+   table totals the same numbers over all textiles. This is the view the modal
+   opens on, and it opens sorted by redundant count, highest first (cmpOvDir
+   below); the headings are sortable like the Groups table. A textile the
+   Groups view can also show — one with more than one LD_item, so it made it
+   into the dropdown — is a link: picking it selects that textile and switches
+   to Groups. */
+var cmpOvCol=3, cmpOvDir=-1;   /* default: Redundant column, descending */
+/* Redundancy summed over every textile at the threshold renderOverall just
+   used — the Stats tab's "Redundant LD items" card reads these instead of
+   clustering the whole dataset a second time. */
+var CMP_TOT=null;
+function renderOverall(){
+  var base=cmpBaseline(), keys=Object.keys(CMP_BY).sort();
+  var rows=[], totItems=0, totRed=0;
+  keys.forEach(function(k){
+    var n=(CMP_BY[k]||[]).length, gs=cmpGroups(k,base), red=0;
+    gs.forEach(function(g){ red+=g.size-1; });
+    totItems+=n; totRed+=red;
+    rows.push({key:k,n:n,groups:gs.length,red:red,pct:n?100*red/n:0});
+  });
+  rows.sort(function(a,b){
+    var va,vb;
+    if(cmpOvCol===0){ va=a.key; vb=b.key; }
+    else if(cmpOvCol===1){ va=a.n; vb=b.n; }
+    else if(cmpOvCol===2){ va=a.groups; vb=b.groups; }
+    else if(cmpOvCol===3){ va=a.red; vb=b.red; }
+    else { va=a.pct; vb=b.pct; }
+    var r=(typeof va==='string') ? (va<vb?-1:(va>vb?1:0)) : (va-vb);
+    if(r===0) r=a.key<b.key?-1:(a.key>b.key?1:0);   /* stable: textile A–Z */
+    return cmpOvDir*r;
+  });
+  var html=[];
+  rows.forEach(function(row){
+    html.push('<tr><td class="tl">'+(row.n>1
+        ? '<a href="#" class="itemlink" data-t="'+esc(row.key)+'">'+esc(row.key)+'</a>'
+        : esc(row.key))+'</td>'
+      +'<td>'+row.n.toLocaleString()+'</td>'
+      +'<td>'+row.groups.toLocaleString()+'</td>'
+      +'<td class="red">'+row.red.toLocaleString()+'</td>'
+      +'<td class="pct">'+row.pct.toFixed(1)+'%</td></tr>');
+  });
+  document.getElementById('cmpOverallBody').innerHTML=html.length?html.join('')
+    :'<tr><td class="empty" colspan="5">No LD_items to compare.</td></tr>';
+  cmpOvArrow();
+  document.getElementById('cmpOverallSummary').textContent=
+    keys.length.toLocaleString()+' textiles \u00b7 '
+    +totItems.toLocaleString()+' LD_items \u00b7 '
+    +totRed.toLocaleString()+' redundant'
+    +(totItems?' ('+(100*totRed/totItems).toFixed(1)+'% of LD_items)':'');
+  CMP_TOT={textiles:keys.length,items:totItems,red:totRed};
+  renderStatsTop();
+}
+/* Sort arrow for the Overall table, mirroring cmpArrow() for the Groups one. */
+function cmpOvArrow(){
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#cmpOverallTable th.sortable .arrow'),
+    function(a){ a.remove(); });
+  var th=document.querySelector(
+    '#cmpOverallTable th.sortable[data-c="'+cmpOvCol+'"]');
+  if(!th) return;
+  var sp=document.createElement('span'); sp.className='arrow';
+  sp.textContent=(cmpOvDir===1?'\u25B2':'\u25BC'); th.appendChild(sp);
 }
 
 /* ---- Redundancy matrix (Groups | Matrix) --------------------------------
@@ -1807,7 +1995,7 @@ function refreshCmp(){
    are in the DOM: blank spacer rows above and below keep the scrollbar
    proportional, and each measured pair is remembered for the life of the
    square, so scrolling back up costs nothing. */
-var cmpView='g';
+var cmpView='o';
 
 function setCmpView(v){
   cmpView=v;
@@ -1816,12 +2004,14 @@ function setCmpView(v){
       if(b.getAttribute('data-v')===v) b.classList.add('on');
       else b.classList.remove('on');
     });
+  document.getElementById('cmpOverallPane').hidden=(v!=='o');
   document.getElementById('cmpGroupsPane').hidden=(v!=='g');
   document.getElementById('cmpMatrixPane').hidden=(v!=='m');
   document.getElementById('cmpColorPane').hidden=(v!=='c');
   document.getElementById('cmpTip').hidden=true;
   if(v==='m') renderMatrix();
   else if(v==='c') renderColor();
+  else if(v==='o') renderOverall();
 }
 
 /* Flagged items in block order: group label first, LD_item inside the group. */
@@ -2075,6 +2265,27 @@ function cmpArrow(th){
   var sp=document.createElement('span'); sp.className='arrow';
   sp.textContent=(cmpDir===1?'\u25B2':'\u25BC'); th.appendChild(sp);
 }
+/* A textile picked in the Overall table selects it in the dropdown and hands
+   over to the Groups view, where its groups are laid out. */
+document.getElementById('cmpOverallBody').addEventListener('click',function(e){
+  var a=e.target.closest('a.itemlink');
+  if(!a) return;
+  e.preventDefault();
+  cmpSel.value=a.getAttribute('data-t');
+  setCmpView('g');
+  refreshCmp();
+});
+/* Overall headings sort the table in place — same click-to-toggle behaviour
+   as the Groups table, but on its own sort state (cmpOvCol / cmpOvDir). */
+Array.prototype.forEach.call(
+  document.querySelectorAll('#cmpOverallTable th.sortable'),function(th){
+  th.addEventListener('click',function(){
+    var c=Number(th.getAttribute('data-c'));
+    if(cmpOvCol===c){ cmpOvDir=-cmpOvDir; }
+    else { cmpOvCol=c; cmpOvDir=(c===0?1:-1); }   /* numbers: biggest first */
+    renderOverall();
+  });
+});
 cmpSel.addEventListener('change',refreshCmp);
 /* The threshold only re-clusters — the cached distances are reused. */
 document.getElementById('cmpBaseline').addEventListener('input',refreshCmp);
@@ -2142,24 +2353,21 @@ document.getElementById('cmpExport').addEventListener('click',exportCmp);
 cmpArrow(document.querySelector('#cmpTable th.sortable[data-c="1"]'));
 refreshCmp();
 
-/* ΔE Compare lives in a modal now, opened from the Raw tab's ΔE button. */
-function openCmp(){
-  document.getElementById('cmpModal').style.display='block';
-  document.body.style.overflow='hidden';
-}
-function closeCmp(){
-  document.getElementById('cmpModal').style.display='none';
-  document.getElementById('cmpTip').hidden=true;
-  document.body.style.overflow='';
-}
-document.getElementById('mDE').addEventListener('click',openCmp);
-document.getElementById('cmpClose').addEventListener('click',closeCmp);
-document.getElementById('cmpModal').addEventListener('click',function(e){
-  if(e.target.id==='cmpModal') closeCmp(); });
+/* LD Redundancy is a tab view, shown under the top bar like Match Pantone. */
+/* The ⓘ button opens the help popup (centred) that replaced the old wall of text. */
+document.getElementById('cmpHelp').addEventListener('click',function(){
+  document.getElementById('cmpHelpModal').style.display='flex';
+});
+document.getElementById('cmpHelpClose').addEventListener('click',function(){
+  document.getElementById('cmpHelpModal').style.display='none';
+});
+document.getElementById('cmpHelpModal').addEventListener('click',function(e){
+  if(e.target.id==='cmpHelpModal') e.currentTarget.style.display='none';
+});
 
 /* Pair popup: two colours side by side — big square swatch cards on top, a
-   details table (LD_item / NAME / hex / Lab) below. Opened from the ΔE Compare
-   tab with a group's representative mean against one of its members. */
+   details table (LD_item / NAME / hex / Lab) below. Opened from a group in the
+   LD Redundancy tab with its representative mean against one of its members. */
 function pairCard(ref){
   var h=hexOf(ref.hex);
   return '<div class="big" style="background:'+(h
@@ -2205,7 +2413,7 @@ document.getElementById('pairModal').addEventListener('click',function(e){
   if(e.target.id==='pairModal') closePair(); });
 
 /* Unmatched Raw: the Raw_items that match no LD_item. Same dialog pattern as
-   ΔE Compare — opened from the Raw tab's Unmatched Raw button. */
+   the pair popup — opened from the Raw tab's Unmatched Raw button. */
 function openUn(){
   document.getElementById('unModal').style.display='block';
   document.body.style.overflow='hidden';
@@ -2271,7 +2479,16 @@ function zipStore(files){
   for(i=0;i<body.length;i++){ out.set(body[i],pos); pos += body[i].length; }
   return out;
 }
-function xesc(s){ return String(s).replace(/[&<>"']/g,function(c){
+/* XML 1.0 forbids the C0 controls other than tab/newline/CR, and the two
+   non-characters FFFE/FFFF. Free-text columns (NAME, Description) pick stray
+   control bytes up from the source rows, and one of them is enough to make the
+   worksheet part ill-formed — Excel then refuses the file and offers a repair.
+   Drop them before escaping. */
+function xclean(s){
+  return String(s==null?'':s)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g,'');
+}
+function xesc(s){ return xclean(s).replace(/[&<>"']/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]; }); }
 function colRef(i){
   var s=''; i++;
@@ -2279,7 +2496,7 @@ function colRef(i){
   return s; }
 function xcell(ref,v){
   if(typeof v==='number'&&isFinite(v)) return '<c r="'+ref+'"><v>'+v+'</v></c>';
-  var s=(v==null?'':String(v));
+  var s=xclean(v);
   return s==='' ? '<c r="'+ref+'"/>'
     : '<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+xesc(s)
       +'</t></is></c>'; }
@@ -2361,6 +2578,35 @@ document.getElementById('unlamModal').addEventListener('click',function(e){
    revert to lazy building on the tab click). The guard also lets the tab's
    click listener call buildStats() harmlessly. */
 var STATS={built:false,charts:[]};
+/* Headline KPI strip. Every count is derived from what the other tabs list:
+   a textile is an LD_item's first 4 characters (the key the LD Redundancy tab
+   groups by), the redundancy totals come from the last Overall render — so the
+   card never re-clusters the dataset — and the laminate counts come off the
+   flattened laminate rows so they match the Laminate tab. Called both by
+   buildStats() and, once the threshold settles, by renderOverall(). */
+function renderStatsTop(){
+  var nMasters=0, nSamples=0;
+  LAM.forEach(function(r){
+    if(r[11]==='Laminate Master') nMasters++;
+    else if(r[11]==='Laminate Sample') nSamples++;
+  });
+  var rawTot=(META.raw||0)+(META.unmatched_raw||0);
+  var red=CMP_TOT?CMP_TOT.red:0;
+  function card(k,v,s){
+    return '<div class="stat"><div class="k">'+k+'</div>'
+      +'<div class="v">'+Number(v||0).toLocaleString()+'</div>'
+      +(s?'<div class="s">'+s+'</div>':'')+'</div>';
+  }
+  document.getElementById('statsTop').innerHTML=
+    card('Textiles', Object.keys(CMP_BY).length, 'first 4 chars of LD_item')
+    +card('LD items', ITEMS.length)
+    +card('Redundant LD items', red,
+          (META.items?100*red/META.items:0).toFixed(1)+'% of LD items')
+    +card('Raw samples', rawTot,
+          (rawTot?100*(META.raw||0)/rawTot:0).toFixed(1)+'% matched')
+    +card('Laminate masters', nMasters,
+          nSamples.toLocaleString()+' laminate samples');
+}
 /* Vertical Pareto bars for the categorical Stats cards: counts on the left
    axis, a cumulative-% line on the right one. The cards list only the top 50
    categories, but the running total is divided by the *whole* population, so
@@ -2409,23 +2655,8 @@ function buildStats(){
   if(STATS.built) return;
   STATS.built=true;
 
-  /* 0. Headline counts. Laminate masters and samples are counted off the
-     flattened laminate rows so the cards match what the Laminate tab lists. */
-  (function(){
-    var nMasters=0, nSamples=0;
-    LAM.forEach(function(r){
-      if(r[11]==='Laminate Master') nMasters++;
-      else if(r[11]==='Laminate Sample') nSamples++;
-    });
-    function card(k,v){ return '<div class="stat"><div class="k">'+k
-      +'</div><div class="v">'+Number(v||0).toLocaleString()+'</div></div>'; }
-    document.getElementById('statsTop').innerHTML=
-      card('LD items', ITEMS.length)
-      +card('Raw samples (matched)', META.raw)
-      +card('Raw samples (unmatched)', META.unmatched_raw)
-      +card('Laminate masters', nMasters)
-      +card('Laminate samples', nSamples);
-  })();
+  /* 0. Headline counts — a five-card KPI strip. */
+  renderStatsTop();
 
   /* 1. Sample_type mix (donut) */
   (function(){
@@ -3219,7 +3450,8 @@ document.getElementById('modal').addEventListener('click',function(e){
 document.addEventListener('keydown',function(e){
   if(e.key!=='Escape') return;
   if(document.getElementById('pairModal').style.display!=='none'){ closePair(); return; }
-  if(document.getElementById('cmpModal').style.display==='block'){ closeCmp(); return; }
+  if(document.getElementById('cmpHelpModal').style.display!=='none'){
+    document.getElementById('cmpHelpModal').style.display='none'; return; }
   if(document.getElementById('modal').style.display==='block'){ closeItem(); return; }
   if(document.getElementById('unModal').style.display==='block'){ closeUn(); return; }
   if(document.getElementById('unlamModal').style.display==='block') closeUnLam(); });
@@ -3521,6 +3753,13 @@ def main():
     if not records:
         sys.exit("Input data is empty.")
 
+    # LD_item sometimes arrives with a trailing "-"; drop it so the item joins
+    # its Raw samples and matches the rest of the table's spellings.
+    for record in records:
+        item = _text(record.get("LD_item"))
+        if item.endswith("-"):
+            record["LD_item"] = item.rstrip("-").rstrip()
+
     payload = build_payload(records)
     meta = payload["meta"]
     if not meta["items"]:
@@ -3547,8 +3786,8 @@ def main():
           f"Unmatched Raw items: {meta['unmatched_items']} "
           f"({meta['unmatched_raw']} rows) | Laminate: {meta['lam']} "
           f"({meta['lamprod']} Products, {meta['unmatched_lam']} unmatched rows)")
-    print(f"Tabs  : 4 (Stats, Raw, Laminate, Match Pantone) "
-          f"+ DE Compare / Unmatched Raw / Unmatched Laminate dialogs")
+    print(f"Tabs  : 5 (Stats, Raw, Laminate, LD Redundancy, Match Pantone) "
+          f"+ Unmatched Raw / Unmatched Laminate dialogs")
     print(f"Size  : {out_path.stat().st_size / 1024 / 1024:.1f} MB "
           f"in {time.perf_counter() - started:.1f}s")
     # Remind the user where the report was saved, then open it in the browser.

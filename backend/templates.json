@@ -1,12 +1,12 @@
 {
-  "published": "2026-09-28T22:16:24",
+  "published": "2026-09-29T10:52:15",
   "templates": [
     {
       "name": "analyze-color-data.py",
       "stem": "analyze-color-data",
       "title": "Color Data",
       "applies_to": "Color_Data lab colour measurements (LD / Raw / Laminate)",
-      "description": "Lab colour explorer in one four-tab page: an LD heat map, unmatched Raw items, laminate ΔE scoring and a like-colour pair comparison.",
+      "description": "Lab colour explorer in one five-tab page: an LD heat map, unmatched Raw items, laminate ΔE scoring, LD redundancy checking and a Pantone match.",
       "details": {
         "requires": [
           "Sample_type",
@@ -26,19 +26,20 @@
           "Description"
         ],
         "outputs": [
-          "One self-contained HTML page with four tabs, opened in your browser",
+          "One self-contained HTML page with five tabs, opened in your browser",
           "LD heat map: one row per LD_item coloured by the mean of its LD samples; clicking an item opens its ΔE-by-batch detail view",
-          "Unmatched Raw and Laminate tables with CIEDE2000 ΔE scoring against a selectable reference LD_item",
-          "ΔE Compare: like-colour pairs within a textile, with baseline highlighting and a side-by-side colour popup"
+          "Unmatched Raw and Laminate tables with CMC(2:1) ΔE scoring against a selectable reference LD_item",
+          "LD Redundancy: repeat LD_items within a textile clustered at a Group ΔE, listed overall / by group / as a matrix / as a colour grid, with a redundant-items CSV export",
+          "Match Pantone: the nearest LD_item or unmatched Raw_item to a Pantone TCX colour by CMC(2:1)"
         ]
       },
-      "size": "161 KB",
-      "updated": "2026-09-28",
+      "size": "173 KB",
+      "updated": "2026-09-29",
       "example": {
         "name": "color_data.html",
         "object": "templates/examples/color_data.html",
         "label": "Color Data — Lab Colour Explorer",
-        "size": "11.5 MB"
+        "size": "24.9 MB"
       }
     },
     {

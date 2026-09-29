@@ -207,8 +207,9 @@ TEMPLATE_INFO = {
         "title": "Color Data",
         "applies_to": "Color_Data lab colour measurements (LD / Raw / Laminate)",
         "description": (
-            "Lab colour explorer in one four-tab page: an LD heat map, unmatched "
-            "Raw items, laminate ΔE scoring and a like-colour pair comparison."
+            "Lab colour explorer in one five-tab page: an LD heat map, unmatched "
+            "Raw items, laminate ΔE scoring, LD redundancy checking and a Pantone "
+            "match."
         ),
         "requires": [
             "Sample_type",
@@ -228,13 +229,16 @@ TEMPLATE_INFO = {
             "Description",
         ],
         "outputs": [
-            "One self-contained HTML page with four tabs, opened in your browser",
+            "One self-contained HTML page with five tabs, opened in your browser",
             "LD heat map: one row per LD_item coloured by the mean of its LD "
             "samples; clicking an item opens its ΔE-by-batch detail view",
-            "Unmatched Raw and Laminate tables with CIEDE2000 ΔE scoring "
+            "Unmatched Raw and Laminate tables with CMC(2:1) ΔE scoring "
             "against a selectable reference LD_item",
-            "ΔE Compare: like-colour pairs within a textile, with baseline "
-            "highlighting and a side-by-side colour popup",
+            "LD Redundancy: repeat LD_items within a textile clustered at a "
+            "Group ΔE, listed overall / by group / as a matrix / as a colour "
+            "grid, with a redundant-items CSV export",
+            "Match Pantone: the nearest LD_item or unmatched Raw_item to a "
+            "Pantone TCX colour by CMC(2:1)",
         ],
     },
     "analyze-lims-raw-genealogy": {
