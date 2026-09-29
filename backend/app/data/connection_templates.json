@@ -52,6 +52,7 @@
     "options": [
       {
         "name": "Lot_Genealogy",
+        "require_filter": true,
         "fields": [
           { "key": "lot_number", "alias": "lot_number", "label": "mesa_event_history.lot_number", "type": "varchar", "operator": "like", "optional": true },
           { "key": "from_lot", "alias": "from_lot", "label": "mesa_event_history.from_lot", "type": "varchar", "operator": "like", "optional": true },
@@ -77,7 +78,16 @@
         ]
       },
       {
-        "name": "Machine uptime",
+        "name": "Scrap_Summary",
+        "fields": [
+          { "key": "branch_plant", "alias": "Branch_Plant", "label": "branch_plant", "type": "varchar", "operator": "=", "optional": true, "default": "B180" },
+          { "key": "fmi_date", "alias": "FMI_Date", "label": "fmi_date", "type": "datetime", "operator": ">=", "optional": true },
+          { "key": "main_group", "alias": "Main_Group", "label": "main_group", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group_description", "alias": "Main_Group_Description", "label": "main_group_description", "type": "varchar", "operator": "like", "optional": true }
+        ]
+      },
+      {
+        "name": "Machine_Uptime",
         "fields": [
           { "key": "plant", "alias": "plant", "label": "rsc.plant", "type": "varchar", "operator": "=", "optional": true, "default": "B180" },
           { "key": "mes_resource", "alias": "mes_resource", "label": "rsc.mes_resource", "type": "varchar", "operator": "=", "optional": true, "placeholder": "180L26C" },
@@ -177,6 +187,37 @@
             "operator": ">=",
             "optional": true
           }
+        ]
+      },
+      {
+        "name": "Hold_Trace",
+        "fields": [
+          { "key": "wo", "alias": "WO", "label": "g_lsn.G_WO", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "item", "alias": "ITEM", "label": "g_lsn.G_ITEM", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group", "alias": "MAIN_GROUP", "label": "s.G_MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group_description", "alias": "MAIN_GROUP_DESCRIPTION", "label": "gmp.DESCRIPTION", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "manuf_date", "alias": "Manuf. Date", "label": "g_lsn.G_MAN_DATE", "type": "datetime", "operator": ">=", "optional": false }
+        ]
+      },
+      {
+        "name": "LIMS_Scrap",
+        "fields": [
+          { "key": "wo", "alias": "WO", "label": "s.G_WO", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "item", "alias": "ITEM", "label": "s.G_ITEM", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group", "alias": "MAIN_GROUP", "label": "s.G_MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product_description", "alias": "PRODUCT_DESCRIPTION", "label": "s.DESCRIPTION", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "manuf_date", "alias": "Manuf. Date", "label": "s.G_MAN_DATE", "type": "datetime", "operator": ">=", "optional": false }
+        ]
+      },
+      {
+        "name": "Reject_Pending",
+        "fields": [
+          { "key": "wo", "alias": "WO", "label": "g_lsn.G_WO", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "item", "alias": "Item", "label": "g_lsn.G_ITEM", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group", "alias": "Main Group", "label": "s.G_MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product_description", "alias": "Product Description", "label": "s.DESCRIPTION", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "hold_code", "alias": "HOLD_CODE", "label": "g_lsn.HOLD_CODE", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "manuf_date", "alias": "Manuf. Date", "label": "g_lsn.G_MAN_DATE", "type": "datetime", "operator": ">=", "optional": true }
         ]
       }
     ]

@@ -464,13 +464,13 @@ function toJetDateSql(value: string): string {
   return `#${normalizeTimestamp(value)}#`
 }
 
-/** Pick the date-literal dialect for a connection. Access file connections
- *  carry no database_type, so the resolved DBMS name and the connection kind
- *  are consulted as well. */
+/** Pick the date-literal dialect for a connection. Connections left on
+ *  'auto' carry no database_type, so the resolved DBMS name and the connection
+ *  kind are consulted as well — the preview must match what the backend emits. */
 function sqlDateDialect(connection: DbConnection | null | undefined): SqlDateDialect {
   const type = (connection?.database_type ?? '').toLowerCase()
-  if (type === 'oracle') return 'oracle'
   const dbms = (connection?.resolved_dbms ?? '').toLowerCase()
+  if (type === 'oracle' || dbms.includes('oracle')) return 'oracle'
   if (type === 'jet' || connection?.type === 'access' || dbms.includes('access')) return 'access'
   return 'plain'
 }
@@ -650,6 +650,38 @@ function missingRequiredDates(
     if (!((values[field.key] ?? '').trim())) missing.push(field.label)
   }
   return missing
+}
+
+/** True when at least one criterion of the template is filled in — a configured
+ *  field carrying a value (or an is null/is not null choice), or a user-added
+ *  parameter. Mirrors the backend's require_filter check so "Run" can be
+ *  blocked before the request is sent. */
+function hasAnyTemplateFilter(
+  option: ConnectionTemplateOption,
+  values: Record<string, string>,
+  operators: Record<string, string>,
+  extraFilters: ExtraFilterRow[] = [],
+): boolean {
+  const hasFromPlaceholder =
+    (option.sql ?? '').includes('<>') && option.fields.some((field) => field.key === 'operation')
+  for (const field of option.fields) {
+    if (!field.key) continue
+    // The 'operation' field feeds the '<>' FROM placeholder, not a WHERE
+    // condition — a filled value still counts as a criterion.
+    if (hasFromPlaceholder && field.key === 'operation') {
+      if ((values[field.key] ?? '').trim()) return true
+      continue
+    }
+    const op = (operators[field.key] ?? field.operator ?? '=').toLowerCase()
+    if (IS_NULL_OPERATORS.has(op)) return true
+    if ((values[field.key] ?? '').trim()) return true
+  }
+  for (const filter of extraFilters) {
+    if (!filter.column) continue
+    if (IS_NULL_OPERATORS.has(filter.operator.toLowerCase())) return true
+    if (filter.value.trim()) return true
+  }
+  return false
 }
 
 type Mode = 'builder' | 'sql'
@@ -1004,6 +1036,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   /** Labels of the required template date criteria left blank on the last
    *  "Run" attempt; non-null opens the reminder dialog and blocks the query. */
   const [missingDateReminder, setMissingDateReminder] = useState<string[] | null>(null)
+  /** True when a require_filter template was run with no criterion at all;
+   *  opens the reminder dialog and blocks the query. */
+  const [requireFilterReminder, setRequireFilterReminder] = useState(false)
   /** Distinct operations from DL_ChannelMaster, backing the Process_Data
    *  'operation' field dropdown (single select). */
   const [fabOperations, setFabOperations] = useState<string[]>([])
@@ -1819,6 +1854,15 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         const missing = missingRequiredDates(selectedFabOption, fabValues, fabOperators)
         if (missing.length > 0) {
           setMissingDateReminder(missing)
+          return
+        }
+        // Options that must be filtered refuse to run with zero criteria —
+        // otherwise they would scan the whole table.
+        if (
+          selectedFabOption.require_filter &&
+          !hasAnyTemplateFilter(selectedFabOption, fabValues, fabOperators, fabExtraFilters)
+        ) {
+          setRequireFilterReminder(true)
           return
         }
       }
@@ -4266,6 +4310,26 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           <Button
             variant="contained"
             onClick={() => setMissingDateReminder(null)}
+            sx={{ minHeight: 40, minWidth: 96 }}
+          >
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Popup reminder when a require_filter template is run with no criterion */}
+      <Dialog open={requireFilterReminder} onClose={() => setRequireFilterReminder(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Filter required</DialogTitle>
+        <DialogContent dividers>
+          <Typography gutterBottom>
+            Specify at least one parameter before running — otherwise the query would search the
+            entire table.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="contained"
+            onClick={() => setRequireFilterReminder(false)}
             sx={{ minHeight: 40, minWidth: 96 }}
           >
             OK

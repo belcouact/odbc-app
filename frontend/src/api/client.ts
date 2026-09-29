@@ -116,6 +116,9 @@ export interface ConnectionTemplateOption {
   sql?: string
   /** Derived columns appended to every result this option returns. */
   computed_columns?: ConnectionTemplateComputedColumn[]
+  /** When true the option must not run with zero criteria — at least one field
+   *  or user-added parameter has to be filled in (guards full-table scans). */
+  require_filter?: boolean
 }
 
 /** A user-added template parameter: a column from the base SQL plus a filter. */

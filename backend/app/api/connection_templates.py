@@ -768,6 +768,10 @@ def _effective_options(template_key: str) -> list[dict] | None:
                     # Per-row derived columns evaluated by the app after the
                     # query (see frontend/src/utils/formula.ts).
                     "computed_columns": cfg.get("computed_columns", []),
+                    # When true the option refuses to run with zero criteria —
+                    # at least one configured field or user-added parameter must
+                    # be supplied (guards full-table scans).
+                    "require_filter": bool(cfg.get("require_filter")),
                     "sql": sql,
                 }
             )
@@ -826,6 +830,9 @@ def list_connection_templates(template_key: str):
                 "fields": public_fields(o.get("fields", [])),
                 # Derived columns applied to every result this option returns.
                 "computed_columns": o.get("computed_columns", []),
+                # The client blocks "Run" when this is set and no criterion is
+                # filled in (the backend re-checks authoritatively on run).
+                "require_filter": bool(o.get("require_filter")),
                 "sql": o.get("sql") or "",
             }
             for o in options
@@ -1126,16 +1133,37 @@ def run_connection_template(payload: TemplateRunRequest):
             params.append(ef.value)
 
     fragments.extend(extra_fragments)
+
+    # Options marked require_filter must be run with at least one criterion —
+    # otherwise the '{}' anchor gets nothing and the query scans the whole
+    # table. A filled 'operation' (the '<>' FROM placeholder) counts too.
+    op_value = str(payload.values.get("operation", "")).strip()
+    if option.get("require_filter") and not fragments and not (has_from_placeholder and op_value):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Option '{payload.option_name}' requires at least one criterion — "
+                "fill in a field or add a parameter before running."
+            ),
+        )
+
     sql = template_sql
     # Substitute the selected operation value into the '<>' FROM placeholder
     # (Process_Data) before injecting the WHERE criteria at '{}'.
-    op_value = str(payload.values.get("operation", "")).strip()
     if has_from_placeholder and op_value:
         from_value = _resolve_process_table(op_value)
         sql = sql.replace("<>", from_value)
     if "{}" in sql:
+        # A template may carry more than one '{}' anchor (e.g. an aggregation
+        # query that filters both a numerator and a denominator subquery).
+        # Every anchor receives the same fragment set, so the bound parameters
+        # must be repeated once per anchor to keep the '?' count in step with
+        # the values — otherwise ODBC raises a parameter-count mismatch.
+        anchor_count = sql.count("{}")
         injection = ("\n  " + "\n  ".join(fragments)) if fragments else ""
         sql = sql.replace("{}", injection)
+        if anchor_count > 1 and params:
+            params = params * anchor_count
     elif fragments:
         sql = sql.rstrip() + "\n  " + "\n  ".join(fragments)
 

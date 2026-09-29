@@ -3,7 +3,7 @@
 """
 analyze-color-data.py
 
-Lab colour explorer for Color_Data: one self-contained HTML page with five tabs.
+Lab colour explorer for Color_Data: one self-contained HTML page with six tabs.
 
   1. Stats          - overview charts: sample-type mix (pie), LD_item count
                       per textile, distinct Raw batches per Raw_item, measurements
@@ -47,6 +47,12 @@ Lab colour explorer for Color_Data: one self-contained HTML page with five tabs.
                       — and the tab reports the nearest item by CMC(2:1):
                       the nearest LD_item when the chosen textile has one,
                       otherwise the nearest unmatched Raw_item.
+  6. Intro          - the background for the numbers the other tabs report:
+                      what L*a*b* describes, a drawn 3D L*a*b* colour ball,
+                      the Delta E CMC(2:1) equation derived step by
+                      step and worked through on an example pair, and how a
+                      Lab triplet becomes the hex shown in every Colour
+                      column (with a live L*a*b* -> hex converter).
 
 The LD Redundancy tab gathers the LD samples of one LD_item prefix that sit
 within the Group ΔE of each other into a group by complete linkage and keeps
@@ -756,6 +762,67 @@ th.sortable:hover{background:#e2e9f2}
 .pt-ctrl{display:grid;gap:12px;grid-template-columns:1fr}
 .pt-ctrl>*{min-width:0}
 .pt-panel input[type=number]{width:100%;max-width:160px}
+/* ---- Intro (the background tab: L*a*b*, ΔE CMC(2:1), Lab -> hex) ---- */
+.intro-grid{display:grid;gap:10px;grid-template-columns:1fr}
+.intro-grid>*{min-width:0}
+.intro-grid>.card{margin-bottom:0}
+/* Equations: real MathML, so fractions, roots, sub/superscripts and fences
+   typeset the way a maths text would. The box groups a formula with its
+   caption; a formula wider than a phone scrolls sideways instead of wrapping. */
+.eq{font-size:13px;line-height:1.7;background:#f7f9fc;border:1px solid var(--line);
+    border-left:3px solid var(--brand);border-radius:8px;padding:10px 12px;
+    margin:6px 0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    color:#26313f;text-align:center}
+.eq math{font-family:"Cambria Math","STIX Two Math","Latin Modern Math",serif;
+         font-size:1.18em;color:#1f2933;margin:0}
+.eq math+math{margin-top:10px}
+.eq .eq-cap{display:block;font-family:inherit;font-size:11.5px;line-height:1.5;
+            color:var(--muted);margin:8px auto 0;max-width:640px;text-align:center}
+.eq .eq-cap:first-child{margin-top:0;margin-bottom:8px}
+/* Fallback: if a browser has no MathML the <math> text still reads in order. */
+.eq math mtext{font-family:inherit}
+.steplist{counter-reset:st;list-style:none;margin:0;padding:0}
+.steplist>li{counter-increment:st;position:relative;padding:0 0 12px 34px;
+             font-size:13px;line-height:1.6}
+.steplist>li::before{content:counter(st);position:absolute;left:0;top:-1px;
+  width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;
+  font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+/* The L*a*b* ball: a canvas the script draws a shaded point-cloud sphere into.
+   touch-action:pan-y lets a finger still scroll the page vertically while a
+   sideways drag spins the ball. */
+#introAbChart{position:relative;width:100%;height:340px;border-radius:10px;
+              overflow:hidden;background:radial-gradient(circle at 50% 42%,
+              #ffffff 0%,#eef2f7 68%,#e2e8f0 100%);
+              border:1px solid var(--line)}
+#introAbChart canvas{display:block;width:100%;height:100%;
+                     touch-action:pan-y;cursor:grab;
+                     user-select:none;-webkit-user-select:none}
+#introAbChart canvas.dragging{cursor:grabbing}
+.intro-note{font-size:12px;color:var(--muted);margin:6px 2px 0;line-height:1.55}
+.intro-worked .pairtable td.sub{font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+.intro-worked .pairtable tr.final td{font-weight:700;color:var(--brand);background:#eef2f7}
+/* Live L*a*b* -> hex converter: a slider and a box per channel, the result
+   beside them. Touch targets stay ≥48 px on a phone. */
+.conv{display:grid;gap:12px;grid-template-columns:1fr}
+.conv-in{min-width:0}
+.labrow{display:grid;grid-template-columns:52px minmax(0,1fr) 72px;gap:8px;
+        align-items:center;margin-bottom:6px}
+.labrow label{font-size:12px;font-weight:600;color:var(--brand)}
+.labrow input[type=number]{width:100%;min-height:48px;padding:6px 8px}
+.labrow input[type=range]{width:100%;min-height:48px}
+.conv-out{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.conv-sw{flex:0 0 auto;width:96px;height:96px;border-radius:10px;border:1px solid var(--line)}
+.conv-txt{min-width:0}
+.conv-hex{font-family:ui-monospace,Consolas,monospace;font-size:20px;font-weight:700;
+          color:var(--brand)}
+.conv-rgb{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--muted);
+          margin-top:2px}
+@media(min-width:1024px){
+  .intro-grid{grid-template-columns:1fr 1fr}
+  .intro-grid>.wide{grid-column:1/-1}
+  .conv{grid-template-columns:minmax(0,1fr) 250px}
+  #introAbChart{height:420px}
+}
 @media(min-width:1024px){
   .pt-layout{grid-template-columns:215px minmax(0,1fr)}
   .pt-ctrl{grid-template-columns:minmax(0,1fr) 230px}
@@ -785,6 +852,7 @@ th.sortable:hover{background:#e2e9f2}
     <button class="tab" data-view="lam" role="tab">Laminate</button>
     <button class="tab" data-view="cmp" role="tab">LD Redundancy</button>
     <button class="tab" data-view="pt" role="tab">Match Pantone</button>
+    <button class="tab" data-view="intro" role="tab">Intro</button>
   </div>
 </header>
 
@@ -1031,6 +1099,519 @@ th.sortable:hover{background:#e2e9f2}
         <p class="pt-step">Output</p>
         <div class="pt-out" id="ptOut"></div>
       </div>
+    </div>
+  </section>
+
+  <section id="v-intro" class="view">
+    <p class="hint">The background behind every number in this page: what
+      L*a*b* measures, how the 3D L*a*b* colour ball is drawn, the
+      &Delta;E CMC(2:1) equation built up step by step and worked through on an
+      example pair, and how a Lab triplet becomes the hex code printed in the
+      Colour columns.</p>
+    <div class="intro-grid">
+
+      <div class="card">
+        <div class="card-title">1 &middot; What L*a*b* describes</div>
+        <div class="helpbody">
+          <p>CIELAB is a <b>device-independent</b> colour space: the same
+            L*a*b* triplet means the same visual colour whatever instrument
+            measured it, so it is the right space for comparing a supplier's
+            Raw sample with a Gore LD_item &mdash; not the RGB or Hex the
+            instrument happens to report.</p>
+          <ul>
+            <li><b>L*</b> &mdash; lightness, 0 (black) to 100 (diffuse white).</li>
+            <li><b>a*</b> &mdash; the red&ndash;green axis: positive is
+              red / magenta, negative is green.</li>
+            <li><b>b*</b> &mdash; the yellow&ndash;blue axis: positive is
+              yellow, negative is blue.</li>
+          </ul>
+          <p>A neutral grey has <code>a* = b* = 0</code>. The further a colour
+            sits from that grey axis, the more chromatic it is. Two derived
+            quantities name those two things:</p>
+          <div class="eq">
+            <math display="block">
+              <msup><mi>C</mi><mo>&#x2217;</mo></msup><mo>=</mo>
+              <msqrt>
+                <msup><msup><mi>a</mi><mo>&#x2217;</mo></msup><mn>2</mn></msup>
+                <mo>+</mo>
+                <msup><msup><mi>b</mi><mo>&#x2217;</mo></msup><mn>2</mn></msup>
+              </msqrt>
+            </math>
+            <span class="eq-cap">chroma &mdash; how colourful: the straight
+              distance of the colour from the grey axis.</span>
+          </div>
+          <div class="eq">
+            <math display="block">
+              <msup><mi>h</mi><mo>&#x00B0;</mo></msup><mo>=</mo>
+              <mi>atan2</mi><mo>(</mo><msup><mi>b</mi><mo>&#x2217;</mo></msup><mo>,</mo>
+              <msup><mi>a</mi><mo>&#x2217;</mo></msup><mo>)</mo>
+            </math>
+            <span class="eq-cap">hue angle, 0&ndash;360&deg; &mdash; which
+              colour family, read anticlockwise from the +a* (red) axis.</span>
+          </div>
+          <p>L*, C* and h&deg; are the same information in cylindrical form, and
+            are what CMC actually weights (a pale off-white and a saturated navy
+            are not judged by the same tolerance).</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">2 &middot; The L*a*b* colour ball, drawn</div>
+        <div class="helpbody">
+          <p>Every colour is one point in a solid. Think of it as a ball:
+            <b>up&ndash;down</b> is L* (light top, dark bottom),
+            <b>left&ndash;right</b> is a* (green to red) and
+            <b>front&ndash;back</b> is b* (blue to yellow). Grey runs straight
+            up the middle; the surface is the most saturated colour of each
+            hue.</p>
+        </div>
+        <div id="introAbChart"></div>
+        <p class="intro-note" id="introAbNote"></p>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">3 &middot; &Delta;E CMC(2:1) &mdash; the equation, step by step</div>
+        <div class="helpbody">
+          <p>&Delta;E (&ldquo;delta E&rdquo;) reduces a colour difference to one
+            number. The plain CIE76 form is just the straight-line distance in
+            L*a*b*:</p>
+          <div class="eq">
+            <math display="block">
+              <mi>&#x0394;</mi><msup><mi>E</mi><mo>&#x2217;</mo></msup><mi>ab</mi>
+              <mo>=</mo>
+              <msqrt>
+                <msup><mrow><mi>&#x0394;</mi><msup><mi>L</mi><mo>&#x2217;</mo></msup></mrow><mn>2</mn></msup>
+                <mo>+</mo>
+                <msup><mrow><mi>&#x0394;</mi><msup><mi>a</mi><mo>&#x2217;</mo></msup></mrow><mn>2</mn></msup>
+                <mo>+</mo>
+                <msup><mrow><mi>&#x0394;</mi><msup><mi>b</mi><mo>&#x2217;</mo></msup></mrow><mn>2</mn></msup>
+              </msqrt>
+            </math>
+            <span class="eq-cap">CIE76: the plain Euclidean distance in
+              L*a*b*.</span>
+          </div>
+          <p>It counts a lightness error and a hue error as equally serious,
+            which is not how a colour is judged on fabric. <b>CMC</b> rescales
+            each component before combining them; the textile weighting
+            <b>CMC(2:1)</b> (<code>l = 2</code>, <code>c = 1</code>) makes a
+            lightness difference count half as heavily as the same chroma
+            difference. This is exactly what <code>deltaECMC()</code> in this
+            page evaluates, and what every &Delta;E shown in the other tabs
+            means.</p>
+          <p><b>The reference comes first.</b> The formula is asymmetric: the
+            first triplet (L1, a1, b1) is the <i>standard</i> &mdash; an LD_item
+            mean, a master plate, a Pantone colour &mdash; and the second
+            (L2, a2, b2) is the <i>measurement</i> being judged against it.
+            Swapping them gives a different answer, so the order is not
+            cosmetic.</p>
+          <ol class="steplist">
+            <li><b>Chroma of each colour</b> &mdash; how far each sits from the
+              grey axis.
+              <div class="eq">
+                <math display="block">
+                  <msub><mi>C</mi><mn>1</mn></msub><mo>=</mo>
+                  <msqrt>
+                    <msubsup><mi>a</mi><mn>1</mn><mn>2</mn></msubsup>
+                    <mo>+</mo>
+                    <msubsup><mi>b</mi><mn>1</mn><mn>2</mn></msubsup>
+                  </msqrt>
+                  <mo>,</mo><mspace width="2em"></mspace>
+                  <msub><mi>C</mi><mn>2</mn></msub><mo>=</mo>
+                  <msqrt>
+                    <msubsup><mi>a</mi><mn>2</mn><mn>2</mn></msubsup>
+                    <mo>+</mo>
+                    <msubsup><mi>b</mi><mn>2</mn><mn>2</mn></msubsup>
+                  </msqrt>
+                </math>
+              </div></li>
+            <li><b>Lightness weight S<sub>L</sub></b> &mdash; taken from the
+              <i>reference</i>, so the same batch can pass against a dark
+              standard and fail against a light one.
+              <div class="eq">
+                <math display="block">
+                  <msub><mi>S</mi><mi>L</mi></msub><mo>=</mo>
+                  <mo>{</mo>
+                  <mtable>
+                    <mtr>
+                      <mtd><mn>0.511</mn></mtd>
+                      <mtd><mtext>if&#xA0;</mtext><msub><mi>L</mi><mn>1</mn></msub><mo>&lt;</mo><mn>16</mn></mtd>
+                    </mtr>
+                    <mtr>
+                      <mtd>
+                        <mfrac>
+                          <mrow><mn>0.040975</mn><mo>&#x22C5;</mo><msub><mi>L</mi><mn>1</mn></msub></mrow>
+                          <mrow><mn>1</mn><mo>+</mo><mn>0.01765</mn><mo>&#x22C5;</mo><msub><mi>L</mi><mn>1</mn></msub></mrow>
+                        </mfrac>
+                      </mtd>
+                      <mtd><mtext>otherwise</mtext></mtd>
+                    </mtr>
+                  </mtable>
+                </math>
+              </div></li>
+            <li><b>Chroma weight S<sub>C</sub></b> &mdash; also reference-driven:
+              a saturated standard hides more error than a dull one.
+              <div class="eq">
+                <math display="block">
+                  <msub><mi>S</mi><mi>C</mi></msub><mo>=</mo>
+                  <mfrac>
+                    <mrow><mn>0.0638</mn><mo>&#x22C5;</mo><msub><mi>C</mi><mn>1</mn></msub></mrow>
+                    <mrow><mn>1</mn><mo>+</mo><mn>0.0131</mn><mo>&#x22C5;</mo><msub><mi>C</mi><mn>1</mn></msub></mrow>
+                  </mfrac>
+                  <mo>+</mo><mn>0.638</mn>
+                </math>
+              </div></li>
+            <li><b>Hue angle, and the hue weight S<sub>H</sub></b> &mdash;
+              h&deg;1 picks the hue family, T scales tolerance by it, and F
+              fades T out as the standard approaches grey.
+              <div class="eq">
+                <math display="block">
+                  <msubsup><mi>h</mi><mn>1</mn><mo>&#x00B0;</mo></msubsup><mo>=</mo>
+                  <mi>atan2</mi><mo>(</mo><msub><mi>b</mi><mn>1</mn></msub><mo>,</mo>
+                  <msub><mi>a</mi><mn>1</mn></msub><mo>)</mo>
+                </math>
+                <span class="eq-cap">in degrees, then folded into
+                  0&ndash;360&deg;</span>
+                <math display="block">
+                  <mi>T</mi><mo>=</mo><mo>{</mo>
+                  <mtable>
+                    <mtr>
+                      <mtd><mn>0.56</mn><mo>+</mo>
+                        <mrow><mo>|</mo><mn>0.2</mn><mo>&#x22C5;</mo>
+                        <mi>cos</mi><mo>(</mo><msubsup><mi>h</mi><mn>1</mn><mo>&#x00B0;</mo></msubsup>
+                        <mo>+</mo><mn>168</mn><mo>&#x00B0;</mo><mo>)</mo><mo>|</mo></mrow></mtd>
+                      <mtd><mtext>if&#xA0;</mtext><mn>164</mn><mo>&#x00B0;</mo><mo>&#x2264;</mo>
+                        <msubsup><mi>h</mi><mn>1</mn><mo>&#x00B0;</mo></msubsup><mo>&#x2264;</mo>
+                        <mn>345</mn><mo>&#x00B0;</mo></mtd>
+                    </mtr>
+                    <mtr>
+                      <mtd><mn>0.36</mn><mo>+</mo>
+                        <mrow><mo>|</mo><mn>0.4</mn><mo>&#x22C5;</mo>
+                        <mi>cos</mi><mo>(</mo><msubsup><mi>h</mi><mn>1</mn><mo>&#x00B0;</mo></msubsup>
+                        <mo>+</mo><mn>35</mn><mo>&#x00B0;</mo><mo>)</mo><mo>|</mo></mrow></mtd>
+                      <mtd><mtext>otherwise</mtext></mtd>
+                    </mtr>
+                  </mtable>
+                </math>
+                <math display="block">
+                  <mi>F</mi><mo>=</mo>
+                  <msqrt>
+                    <mfrac>
+                      <msubsup><mi>C</mi><mn>1</mn><mn>4</mn></msubsup>
+                      <mrow><msubsup><mi>C</mi><mn>1</mn><mn>4</mn></msubsup><mo>+</mo><mn>1900</mn></mrow>
+                    </mfrac>
+                  </msqrt>
+                  <mo>,</mo><mspace width="2em"></mspace>
+                  <msub><mi>S</mi><mi>H</mi></msub><mo>=</mo>
+                  <msub><mi>S</mi><mi>C</mi></msub>
+                  <mo>(</mo><mi>F</mi><mo>&#x22C5;</mo><mi>T</mi><mo>+</mo><mn>1</mn>
+                  <mo>&#x2212;</mo><mi>F</mi><mo>)</mo>
+                </math>
+              </div></li>
+            <li><b>Component differences</b> &mdash; including the hue
+              difference, which is recovered from Pythagoras rather than
+              measured directly (hence the clamp at 0 that absorbs float
+              rounding).
+              <div class="eq">
+                <math display="block">
+                  <mi>&#x0394;</mi><mi>L</mi><mo>=</mo><msub><mi>L</mi><mn>1</mn></msub>
+                  <mo>&#x2212;</mo><msub><mi>L</mi><mn>2</mn></msub>
+                  <mo>,</mo><mspace width="2em"></mspace>
+                  <mi>&#x0394;</mi><mi>C</mi><mo>=</mo><msub><mi>C</mi><mn>1</mn></msub>
+                  <mo>&#x2212;</mo><msub><mi>C</mi><mn>2</mn></msub>
+                </math>
+                <math display="block">
+                  <mi>&#x0394;</mi><mi>a</mi><mo>=</mo><msub><mi>a</mi><mn>1</mn></msub>
+                  <mo>&#x2212;</mo><msub><mi>a</mi><mn>2</mn></msub>
+                  <mo>,</mo><mspace width="2em"></mspace>
+                  <mi>&#x0394;</mi><mi>b</mi><mo>=</mo><msub><mi>b</mi><mn>1</mn></msub>
+                  <mo>&#x2212;</mo><msub><mi>b</mi><mn>2</mn></msub>
+                </math>
+                <math display="block">
+                  <mi>&#x0394;</mi><mi>H</mi><mo>=</mo>
+                  <msqrt>
+                    <msup><mrow><mi>&#x0394;</mi><mi>a</mi></mrow><mn>2</mn></msup>
+                    <mo>+</mo>
+                    <msup><mrow><mi>&#x0394;</mi><mi>b</mi></mrow><mn>2</mn></msup>
+                    <mo>&#x2212;</mo>
+                    <msup><mrow><mi>&#x0394;</mi><mi>C</mi></mrow><mn>2</mn></msup>
+                  </msqrt>
+                </math>
+                <span class="eq-cap">the squared value inside the root is clamped
+                  at 0 to absorb float rounding</span>
+              </div></li>
+            <li><b>Combine</b> &mdash; each difference is divided by its weight
+              and by l / c, then the three terms are recombined.
+              <div class="eq">
+                <math display="block">
+                  <mi>&#x0394;</mi><mi>E</mi><mrow><mtext>CMC</mtext></mrow>
+                  <mo>=</mo>
+                  <msqrt>
+                    <msup>
+                      <mrow><mo>(</mo><mfrac>
+                        <mrow><mi>&#x0394;</mi><mi>L</mi></mrow>
+                        <mrow><mi>l</mi><mo>&#x22C5;</mo><msub><mi>S</mi><mi>L</mi></msub></mrow>
+                      </mfrac><mo>)</mo></mrow>
+                      <mn>2</mn>
+                    </msup>
+                    <mo>+</mo>
+                    <msup>
+                      <mrow><mo>(</mo><mfrac>
+                        <mrow><mi>&#x0394;</mi><mi>C</mi></mrow>
+                        <mrow><mi>c</mi><mo>&#x22C5;</mo><msub><mi>S</mi><mi>C</mi></msub></mrow>
+                      </mfrac><mo>)</mo></mrow>
+                      <mn>2</mn>
+                    </msup>
+                    <mo>+</mo>
+                    <msup>
+                      <mrow><mo>(</mo><mfrac>
+                        <mrow><mi>&#x0394;</mi><mi>H</mi></mrow>
+                        <msub><mi>S</mi><mi>H</mi></msub>
+                      </mfrac><mo>)</mo></mrow>
+                      <mn>2</mn>
+                    </msup>
+                  </msqrt>
+                </math>
+                <span class="eq-cap">with l = 2 and c = 1 for CMC(2:1)</span>
+              </div></li>
+          </ol>
+          <p>The three squared terms are the <b>lightness</b>, <b>chroma</b>
+            and <b>hue</b> contributions; whichever dominates names the
+            problem (&ldquo;too dark&rdquo;, &ldquo;too weak&rdquo;,
+            &ldquo;wrong hue&rdquo;). &Delta;E = 0 means the two colours are
+            numerically identical. Large weights mean a component is forgiven,
+            and note that S<sub>L</sub>, S<sub>C</sub> and S<sub>H</sub> all
+            grow with L1 and C1 &mdash; tolerance is deliberately looser for
+            light, saturated standards.</p>
+        </div>
+        <div class="pt-panel intro-worked" style="margin-top:10px">
+          <p class="pt-step">The same steps, run on an example pair</p>
+          <div id="introWorked"></div>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">4 &middot; From L*a*b* to the colour on screen</div>
+        <div class="helpbody">
+          <p>L*a*b* is an analysis space, not a display format, so every swatch
+            in this page was converted to an sRGB hex triplet &mdash; by
+            <code>lab_to_hex()</code> in Python to build the Hex column, and by
+            <code>labToRgb()</code> in the browser for the diagram above and the
+            converter below. Four standard steps, D65 white point
+            (X<sub>n</sub> = 95.047, Y<sub>n</sub> = 100, Z<sub>n</sub> = 108.883):</p>
+          <ol class="steplist">
+            <li><b>L*a*b* &rarr; XYZ</b> &mdash; undo the Lab transform. Each
+              helper value is pushed back through the inverse of the cube-root
+              pivot used when the space was defined.
+              <div class="eq">
+                <math display="block">
+                  <msub><mi>f</mi><mi>y</mi></msub><mo>=</mo>
+                  <mfrac>
+                    <mrow><msup><mi>L</mi><mo>&#x2217;</mo></msup><mo>+</mo><mn>16</mn></mrow>
+                    <mn>116</mn>
+                  </mfrac>
+                  <mo>,</mo><mspace width="1.5em"></mspace>
+                  <msub><mi>f</mi><mi>x</mi></msub><mo>=</mo>
+                  <msub><mi>f</mi><mi>y</mi></msub><mo>+</mo>
+                  <mfrac><msup><mi>a</mi><mo>&#x2217;</mo></msup><mn>500</mn></mfrac>
+                  <mo>,</mo><mspace width="1.5em"></mspace>
+                  <msub><mi>f</mi><mi>z</mi></msub><mo>=</mo>
+                  <msub><mi>f</mi><mi>y</mi></msub><mo>&#x2212;</mo>
+                  <mfrac><msup><mi>b</mi><mo>&#x2217;</mo></msup><mn>200</mn></mfrac>
+                </math>
+                <math display="block">
+                  <mi>X</mi><mo>=</mo><msub><mi>X</mi><mi>n</mi></msub>
+                  <mo>&#x22C5;</mo><mi>g</mi><mo>(</mo><msub><mi>f</mi><mi>x</mi></msub><mo>)</mo>
+                  <mo>,</mo><mspace width="1.5em"></mspace>
+                  <mi>Y</mi><mo>=</mo><msub><mi>Y</mi><mi>n</mi></msub>
+                  <mo>&#x22C5;</mo><mi>g</mi><mo>(</mo><msub><mi>f</mi><mi>y</mi></msub><mo>)</mo>
+                  <mo>,</mo><mspace width="1.5em"></mspace>
+                  <mi>Z</mi><mo>=</mo><msub><mi>Z</mi><mi>n</mi></msub>
+                  <mo>&#x22C5;</mo><mi>g</mi><mo>(</mo><msub><mi>f</mi><mi>z</mi></msub><mo>)</mo>
+                </math>
+                <math display="block">
+                  <mi>g</mi><mo>(</mo><mi>t</mi><mo>)</mo><mo>=</mo><mo>{</mo>
+                  <mtable>
+                    <mtr>
+                      <mtd><msup><mi>t</mi><mn>3</mn></msup></mtd>
+                      <mtd><mtext>if&#xA0;</mtext><msup><mi>t</mi><mn>3</mn></msup>
+                        <mo>&gt;</mo><mn>0.008856</mn></mtd>
+                    </mtr>
+                    <mtr>
+                      <mtd>
+                        <mfrac>
+                          <mrow><mi>t</mi><mo>&#x2212;</mo><mfrac><mn>16</mn><mn>116</mn></mfrac></mrow>
+                          <mn>7.787</mn>
+                        </mfrac>
+                      </mtd>
+                      <mtd><mtext>otherwise</mtext></mtd>
+                    </mtr>
+                  </mtable>
+                </math>
+              </div></li>
+            <li><b>XYZ &rarr; linear sRGB</b> &mdash; the D65 primaries as a
+              matrix, with XYZ scaled to 0&ndash;1 first.
+              <div class="eq">
+                <math display="block">
+                  <mi>x</mi><mo>=</mo><mfrac><mi>X</mi><mn>100</mn></mfrac>
+                  <mo>,</mo><mspace width="1.5em"></mspace>
+                  <mi>y</mi><mo>=</mo><mfrac><mi>Y</mi><mn>100</mn></mfrac>
+                  <mo>,</mo><mspace width="1.5em"></mspace>
+                  <mi>z</mi><mo>=</mo><mfrac><mi>Z</mi><mn>100</mn></mfrac>
+                </math>
+                <math display="block">
+                  <msub><mi>R</mi><mtext>lin</mtext></msub><mo>=</mo>
+                  <mn>3.2406</mn><mi>x</mi><mo>&#x2212;</mo><mn>1.5372</mn><mi>y</mi>
+                  <mo>&#x2212;</mo><mn>0.4986</mn><mi>z</mi>
+                </math>
+                <math display="block">
+                  <msub><mi>G</mi><mtext>lin</mtext></msub><mo>=</mo>
+                  <mo>&#x2212;</mo><mn>0.9689</mn><mi>x</mi><mo>+</mo><mn>1.8758</mn><mi>y</mi>
+                  <mo>+</mo><mn>0.0415</mn><mi>z</mi>
+                </math>
+                <math display="block">
+                  <msub><mi>B</mi><mtext>lin</mtext></msub><mo>=</mo>
+                  <mn>0.0557</mn><mi>x</mi><mo>&#x2212;</mo><mn>0.2040</mn><mi>y</mi>
+                  <mo>+</mo><mn>1.0570</mn><mi>z</mi>
+                </math>
+              </div></li>
+            <li><b>Linear &rarr; gamma-encoded sRGB</b> &mdash; the transfer
+              curve a monitor expects; the near-black branch keeps it linear so
+              the darkest greys do not blow up. Applied to each channel.
+              <div class="eq">
+                <math display="block">
+                  <mi>c</mi><mo>=</mo><mo>{</mo>
+                  <mtable>
+                    <mtr>
+                      <mtd><mn>1.055</mn><mo>&#x22C5;</mo>
+                        <msup><mi>v</mi><mrow><mn>1</mn><mo>/</mo><mn>2.4</mn></mrow></msup>
+                        <mo>&#x2212;</mo><mn>0.055</mn></mtd>
+                      <mtd><mtext>if&#xA0;</mtext><mi>v</mi><mo>&gt;</mo><mn>0.0031308</mn></mtd>
+                    </mtr>
+                    <mtr>
+                      <mtd><mn>12.92</mn><mo>&#x22C5;</mo><mi>v</mi></mtd>
+                      <mtd><mtext>otherwise</mtext></mtd>
+                    </mtr>
+                  </mtable>
+                </math>
+                <span class="eq-cap">applied to each channel in turn</span>
+              </div></li>
+            <li><b>Quantise to 8 bits and write the hex</b> &mdash; clamping is
+              what makes out-of-gamut colours visible instead of failing; they
+              are the faded cells in the diagram above, and a colour sitting
+              there cannot be reproduced on an sRGB monitor.
+              <div class="eq">
+                <math display="block">
+                  <mi>R</mi><mo>=</mo><mi>clamp</mi><mo>(</mo>
+                  <mn>255</mn><mo>&#x22C5;</mo><mi>c</mi><mo>,</mo>
+                  <mn>0</mn><mo>,</mo><mn>255</mn><mo>)</mo>
+                  <mo>,</mo><mspace width="1.5em"></mspace>
+                  <mtext>same for G and B</mtext>
+                </math>
+                <math display="block">
+                  <mtext>Hex</mtext><mo>=</mo><mo>'#'</mo><mo>+</mo>
+                  <mi>RR</mi><mo>+</mo><mi>GG</mi><mo>+</mo><mi>BB</mi>
+                </math>
+                <span class="eq-cap">each channel written as two hex digits</span>
+              </div></li>
+          </ol>
+        </div>
+        <div class="pt-panel" style="margin-top:10px">
+          <p class="pt-step">Try it &mdash; L*a*b* to hex</p>
+          <div class="conv">
+            <div class="conv-in">
+              <div class="labrow">
+                <label for="convLn">L*</label>
+                <input id="convL" type="range" min="0" max="100" step="0.5" value="62"
+                       aria-label="L star">
+                <input id="convLn" type="number" min="0" max="100" step="0.5" value="62"
+                       inputmode="decimal" aria-label="L star value">
+              </div>
+              <div class="labrow">
+                <label for="convAn">a*</label>
+                <input id="convA" type="range" min="-100" max="100" step="0.5" value="19"
+                       aria-label="a star">
+                <input id="convAn" type="number" min="-100" max="100" step="0.5" value="19"
+                       inputmode="decimal" aria-label="a star value">
+              </div>
+              <div class="labrow">
+                <label for="convBn">b*</label>
+                <input id="convB" type="range" min="-100" max="100" step="0.5" value="-24"
+                       aria-label="b star">
+                <input id="convBn" type="number" min="-100" max="100" step="0.5" value="-24"
+                       inputmode="decimal" aria-label="b star value">
+              </div>
+              <p class="intro-note">Defaults are the worked example's sample
+                colour. Change any channel to watch the hex follow.</p>
+            </div>
+            <div class="conv-out">
+              <div class="conv-sw" id="convSw"></div>
+              <div class="conv-txt">
+                <div class="conv-hex" id="convHex">&ndash;</div>
+                <div class="conv-rgb" id="convRgb"></div>
+                <div class="conv-rgb" id="convGamut"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">5 &middot; Reading the &Delta;E numbers in this page</div>
+        <div class="helpbody">
+          <p>Every table shows the mean colour of a group (an LD_item, a
+            Product, a matched pair) and scores its samples against it. The
+            limits are not arbitrary &mdash; they are the ones the rest of the
+            page tests against:</p>
+          <div class="table-wrap">
+            <table class="pairtable">
+              <thead><tr><th>Limit</th><th>Value</th><th>Where it is applied</th></tr></thead>
+              <tbody>
+                <tr><td class="k">Raw vs LD_item</td><td class="mono">0.8</td>
+                  <td>The Stats &Delta;E histogram's target line and the
+                    item-detail QC view.</td></tr>
+                <tr><td class="k">Laminate vs master plate</td><td class="mono">1.0</td>
+                  <td>The Laminate detail view: trend line and QC
+                    circle.</td></tr>
+                <tr><td class="k">LD redundancy grouping</td><td class="mono">user set</td>
+                  <td>The Group &Delta;E box: two LD_items are called the same
+                    colour when their mean colours sit within it.</td></tr>
+                <tr><td class="k">Outliers</td><td class="mono">Q3 + 1.5&middot;IQR</td>
+                  <td>Samples beyond that fence are drawn red in the detail
+                    charts; a batch failing both the limit and the fence is a
+                    real problem, not statistical noise.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>How big is a &Delta;E?</h3>
+          <p>&Delta;E is a magnitude, not a percentage &mdash; treat the numbers
+            as a scale of increasing visual difference:</p>
+          <ul>
+            <li><b>0&ndash;0.5</b> &mdash; effectively the same colour; a
+              well-controlled process sits here.</li>
+            <li><b>0.5&ndash;1.0</b> &mdash; the range the two QC limits above
+              live in; usually acceptable, and side by side the difference is
+              subtle.</li>
+            <li><b>1.0&ndash;2.0</b> &mdash; a visible shade shift when the two
+              are compared directly.</li>
+            <li><b>above 2.0</b> &mdash; reads as a different shade; the match
+              has failed and the batch is worth investigating.</li>
+          </ul>
+          <p>Because CMC(2:1) is asymmetry-weighted, a &Delta;E judged against a
+            reference is not the same as the reverse comparison. Read
+            &ldquo;sample vs standard&rdquo; from left to right: the first
+            colour named in a header is always the reference.</p>
+          <h3>The other colours on the page</h3>
+          <ul>
+            <li><b>Nearest Pantone</b> &mdash; the whole 2,310-colour TCX
+              library is scored with the same CMC(2:1), so the named TCX is the
+              closest one rather than a name looked up from the hex.</li>
+            <li><b>Hex</b> &mdash; computed from Lab, never from the
+              instrument's RGB, so it stays consistent with the numbers beside
+              it (step 4 above).</li>
+          </ul>
+        </div>
+      </div>
+
     </div>
   </section>
 </main>
@@ -1474,6 +2055,12 @@ function showView(name){
   /* The matrix sizes its row window to the scroll frame, which has no height
      while the view is hidden — re-measure once the LD Redundancy tab is up. */
   if(name==='cmp'&&cmpView==='m') mxWindow(true);
+  /* The colour ball and the converter only have a measurable size once the tab
+     is up, so they are built on the first visit rather than at load. The ball
+     only spins while the tab is on screen, which keeps it off the CPU
+     everywhere else. */
+  if(name==='intro'){ buildIntro(); introBallStart(); }
+  else introBallStop();
 }
 Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(b){
   b.addEventListener('click',function(){ showView(b.getAttribute('data-view')); });
@@ -3634,10 +4221,367 @@ PT_OUT.addEventListener('click',function(e){
   e.preventDefault();
   openDetail(a.getAttribute('data-mode'),a.getAttribute('data-item')); });
 
+/* ---- Intro tab: the background behind the numbers ------------------------
+   Three things every other tab assumes: what L*a*b* measures, how the Delta E
+   CMC(2:1) score is built up, and how a Lab triplet becomes the hex printed in
+   the Colour columns. The diagram and the worked example are computed live
+   from the same formulas the tables use — labToRgb() mirrors the generator's
+   lab_to_hex() and cmcTerms() mirrors deltaECMC() — so nothing here can drift
+   away from the numbers the rest of the page reports. */
+var INTRO_DONE=false;
+
+/* Lab -> sRGB, a direct mirror of lab_to_hex() in the generator:
+   Lab -> XYZ -> linear sRGB -> gamma-encoded 8-bit, D65 white point
+   (Xn/Yn/Zn = 95.047 / 100 / 108.883). `gamut` is false when a channel had to
+   be clamped, i.e. the colour cannot actually be shown on an sRGB monitor. */
+function labToRgb(L,a,b){
+  var py=(L+16)/116;
+  function pivot(v){ var c=v*v*v; return c>0.008856 ? c : (v-16/116)/7.787; }
+  var x=95.047*pivot(a/500+py)/100,
+      y=100*  pivot(py)/100,
+      z=108.883*pivot(py-b/200)/100;
+  var lin=[ 3.2406*x - 1.5372*y - 0.4986*z,
+           -0.9689*x + 1.8758*y + 0.0415*z,
+            0.0557*x - 0.2040*y + 1.0570*z ];
+  var gamut=true, out=[];
+  for(var i=0;i<3;i++){
+    var v=lin[i];
+    var enc=v>0.0031308 ? 1.055*Math.pow(v,1/2.4)-0.055 : 12.92*v;
+    var b8=Math.round(255*enc);
+    if(b8<0){ b8=0; gamut=false; }
+    if(b8>255){ b8=255; gamut=false; }
+    out.push(b8);
+  }
+  function h2(n){ return ('0'+n.toString(16)).slice(-2); }
+  return {r:out[0], g:out[1], b:out[2],
+          hex:'#'+h2(out[0])+h2(out[1])+h2(out[2]), gamut:gamut};
+}
+
+/* Every intermediate the CMC(2:1) score passes through, so the worked example
+   can print each step rather than only the final number. Same arithmetic as
+   deltaECMC(): the first triplet is the reference / standard. */
+function cmcTerms(L1,a1,b1,L2,a2,b2,l,c){
+  if(l==null) l=2;
+  if(c==null) c=1;
+  var C1=Math.sqrt(a1*a1+b1*b1), C2=Math.sqrt(a2*a2+b2*b2);
+  var SL=L1<16 ? 0.511 : (0.040975*L1)/(1+0.01765*L1);
+  var SC=(0.0638*C1)/(1+0.0131*C1)+0.638;
+  var h1=Math.atan2(b1,a1)*180/Math.PI;
+  if(h1<0) h1+=360;
+  var T=h1>=164&&h1<=345
+      ? 0.56+Math.abs(0.2*Math.cos((h1+168)*Math.PI/180))
+      : 0.36+Math.abs(0.4*Math.cos((h1+ 35)*Math.PI/180));
+  var C1_4=Math.pow(C1,4), F=Math.sqrt(C1_4/(C1_4+1900));
+  var SH=SC*(F*T+1-F);
+  var dL=L1-L2, dC=C1-C2, dA=a1-a2, dB=b1-b2;
+  var dH2=dA*dA+dB*dB-dC*dC;
+  if(dH2<0 && dH2>-1e-12) dH2=0;
+  var dH=Math.sqrt(Math.max(0,dH2));
+  var termL=dL/(l*SL), termC=dC/(c*SC), termH=dH/SH;
+  return {C1:C1,C2:C2,SL:SL,SC:SC,h1:h1,T:T,F:F,SH:SH,
+          dL:dL,dC:dC,dA:dA,dB:dB,dH:dH,
+          termL:termL,termC:termC,termH:termH,
+          de:Math.sqrt(termL*termL+termC*termC+termH*termH), l:l, c:c};
+}
+
+/* The pair used in the worked example — the sample matches the converter's
+   default inputs, so the two parts of the tab describe the same colour. */
+var INTRO_EX={
+  ref:{L:62.40, a:18.70, b:-24.10, name:'Reference (standard)'},
+  smp:{L:63.10, a:17.40, b:-22.90, name:'Sample (batch)'}
+};
+
+/* ---- the L*a*b* ball ----------------------------------------------------
+   L*a*b* is a solid, not a plane, so the tab draws it as a ball: L* is the
+   vertical axis (light at the top, dark at the bottom), a* runs left to right
+   (green to red) and b* front to back (blue to yellow). A colour sits at
+   (a* /100, (L* -50)/50, b* /100), which puts the solid inside a unit sphere, so
+   it is sampled once over that sphere and each sample is painted with the sRGB
+   hex of its own triplet — the surface then reads as the outer skin of the
+   solid and the core as the neutral grey line. The ball is spun and projected
+   onto a canvas by hand: echarts-gl is not part of the ECharts build this page
+   bundles, and a flat point cloud needs no library. */
+var INTRO_BALL=null, INTRO_BALL_PTS=null;
+
+function introBallPoints(){
+  if(INTRO_BALL_PTS) return INTRO_BALL_PTS;
+  var pts=[], RINGS=52;
+  for(var i=0;i<=RINGS;i++){
+    var phi=-Math.PI/2 + Math.PI*i/RINGS;      /* latitude  -> L*          */
+    var wy=Math.sin(phi), ring=Math.cos(phi);
+    var n=Math.max(1, Math.round(ring*84));    /* even density over the ball */
+    for(var j=0;j<n;j++){
+      var psi=2*Math.PI*j/n;                   /* longitude -> hue angle   */
+      var L=50+50*wy, a=100*ring*Math.cos(psi), b=100*ring*Math.sin(psi);
+      var rc=labToRgb(L,a,b);
+      pts.push({x:a/100, y:wy, z:b/100, c:rc.hex, g:rc.gamut});
+    }
+  }
+  INTRO_BALL_PTS=pts;
+  return pts;
+}
+
+/* yaw spins about L*, pitch tips the ball towards the viewer. */
+function introRot3(x,y,z,yaw,pitch){
+  var cy=Math.cos(yaw), sy=Math.sin(yaw);
+  var x1=x*cy + z*sy, z1=-x*sy + z*cy;
+  var cp=Math.cos(pitch), sp=Math.sin(pitch);
+  return {x:x1, y:y*cp - z1*sp, z:y*sp + z1*cp};   /* z > 0 is nearest */
+}
+
+function introBallDraw(){
+  var B=INTRO_BALL;
+  if(!B || !B.w) return;
+  var ctx=B.ctx, w=B.w, h=B.h, yaw=B.yaw, pitch=B.pitch;
+  ctx.setTransform(B.dpr,0,0,B.dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  var cx=w/2, cy=h/2, scale=Math.min(w,h)*0.40;
+
+  /* neutral axis: a* = b* = 0, from black up to white */
+  var a0=introRot3(0,-1.04,0,yaw,pitch), a1=introRot3(0,1.04,0,yaw,pitch);
+  ctx.strokeStyle='rgba(31,41,55,.30)'; ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(cx+a0.x*scale, cy-a0.y*scale);
+  ctx.lineTo(cx+a1.x*scale, cy-a1.y*scale);
+  ctx.stroke();
+
+  /* Paint farthest first so the near hemisphere lands on top. A dot's size and
+     opacity both rise with depth, which is what makes a flat cloud read as a
+     solid ball; out-of-gamut dots stay faint instead of being hidden. */
+  var pts=INTRO_BALL_PTS, proj=[], i;
+  for(i=0;i<pts.length;i++){
+    var p=pts[i], q=introRot3(p.x,p.y,p.z,yaw,pitch);
+    proj.push({sx:cx+q.x*scale, sy:cy-q.y*scale, z:q.z, p:p});
+  }
+  proj.sort(function(u,v){ return u.z-v.z; });
+  var dot=Math.max(1.4, scale*0.020);
+  for(i=0;i<proj.length;i++){
+    var o=proj[i], t=(o.z+1)/2;
+    if(t<0) t=0; else if(t>1) t=1;
+    ctx.globalAlpha=o.p.g ? 0.28+0.68*t*t : 0.10+0.20*t;
+    ctx.fillStyle=o.p.c;
+    var s=dot*(0.60+0.55*t);
+    ctx.fillRect(o.sx-s/2, o.sy-s/2, s, s);
+  }
+  ctx.globalAlpha=1;
+
+  /* the worked-example pair and the straight Delta E line between them */
+  var EX=INTRO_EX;
+  function at(L,a,b){
+    var q=introRot3(a/100,(L-50)/50,b/100,yaw,pitch);
+    return {x:cx+q.x*scale, y:cy-q.y*scale};
+  }
+  var rs=at(EX.ref.L,EX.ref.a,EX.ref.b), sm=at(EX.smp.L,EX.smp.a,EX.smp.b);
+  ctx.setLineDash([5,4]); ctx.lineWidth=1.6; ctx.strokeStyle='#1f2933';
+  ctx.beginPath(); ctx.moveTo(rs.x,rs.y); ctx.lineTo(sm.x,sm.y); ctx.stroke();
+  ctx.setLineDash([]);
+  function disc(p,hex,r){
+    ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
+    ctx.fillStyle=hex; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle='#111827'; ctx.stroke();
+  }
+  function diamond(p,hex,r){
+    ctx.beginPath();
+    ctx.moveTo(p.x,p.y-r); ctx.lineTo(p.x+r,p.y);
+    ctx.lineTo(p.x,p.y+r); ctx.lineTo(p.x-r,p.y); ctx.closePath();
+    ctx.fillStyle=hex; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle='#111827'; ctx.stroke();
+  }
+  disc(rs, labToRgb(EX.ref.L,EX.ref.a,EX.ref.b).hex, 7);
+  diamond(sm, labToRgb(EX.smp.L,EX.smp.a,EX.smp.b).hex, 8);
+  if(w>=380){
+    ctx.font='11px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+    ctx.fillStyle='#1f2933';
+    function tag(text,p){
+      var tw=ctx.measureText(text).width;
+      var x=p.x < w*0.55 ? p.x+10 : p.x-10-tw;
+      if(x<2) x=2;
+      if(x+tw>w-2) x=w-2-tw;
+      ctx.fillText(text, x, p.y+4);
+    }
+    tag('standard',rs); tag('sample',sm);
+  }
+}
+
+function introBallResize(){
+  var B=INTRO_BALL;
+  if(!B) return;
+  var w=B.host.clientWidth, h=B.host.clientHeight;
+  if(!w || !h) return;
+  var dpr=Math.min(2, window.devicePixelRatio||1);
+  B.w=w; B.h=h; B.dpr=dpr;
+  B.cv.width=Math.round(w*dpr); B.cv.height=Math.round(h*dpr);
+  B.cv.style.width=w+'px'; B.cv.style.height=h+'px';
+  introBallDraw();
+}
+
+function introBallTick(ts){
+  var B=INTRO_BALL;
+  if(!B || !B.active){ if(B) B.raf=0; return; }
+  B.raf=requestAnimationFrame(introBallTick);
+  if(B.prev && ts-B.prev<32) return;      /* ~30 fps is plenty for a slow spin */
+  B.prev=ts;
+  if(!B.dragging && !B.reduce) B.yaw += B.spin;
+  introBallDraw();
+}
+
+function introBallSetup(){
+  if(INTRO_BALL) return;
+  var host=document.getElementById('introAbChart');
+  if(!host) return;
+  var cv=document.createElement('canvas');
+  host.appendChild(cv);
+  INTRO_BALL={host:host, cv:cv, ctx:cv.getContext('2d'),
+              yaw:-0.5, pitch:-0.42, spin:0.0042, w:0, h:0, dpr:1,
+              dragging:false, lastX:0, lastY:0, raf:0, prev:0, active:false,
+              reduce:!!(window.matchMedia && window.matchMedia(
+                        '(prefers-reduced-motion: reduce)').matches)};
+  introBallPoints();
+  /* Drag to spin. touch-action:pan-y in the CSS leaves vertical scrolling to
+     the browser, so a sideways drag is the only gesture that lands here and a
+     finger can still scroll the page past the ball. */
+  cv.addEventListener('pointerdown',function(e){
+    var B=INTRO_BALL; if(!B) return;
+    B.dragging=true; B.lastX=e.clientX; B.lastY=e.clientY;
+    cv.classList.add('dragging');
+    if(cv.setPointerCapture) cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener('pointermove',function(e){
+    var B=INTRO_BALL; if(!B || !B.dragging) return;
+    var lim=Math.PI/2-0.08;
+    B.yaw   += (e.clientX-B.lastX)*0.010;
+    B.pitch += (e.clientY-B.lastY)*0.010;
+    if(B.pitch> lim) B.pitch= lim;
+    if(B.pitch<-lim) B.pitch=-lim;
+    B.lastX=e.clientX; B.lastY=e.clientY;
+    introBallDraw();
+  });
+  function stopDrag(){
+    var B=INTRO_BALL; if(!B) return;
+    B.dragging=false; cv.classList.remove('dragging');
+  }
+  cv.addEventListener('pointerup',stopDrag);
+  cv.addEventListener('pointercancel',stopDrag);
+  cv.addEventListener('lostpointercapture',stopDrag);
+  introBallResize();
+}
+
+function introBallStart(){
+  introBallSetup();
+  var B=INTRO_BALL;
+  if(!B) return;
+  B.active=true; B.prev=0;
+  if(!B.raf) B.raf=requestAnimationFrame(introBallTick);
+  introBallDraw();
+}
+
+function introBallStop(){
+  var B=INTRO_BALL;
+  if(!B) return;
+  B.active=false;
+  if(B.raf){ cancelAnimationFrame(B.raf); B.raf=0; }
+}
+
+function buildIntro(){
+  if(INTRO_DONE) return;
+  INTRO_DONE=true;
+  var EX=INTRO_EX;
+
+  /* --- 2: the L*a*b* ball (drawn by introBallStart, wired in showView) --- */
+  document.getElementById('introAbNote').textContent=
+    'Each dot is one colour at its own L*a*b*: L* runs from the bottom (0, '
+    +'black) to the top (100, white), a* from left (green) to right (red) and '
+    +'b* from back (blue) to front (yellow), so the sphere is the L*a*b* solid '
+    +'itself. The pale core straight up the middle is the neutral grey axis '
+    +'(a* = b* = 0); the further out a dot sits, the more saturated it is. Far '
+    +'more colours are plotted than sRGB can show, so the dim dots are the '
+    +'out-of-gamut ones, clamped for display. The dot and the diamond are the '
+    +'worked-example standard and sample, joined by the straight \u0394E line. '
+    +'Drag the ball to spin it.';
+
+  /* --- 3: the worked example, every intermediate printed ----------------- */
+  var w=cmcTerms(EX.ref.L,EX.ref.a,EX.ref.b,EX.smp.L,EX.smp.a,EX.smp.b,2,1);
+  function f(v,n){ return Number(v).toFixed(n==null?2:n); }
+  var rows=[
+    ['1','C\u2081', f(w.C1),        'chroma of the standard, \u221a(a\u2081\u00b2+b\u2081\u00b2)'],
+    ['1','C\u2082', f(w.C2),        'chroma of the sample, \u221a(a\u2082\u00b2+b\u2082\u00b2)'],
+    ['2','S\u2097', f(w.SL,4),      'lightness weight, from L\u2081'],
+    ['3','S_C',     f(w.SC,4),      'chroma weight, from C\u2081'],
+    ['4','h\u00b0\u2081', f(w.h1,1)+'\u00b0', 'hue angle of the standard'],
+    ['4','T',       f(w.T,4),       'hue-family factor (the branch T was taken)'],
+    ['4','F',       f(w.F,4),       'greyness fade, \u221a(C\u2081\u2074/(C\u2081\u2074+1900))'],
+    ['4','S_H',     f(w.SH,4),      'hue weight, S_C\u00b7(F\u00b7T+1\u2212F)'],
+    ['5','\u0394L', f(w.dL),        'L\u2081 \u2212 L\u2082  (lightness difference)'],
+    ['5','\u0394C', f(w.dC),        'C\u2081 \u2212 C\u2082  (chroma difference)'],
+    ['5','\u0394H', f(w.dH),        '\u221a(\u0394a\u00b2+\u0394b\u00b2\u2212\u0394C\u00b2)  (hue difference)'],
+    ['6','\u0394L/(l\u00b7S\u2097)', f(w.termL,3), 'lightness term, l = '+w.l],
+    ['6','\u0394C/(c\u00b7S_C)',    f(w.termC,3), 'chroma term, c = '+w.c],
+    ['6','\u0394H/S_H',             f(w.termH,3), 'hue term']
+  ];
+  var mags=[[Math.abs(w.termL),'lightness'], [Math.abs(w.termC),'chroma'],
+            [Math.abs(w.termH),'hue']].sort(function(x,y){ return y[0]-x[0]; });
+  var verdict=mags[0][0]<1e-9 ? 'the two colours are numerically identical.'
+    : 'the <b>'+mags[0][1]+'</b> term dominates, so that is the correction to make first.';
+  var html='<div class="table-wrap"><table class="pairtable">'
+    +'<thead><tr><th>#</th><th>Quantity</th><th>Value</th><th>Meaning</th></tr></thead><tbody>'
+    +'<tr><td class="sub">ref</td><td class="sub">L\u2081 a\u2081 b\u2081</td><td class="sub">'
+      +f(EX.ref.L)+' '+f(EX.ref.a)+' '+f(EX.ref.b)+'</td><td>'+EX.ref.name+'</td></tr>'
+    +'<tr><td class="sub">smp</td><td class="sub">L\u2082 a\u2082 b\u2082</td><td class="sub">'
+      +f(EX.smp.L)+' '+f(EX.smp.a)+' '+f(EX.smp.b)+'</td><td>'+EX.smp.name+'</td></tr>';
+  rows.forEach(function(r){
+    html+='<tr><td class="sub">'+r[0]+'</td><td class="sub">'+r[1]+'</td>'
+        +'<td class="sub">'+r[2]+'</td><td>'+r[3]+'</td></tr>';
+  });
+  html+='<tr class="final"><td></td><td>\u0394E CMC(2:1)</td><td>'+f(w.de,3)+'</td><td>'
+      +verdict+'</td></tr></tbody></table></div>'
+    +'<p class="intro-note">The same two colours as hex (step 4): standard '
+      +labToRgb(EX.ref.L,EX.ref.a,EX.ref.b).hex
+      +' \u00b7 sample '+labToRgb(EX.smp.L,EX.smp.a,EX.smp.b).hex
+      +'. A \u0394E of '+f(w.de,2)+' sits in the '
+      +(w.de<0.8?'well-controlled':(w.de<1?'acceptable':(w.de<2?'visible':'failed')))
+      +' band on the scale below.</p>';
+  document.getElementById('introWorked').innerHTML=html;
+
+  /* --- 4: the live L*a*b* -> hex converter ------------------------------- */
+  var cL=document.getElementById('convL'),  cLn=document.getElementById('convLn'),
+      cA=document.getElementById('convA'),  cAn=document.getElementById('convAn'),
+      cB=document.getElementById('convB'),  cBn=document.getElementById('convBn'),
+      sw=document.getElementById('convSw'), hx=document.getElementById('convHex'),
+      rg=document.getElementById('convRgb'), gm=document.getElementById('convGamut');
+  function convUpdate(){
+    var L=Math.max(0,Math.min(100,Number(cLn.value)||0)),
+        a=Math.max(-100,Math.min(100,Number(cAn.value)||0)),
+        b=Math.max(-100,Math.min(100,Number(cBn.value)||0)),
+        r=labToRgb(L,a,b);
+    sw.style.background=r.hex;
+    hx.textContent=r.hex.toUpperCase();
+    rg.textContent='rgb('+r.r+', '+r.g+', '+r.b+')  \u00b7  L* '+L+'  a* '+a+'  b* '+b;
+    gm.textContent=r.gamut ? 'in the sRGB gamut' : 'outside sRGB \u2014 clamped';
+    gm.style.color=r.gamut ? '' : '#b45309';
+  }
+  function fromRange(){
+    cLn.value=cL.value; cAn.value=cA.value; cBn.value=cB.value; convUpdate();
+  }
+  function fromNum(){
+    if(isFinite(Number(cLn.value))) cL.value=Math.max(0,Math.min(100,cLn.value));
+    if(isFinite(Number(cAn.value))) cA.value=Math.max(-100,Math.min(100,cAn.value));
+    if(isFinite(Number(cBn.value))) cB.value=Math.max(-100,Math.min(100,cBn.value));
+    convUpdate();
+  }
+  cL.addEventListener('input',fromRange);
+  cA.addEventListener('input',fromRange);
+  cB.addEventListener('input',fromRange);
+  cLn.addEventListener('input',fromNum);
+  cAn.addEventListener('input',fromNum);
+  cBn.addEventListener('input',fromNum);
+  convUpdate();
+}
+
 window.addEventListener('resize',function(){
   if(ITEM_CHART) ITEM_CHART.resize();
   if(AB_CHART) AB_CHART.resize();
   if(DIST_CHART) DIST_CHART.resize();
+  if(INTRO_BALL) introBallResize();
 });
 
 document.getElementById('meta').textContent=
@@ -3811,7 +4755,7 @@ def main():
           f"Unmatched Raw items: {meta['unmatched_items']} "
           f"({meta['unmatched_raw']} rows) | Laminate: {meta['lam']} "
           f"({meta['lamprod']} Products, {meta['unmatched_lam']} unmatched rows)")
-    print(f"Tabs  : 5 (Stats, Raw, Laminate, LD Redundancy, Match Pantone) "
+    print(f"Tabs  : 6 (Stats, Raw, Laminate, LD Redundancy, Match Pantone, Intro) "
           f"+ Unmatched Raw / Unmatched Laminate dialogs")
     print(f"Size  : {out_path.stat().st_size / 1024 / 1024:.1f} MB "
           f"in {time.perf_counter() - started:.1f}s")

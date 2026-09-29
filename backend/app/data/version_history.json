@@ -1,7 +1,7 @@
 [
   {
     "version": "2.0.4",
-    "date": "2026-09-27",
+    "date": "2026-09-29",
     "notes": "1. BI → Chart: a new \"AI Chart\" button sits above \"Add to dashboard\". Describe the chart you want in the AI sidebar and it renders straight onto the BI chart builder — where it can be tweaked and added to the dashboard like any other visual. Charts generated from the Analyze tab keep landing there as before.\n2. Colour Explorer template (analyze-color-data): both ΔE reference dropdowns now show the LD sample NAME instead of the item code, so picking a reference no longer requires knowing the LD_item."
   },
   {

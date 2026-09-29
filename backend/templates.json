@@ -1,5 +1,5 @@
 {
-  "published": "2026-09-29T10:52:15",
+  "published": "2026-09-29T11:59:49",
   "templates": [
     {
       "name": "analyze-color-data.py",
@@ -33,7 +33,7 @@
           "Match Pantone: the nearest LD_item or unmatched Raw_item to a Pantone TCX colour by CMC(2:1)"
         ]
       },
-      "size": "173 KB",
+      "size": "174 KB",
       "updated": "2026-09-29",
       "example": {
         "name": "color_data.html",

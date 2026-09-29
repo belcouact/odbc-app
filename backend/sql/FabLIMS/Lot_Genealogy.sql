@@ -1,16 +1,16 @@
 SELECT DISTINCT
     gm_batch.TO_LOT AS 'WOL',
-    gm_wol.PRODUCT AS 'Product',
+    gm_wol.PRODUCT AS 'PRODUCT',
     gm_batch.EVENT_REASON AS 'BOM',
-    gm_batch.ITEM_NUMBER AS 'Raw_item',
-    gm_batch.G_BATCH AS 'Gore_batch',
-    gm_batch.FROM_LOT AS 'Raw_lot',
-    ROUND(gm_batch.PRIMARY_QTY, 1) AS 'Raw_lot_qty',
-    gm_batch.GM_OPERATION AS 'Raw_issue_step',
-    gm_batch.CHANGED_ON AS 'Raw_issue_date',
-    g_lsn.G_SUPPLIER_BATCH AS 'Supplier_batch',
-    g_lsn.G_SUPPLIER_PIECE AS 'Supplier_piece',
-    g_lsn.G_PURCHASE_ORDER_NO AS 'Supplier_PO'
+    gm_batch.ITEM_NUMBER AS 'RAW_ITEM',
+    gm_batch.G_BATCH AS 'GORE_BATCH',
+    gm_batch.FROM_LOT AS 'RAW_LOT',
+    ROUND(gm_batch.PRIMARY_QTY, 1) AS 'RAW_QUANTITY',
+    gm_batch.GM_OPERATION AS 'RAW_ISSUE_STEP',
+    gm_batch.CHANGED_ON AS 'RAW_ISSUE_DATE',
+    g_lsn.G_SUPPLIER_BATCH AS 'SUPPLIER_BATCH',
+    g_lsn.G_SUPPLIER_PIECE AS 'SUPPLIER_PIECE',
+    g_lsn.G_PURCHASE_ORDER_NO AS 'SUPPLIER_PO'
 FROM GM_BATCH gm_batch
 LEFT JOIN G_LSN g_lsn ON gm_batch.FROM_LOT = g_lsn.NAME
 LEFT JOIN GM_WOL gm_wol ON gm_wol.G_WOL = gm_batch.TO_LOT

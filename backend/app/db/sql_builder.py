@@ -40,6 +40,27 @@ def _is_jet_like(dbms: str | None) -> bool:
     return any(m in (dbms or "").lower() for m in _JET_DBMS_MARKERS)
 
 
+# Canonical DBMS product names keyed by driver-name / DLL markers (checked in
+# order). Windows ODBC DSNs store the driver as a DLL path (e.g. SQLSRV32.dll),
+# so both the friendly name and the common DLL name are matched. Markers are
+# lowercase because they are matched against a lowercased driver string.
+_DRIVER_DBMS_MARKERS = (
+    ("sql server", "Microsoft SQL Server"),
+    ("sqlsrv32", "Microsoft SQL Server"),
+    ("sqlncli", "Microsoft SQL Server"),
+    ("msodbcsql", "Microsoft SQL Server"),
+    ("oracle", "Oracle"),
+    ("sqora", "Oracle"),
+    ("msorcl", "Oracle"),
+    ("mysql", "MySQL"),
+    ("myodbc", "MySQL"),
+    ("postgresql", "PostgreSQL"),
+    ("psqlodbc", "PostgreSQL"),
+    ("podbc", "PostgreSQL"),
+)
+_JET_MARKERS = ("access", "excel", "dbase", "xbase", "text")
+
+
 _DBMS_TYPE_MAP = {
     "sqlserver": "Microsoft SQL Server",
     "oracle": "Oracle",
@@ -193,20 +214,76 @@ def build_select(query: dict, dbms: str | None = None) -> tuple[str, list]:
     return sql, params
 
 
-def detect_dbms(conn: dict) -> str | None:
-    """Return the DBMS product name reported by the driver, if reachable.
+def _registry_dsn_driver(dsn: str) -> str | None:
+    """Look up the ODBC driver a DSN is registered with (fast, no connection)."""
+    if not dsn:
+        return None
+    try:
+        import winreg  # noqa: PLC0415 - Windows-only module
+    except ImportError:
+        return None
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        for base in (r"SOFTWARE\ODBC\ODBC.INI", r"SOFTWARE\WOW6432Node\ODBC\ODBC.INI"):
+            try:
+                with winreg.OpenKey(hive, base + "\\" + dsn) as key:
+                    value, _ = winreg.QueryValueEx(key, "Driver")
+                    return str(value)
+            except OSError:
+                continue
+    return None
 
-    Uses ``Connection.getinfo(pyodbc.SQL_DBMS_NAME)`` — the ``getinfo`` method
-    lives on the connection, not the cursor. The connection probe is bounded by
-    a short timeout so a page refresh never hangs on an unreachable server.
+
+def _dbms_from_driver(driver: str | None) -> str | None:
+    """Map an ODBC driver name or registered DLL path to a DBMS product name."""
+    if not driver:
+        return None
+    text = driver.lower()
+    if any(m in text for m in _JET_MARKERS):
+        return "Microsoft Access"
+    for marker, dbms in _DRIVER_DBMS_MARKERS:
+        if marker in text:
+            return dbms
+    return None
+
+
+def dbms_from_hints(conn: dict) -> str | None:
+    """Resolve the DBMS from connection metadata without opening a connection.
+
+    Tries the stored driver, then the DSN's registered Windows driver, then the
+    connection string. Returns ``None`` when the driver is not recognised.
+    """
+    if conn.get("type") == "access":
+        # Access-file connections always target the Microsoft Access/ACE engine.
+        return "Microsoft Access"
+    hint = _dbms_from_driver(conn.get("driver"))
+    if hint:
+        return hint
+    if conn.get("type") == "dsn":
+        hint = _dbms_from_driver(_registry_dsn_driver(conn.get("dsn")))
+        if hint:
+            return hint
+    return _dbms_from_driver(conn.get("connection_string"))
+
+
+def detect_dbms(conn: dict) -> str | None:
+    """Return the DBMS product name for a connection.
+
+    Prefers the driver-reported ``SQL_DBMS_NAME``, but falls back to the offline
+    driver / DSN hints when the server is unreachable or slow. The live probe is
+    bounded by a short timeout and must never be the only source of truth:
+    returning ``None`` for a reachable Oracle connection silently downgrades its
+    date handling to a bare string bind, which raises ORA-01861.
     """
     try:
         from app.db.odbc import open_connection
 
         cnxn = open_connection(conn, timeout=3)
         try:
-            return str(cnxn.getinfo(pyodbc.SQL_DBMS_NAME))
+            name = str(cnxn.getinfo(pyodbc.SQL_DBMS_NAME))
         finally:
             cnxn.close()
+        if name:
+            return name
     except Exception:
-        return None
+        pass
+    return dbms_from_hints(conn)

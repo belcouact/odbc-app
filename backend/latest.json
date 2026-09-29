@@ -3,5 +3,5 @@
   "min_version": "1.0.0",
   "notes": "1. BI → Chart: a new \"AI Chart\" button sits above \"Add to dashboard\". Describe the chart you want in the AI sidebar and it renders straight onto the BI chart builder — where it can be tweaked and added to the dashboard like any other visual. Charts generated from the Analyze tab keep landing there as before.\n2. Colour Explorer template (analyze-color-data): both ΔE reference dropdowns now show the LD sample NAME instead of the item code, so picking a reference no longer requires knowing the LD_item.",
   "exe": "ODBCQueryApp.exe",
-  "sha256": "03c6aab7ae583ea71b7a08e965276de9a9051412e2a869310b69bdfc6baffa7e"
+  "sha256": "25294628835ebc85f41e57642fdf9d77a7e310e6c2a066932545742ca3433195"
 }

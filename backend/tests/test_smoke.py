@@ -16,7 +16,7 @@ from app.analytics import analyze, profile_dataframe
 from app.api import feedback as feedback_mod
 from app.api.uploads import _iter_parse_events, _spool_pop, _spool_put
 from app.db import odbc as odbc_mod
-from app.db.sql_builder import MAX_LIMIT, build_select, resolve_dbms
+from app.db.sql_builder import MAX_LIMIT, build_select, dbms_from_hints, resolve_dbms
 
 
 # ---- sql_builder.build_select -----------------------------------------------
@@ -94,6 +94,17 @@ def test_resolve_dbms_prefers_user_selection():
     assert resolve_dbms({"database_type": "oracle"}, "Microsoft SQL Server") == "Oracle"
     assert resolve_dbms({"database_type": "auto"}, "Microsoft SQL Server") == "Microsoft SQL Server"
     assert resolve_dbms({}, None) is None
+
+
+def test_resolve_dbms_falls_back_to_offline_driver_hint():
+    # An untyped connection whose live probe is unreachable must still resolve
+    # Oracle from the driver name, or its date filters degrade to a bare string
+    # bind and raise ORA-01861 (see detect_dbms / dbms_from_hints).
+    assert resolve_dbms({}, dbms_from_hints({"driver": "Oracle in OraClient19Home1"})) == "Oracle"
+    assert resolve_dbms({}, dbms_from_hints({"connection_string": "DRIVER={SQLSRV32.dll}"})) == (
+        "Microsoft SQL Server"
+    )
+    assert resolve_dbms({}, dbms_from_hints({"driver": "Some Unknown Driver"})) is None
 
 
 # ---- odbc: packaged-exe ODBC loader state (Oracle error 1114 regression) ----

@@ -1,5 +1,5 @@
 SELECT DISTINCT
-    mesa_lot_master.erp_wo_number wo,
+    mesa_lot_master.erp_wo_number WO,
     mesa_lot_master.split_bin_from_lot_number WOL,
     mesa_lot_master.lot_number LSN,
     mesa_lot_master.product Item,

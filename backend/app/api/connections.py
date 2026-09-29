@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app import logging_utils, storage
 from app.db import odbc
-from app.db.sql_builder import resolve_dbms
+from app.db.sql_builder import dbms_from_hints, resolve_dbms
 
 router = APIRouter()
 
@@ -106,24 +106,6 @@ def _resolve_access_file(obj: dict) -> None:
 _DBMS_CACHE: "dict[str, str | None]" = {}
 _DBMS_CACHE_LOCK = threading.Lock()
 
-# Canonical DBMS product names keyed by driver-name / DLL markers (checked in
-# order). Windows ODBC DSNs store the driver as a DLL path (e.g. SQLSRV32.dll),
-# so both the friendly name and the common DLL name are matched.
-_DRIVER_DBMS_MARKERS = (
-    ("SQL Server", "Microsoft SQL Server"),
-    ("sqlsrv32", "Microsoft SQL Server"),
-    ("sqlncli", "Microsoft SQL Server"),
-    ("msodbcsql", "Microsoft SQL Server"),
-    ("Oracle", "Oracle"),
-    ("msorcl", "Oracle"),
-    ("MySQL", "MySQL"),
-    ("myodbc", "MySQL"),
-    ("PostgreSQL", "PostgreSQL"),
-    ("psqlodbc", "PostgreSQL"),
-    ("podbc", "PostgreSQL"),
-)
-_JET_MARKERS = ("access", "excel", "dbase", "xbase", "text")
-
 
 def _connection_signature(conn: dict) -> str:
     """Stable key for a connection's detection target (what it connects to).
@@ -145,57 +127,6 @@ def _connection_signature(conn: dict) -> str:
     return "|".join(parts).lower()
 
 
-def _registry_dsn_driver(dsn: str) -> str | None:
-    """Look up the ODBC driver a DSN is registered with (fast, no connection)."""
-    if not dsn:
-        return None
-    try:
-        import winreg  # noqa: PLC0415 - Windows-only module
-    except ImportError:
-        return None
-    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
-        for base in (r"SOFTWARE\ODBC\ODBC.INI", r"SOFTWARE\WOW6432Node\ODBC\ODBC.INI"):
-            try:
-                with winreg.OpenKey(hive, base + "\\" + dsn) as key:
-                    value, _ = winreg.QueryValueEx(key, "Driver")
-                    return str(value)
-            except OSError:
-                continue
-    return None
-
-
-def _dbms_from_driver(driver: str | None) -> str | None:
-    """Map an ODBC driver name or registered DLL path to a DBMS product name."""
-    if not driver:
-        return None
-    text = driver.lower()
-    if any(m in text for m in _JET_MARKERS):
-        return "Microsoft Access"
-    for marker, dbms in _DRIVER_DBMS_MARKERS:
-        if marker in text:
-            return dbms
-    return None
-
-
-def _fast_dbms_hint(conn: dict) -> str | None:
-    """Resolve the DBMS from connection metadata without opening a connection.
-
-    Tries the stored driver, then the DSN's registered Windows driver, then the
-    connection string. Returns ``None`` when the driver is not recognised.
-    """
-    if conn.get("type") == "access":
-        # Access-file connections always target the Microsoft Access/ACE engine.
-        return "Microsoft Access"
-    hint = _dbms_from_driver(conn.get("driver"))
-    if hint:
-        return hint
-    if conn.get("type") == "dsn":
-        hint = _dbms_from_driver(_registry_dsn_driver(conn.get("dsn")))
-        if hint:
-            return hint
-    return _dbms_from_driver(conn.get("connection_string"))
-
-
 def _resolved_dbms(conn: dict) -> str | None:
     """Resolve the DBMS product name for an untyped connection (cached).
 
@@ -209,7 +140,7 @@ def _resolved_dbms(conn: dict) -> str | None:
     with _DBMS_CACHE_LOCK:
         if key in _DBMS_CACHE:
             return _DBMS_CACHE[key]
-    detected = _fast_dbms_hint(conn)
+    detected = dbms_from_hints(conn)
     with _DBMS_CACHE_LOCK:
         _DBMS_CACHE[key] = detected
     return detected
