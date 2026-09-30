@@ -1,5 +1,5 @@
 {
-  "published": "2026-09-29T11:59:49",
+  "published": "2026-09-30T18:27:05",
   "templates": [
     {
       "name": "analyze-color-data.py",
@@ -33,8 +33,8 @@
           "Match Pantone: the nearest LD_item or unmatched Raw_item to a Pantone TCX colour by CMC(2:1)"
         ]
       },
-      "size": "174 KB",
-      "updated": "2026-09-29",
+      "size": "221 KB",
+      "updated": "2026-09-30",
       "example": {
         "name": "color_data.html",
         "object": "templates/examples/color_data.html",
@@ -208,8 +208,8 @@
           "Pop-up chart modals when a laminate (MG_DESC) is clicked"
         ]
       },
-      "size": "42 KB",
-      "updated": "2026-09-09",
+      "size": "49 KB",
+      "updated": "2026-09-30",
       "example": {
         "name": "Laminate_Analysis.html",
         "object": "templates/examples/Laminate_Analysis.html",

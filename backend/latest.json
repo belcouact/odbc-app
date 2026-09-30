@@ -1,7 +1,7 @@
 {
-  "version": "2.0.4",
+  "version": "2.0.6",
   "min_version": "1.0.0",
-  "notes": "1. BI → Chart: a new \"AI Chart\" button sits above \"Add to dashboard\". Describe the chart you want in the AI sidebar and it renders straight onto the BI chart builder — where it can be tweaked and added to the dashboard like any other visual. Charts generated from the Analyze tab keep landing there as before.\n2. Colour Explorer template (analyze-color-data): both ΔE reference dropdowns now show the LD sample NAME instead of the item code, so picking a reference no longer requires knowing the LD_item.",
+  "notes": "1. Results grid — paste data: a new Paste button sits next to Upload, and Ctrl+V pastes straight from Excel. When the grid already holds rows the paste replaces them (Revert undoes it); a pasted header row becomes the table's column names, and empty rows are dropped.\n2. Chart area — secondary Y axis: bar, stacked bar, trend, step line, area, stacked area and combo charts now offer the Y2 (secondary) shelf, so a second measure is plotted on its own right-hand axis (the top axis for horizontal bars).\n3. Chart area — Visualizations pane: the chart type panel now collapses and expands sideways into a slim rail on the right, matching the Fields rail, instead of folding up and down.\n4. Chart area — column types: a column type changed in the results grid is reflected in the chart builder's column panel straight away, and a saved BI snapshot keeps the types its columns had.\n5. Laminate Lab Results (analyze-tautona-data): the script now opens a native Windows dialog first, listing every test component (ANALYSIS + RESULT_NAME) so unwanted ones can be unchecked; set LAMINATE_SKIP_PICKER=1 to analyze everything without the dialog.",
   "exe": "ODBCQueryApp.exe",
-  "sha256": "25294628835ebc85f41e57642fdf9d77a7e310e6c2a066932545742ca3433195"
+  "sha256": "65838d78d4e58621dab6a276f7243530c58d33d00e3ab7f66d8f9377d376f41d"
 }

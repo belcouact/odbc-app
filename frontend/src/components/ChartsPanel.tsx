@@ -13,8 +13,6 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import DataUsageIcon from '@mui/icons-material/DataUsage'
 import DonutLargeIcon from '@mui/icons-material/DonutLarge'
-import ExpandLessIcon from '@mui/icons-material/ExpandLess'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FilterAltIcon from '@mui/icons-material/FilterAlt'
 import GridViewIcon from '@mui/icons-material/GridView'
 import MultilineChartIcon from '@mui/icons-material/MultilineChart'
@@ -35,7 +33,6 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
-import Collapse from '@mui/material/Collapse'
 import FormControl from '@mui/material/FormControl'
 import IconButton from '@mui/material/IconButton'
 import InputLabel from '@mui/material/InputLabel'
@@ -69,6 +66,7 @@ import {
   DEFAULT_OPERATION,
   NUMERIC_Y_TYPES,
   OPERATIONS,
+  SECONDARY_AXIS_TYPES,
   SERIES_CAPABLE_TYPES,
   SINGLE_SERIES_TYPES,
 } from '../utils/chartCatalog'
@@ -214,9 +212,10 @@ export default function ChartsPanel({
   const [barMode, setBarMode] = useState<'grouped' | 'stacked' | 'percent'>('grouped')
   const [horizontal, setHorizontal] = useState(false)
   const [area, setArea] = useState(false)
-  // Secondary-axis column(s) for combo charts (drawn as lines on the right axis).
+  // Secondary-axis column(s) for dual-axis chart types (drawn as lines on the
+  // right / top axis).
   const [y2, setY2] = useState<string[]>([])
-  // Aggregation applied to the secondary (right) axis of combo charts.
+  // Aggregation applied to the secondary (right) axis.
   const [y2Operation, setY2Operation] = useState<ChartOperation>('sum')
 
   // The draggable column list starts open but can be collapsed to give the
@@ -277,7 +276,7 @@ export default function ChartsPanel({
     // Single-series families (pie / doughnut / rose / funnel / treemap / gauge /
     // pareto) only ever draw one measure.
     if (SINGLE_SERIES_TYPES.includes(value)) setY((cur) => cur.slice(0, 1))
-    if (value !== 'combo') setY2([])
+    if (!SECONDARY_AXIS_TYPES.includes(value)) setY2([])
     if (!fits(value, x, y)) {
       const picked = autoPickAxes(value, result.columns, columnKinds, result.rows)
       setX(picked.x)
@@ -392,8 +391,8 @@ export default function ChartsPanel({
     [result, columnKinds, chartType],
   )
 
-  // Secondary-axis columns (combo lines) are numeric for a meaningful dual
-  // axis; exclude the X axis and the primary Y columns to keep series distinct.
+  // Secondary-axis columns (Y2 lines) are numeric for a meaningful dual axis;
+  // exclude the X axis and the primary Y columns to keep series distinct.
   const y2Columns = useMemo(
     () =>
       result.columns.filter(
@@ -404,6 +403,10 @@ export default function ChartsPanel({
 
   const singleSeriesChart = SINGLE_SERIES_TYPES.includes(chartType)
   const seriesCapable = SERIES_CAPABLE_TYPES.includes(chartType)
+  // Chart types that can plot a second measure on a right-hand value axis. A
+  // breakdown (Legend) column already owns the series list, so the two never
+  // combine.
+  const secondaryCapable = SECONDARY_AXIS_TYPES.includes(chartType) && !series
 
   // Breakdown candidates: low-cardinality columns excluding the X axis.
   const seriesCandidates = useMemo(() => {
@@ -434,8 +437,8 @@ export default function ChartsPanel({
       topN,
       bins,
       sort,
-      y2: chartType === 'combo' && y2.length > 0 ? y2 : undefined,
-      y2Operation: chartType === 'combo' && y2.length > 0 ? y2Operation : undefined,
+      y2: secondaryCapable && y2.length > 0 ? y2 : undefined,
+      y2Operation: secondaryCapable && y2.length > 0 ? y2Operation : undefined,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, chartType, x, y, operation, series, topN, bins, sort, y2, y2Operation])
@@ -476,8 +479,8 @@ export default function ChartsPanel({
     barMode,
     horizontal,
     area,
-    y2: chartType === 'combo' && y2.length > 0 ? y2 : undefined,
-    y2Operation: chartType === 'combo' && y2.length > 0 ? y2Operation : undefined,
+    y2: secondaryCapable && y2.length > 0 ? y2 : undefined,
+    y2Operation: secondaryCapable && y2.length > 0 ? y2Operation : undefined,
   }
 
   const missingAxes = (!NO_X_AXIS_TYPES.includes(chartType) && !x) || y.length === 0
@@ -702,11 +705,15 @@ export default function ChartsPanel({
 
         {/* Canvas + Visualizations pane. The pane docks to the right on desktop
             (Power BI-style) and stacks above the canvas on phones so the field
-            wells and chart types stay within reach. */}
+            wells and chart types stay within reach. Collapsing it shrinks the
+            pane to a slim rail on the right, mirroring the fields rail. */}
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) minmax(300px, 360px)' },
+            gridTemplateColumns: {
+              xs: '1fr',
+              lg: setupOpen ? 'minmax(0, 1fr) minmax(300px, 360px)' : 'minmax(0, 1fr) 52px',
+            },
             gap: 1.5,
             alignItems: 'start',
             minWidth: 0,
@@ -722,18 +729,21 @@ export default function ChartsPanel({
           position: { lg: 'sticky' },
           top: { lg: 8 },
           minWidth: 0,
-          p: 1.5,
+          overflow: 'hidden',
+          p: setupOpen ? 1.5 : 0,
         }}
       >
+      {setupOpen ? (
+      <>
       <Stack
         direction="row"
         spacing={1}
-        onClick={() => setSetupOpen((cur) => !cur)}
+        onClick={() => setSetupOpen(false)}
         role="button"
-        aria-expanded={setupOpen}
-        aria-label={setupOpen ? 'Collapse visualizations' : 'Expand visualizations'}
-        title={setupOpen ? 'Collapse visualizations' : 'Expand visualizations'}
-        sx={{ alignItems: 'center', minHeight: 40, cursor: 'pointer' }}
+        aria-expanded
+        aria-label="Collapse visualizations"
+        title="Collapse visualizations"
+        sx={{ alignItems: 'center', minHeight: 48, cursor: 'pointer' }}
       >
         <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
           Visualizations
@@ -742,11 +752,10 @@ export default function ChartsPanel({
           {CHART_TYPES.find((t) => t.value === chartType)?.label ?? 'KPI cards'}
         </Typography>
         <IconButton size="small" aria-hidden tabIndex={-1} sx={{ pointerEvents: 'none' }}>
-          {setupOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          <ChevronRightIcon />
         </IconButton>
       </Stack>
 
-      <Collapse in={setupOpen} unmountOnExit>
         <Stack spacing={1.5} sx={{ minWidth: 0 }}>
 
       {/* Row 1 — chart type tiles. Tap to switch family, or drag a tile onto
@@ -856,7 +865,7 @@ export default function ChartsPanel({
             onRemove={handleYRemove}
             hint={singleSeriesChart ? 'Drop a column for Y' : 'Drop columns for Y'}
           />
-          {chartType === 'combo' && (
+          {secondaryCapable && (
             <FieldWell
               label="Y2 (secondary)"
               value={y2}
@@ -880,9 +889,9 @@ export default function ChartsPanel({
             />
           )}
 
-          {/* Aggregation — the primary Y operation always shows; combo adds a secondary.
-              Uses the same caption + control layout as FieldWell so the dropdowns
-              top-align with the field shelves. */}
+          {/* Aggregation — the primary Y operation always shows; dual-axis types
+              add a secondary. Uses the same caption + control layout as FieldWell
+              so the dropdowns top-align with the field shelves. */}
           <Box sx={{ minWidth: { xs: '100%', sm: 180 }, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             <Typography variant="caption" color="text.secondary" noWrap>Y operation</Typography>
             <Select
@@ -898,7 +907,7 @@ export default function ChartsPanel({
               ))}
             </Select>
           </Box>
-          {chartType === 'combo' && (
+          {secondaryCapable && (
             <Box sx={{ minWidth: { xs: '100%', sm: 180 }, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
               <Typography variant="caption" color="text.secondary" noWrap>Y2 operation</Typography>
               <Select
@@ -1025,7 +1034,42 @@ export default function ChartsPanel({
 
         </Stack>
         </Stack>
-      </Collapse>
+      </>
+      ) : (
+        /* Collapsed: a slim rail beside the canvas on desktop, a short strip
+           above it on phones. Both reopen the pane when tapped. */
+        <Stack
+          spacing={0.5}
+          onClick={() => setSetupOpen(true)}
+          role="button"
+          aria-expanded={false}
+          aria-label="Expand visualizations"
+          title="Expand visualizations"
+          sx={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: { xs: 48, lg: 180 },
+            px: { xs: 1.5, lg: 0 },
+            py: { xs: 0, lg: 1.5 },
+            cursor: 'pointer',
+          }}
+        >
+          <ChevronLeftIcon
+            fontSize="small"
+            sx={{ transform: { xs: 'rotate(90deg)', lg: 'none' } }}
+          />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              writingMode: { xs: 'horizontal-tb', lg: 'vertical-rl' },
+              letterSpacing: { lg: 2 },
+            }}
+          >
+            Visualizations
+          </Typography>
+        </Stack>
+      )}
       </Paper>
 
       {/* Canvas column — the visualization fills the space left of the pane on

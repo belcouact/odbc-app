@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type {
   CellContextMenuEvent,
@@ -15,8 +24,14 @@ import 'ag-grid-community/styles/ag-theme-quartz.css'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemText from '@mui/material/ListItemText'
@@ -24,6 +39,7 @@ import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Popover from '@mui/material/Popover'
 import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
@@ -33,6 +49,7 @@ import BlockIcon from '@mui/icons-material/Block'
 import ClearAllIcon from '@mui/icons-material/ClearAll'
 import CloseIcon from '@mui/icons-material/Close'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import ContentPasteIcon from '@mui/icons-material/ContentPaste'
 import FilterAltIcon from '@mui/icons-material/FilterAlt'
 import FilterAltOffIcon from '@mui/icons-material/FilterAltOff'
 import FunctionsIcon from '@mui/icons-material/Functions'
@@ -143,6 +160,80 @@ function rowToTsv(headers: string[], row: Record<string, unknown>) {
  *  lone "\n" as an in-cell line break (which collapses everything on paste). */
 function toTsv(headers: string[], rows: Record<string, unknown>[]) {
   return [headers.join('\t'), ...rows.map((row) => rowToTsv(headers, row))].join('\r\n')
+}
+
+/** Parse a pasted TSV block into a grid of strings. Handles Excel quoting:
+ *  cells containing tabs, newlines or quotes come wrapped in "..." with ""
+ *  escapes, so a quoted line break is cell data rather than a row break. */
+function parseTsv(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let quoted = false
+  const pushCell = () => {
+    row.push(cell)
+    cell = ''
+  }
+  const pushRow = () => {
+    pushCell()
+    rows.push(row)
+    row = []
+  }
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"'
+          i += 1
+        } else {
+          quoted = false
+        }
+      } else {
+        cell += ch
+      }
+      continue
+    }
+    if (ch === '"' && cell === '') {
+      quoted = true
+    } else if (ch === '\t') {
+      pushCell()
+    } else if (ch === '\r') {
+      if (text[i + 1] === '\n') i += 1
+      pushRow()
+    } else if (ch === '\n') {
+      pushRow()
+    } else {
+      cell += ch
+    }
+  }
+  // Trailing content without a final line break still forms a row, and a
+  // block that is empty overall still yields one empty row for the caller.
+  if (cell !== '' || row.length > 0 || rows.length === 0) pushRow()
+  return rows
+}
+
+/** Dedupe raw column names: blank cells become "Column N", duplicates get
+ *  " (2)"-style suffixes. Order and length are preserved. */
+function dedupeColumnNames(bases: string[]): string[] {
+  const seen = new Map<string, number>()
+  return bases.map((base, index) => {
+    const name = base.trim() || `Column ${index + 1}`
+    const count = seen.get(name) ?? 0
+    seen.set(name, count + 1)
+    return count === 0 ? name : `${name} (${count + 1})`
+  })
+}
+
+/** Infer a column type from pasted values: all-numeric → number, all
+ *  ISO-looking → date, otherwise text. Blank cells are ignored. */
+function inferColumnType(values: string[]): string {
+  const filled = values.filter((value) => value !== '')
+  if (filled.length > 0 && filled.every((v) => Number.isFinite(Number(v)))) return 'number'
+  if (filled.length > 0 && filled.every((v) => /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?/.test(v))) {
+    return 'date'
+  }
+  return 'text'
 }
 
 /** One feature line inside the toolbar's "what can I do" popover. */
@@ -358,16 +449,38 @@ interface ResultsGridProps {
   drillFilters?: GridDrillFilter[]
   /** Clears the drill-through filter; undefined hides the banner's Clear button. */
   onClearDrill?: () => void
+  /** Applies clipboard-pasted rows to the grid data. When a paste creates a
+   *  brand-new table (no query results yet), ``columns`` carries the fresh
+   *  column definitions. Undefined hides nothing — the Paste button now lives
+   *  in the page's results header, which stays mounted without a grid. */
+  onRowsPasted?: (
+    rows: Record<string, unknown>[],
+    columns?: { name: string; type: string }[],
+  ) => void
+  /** Raises a column-type override (Column Types dialog) to the page, which
+   *  writes it into the result so the chart builders and summary tab see the
+   *  type change in real time. */
+  onColumnTypeChange?: (name: string, kind: ColumnKind) => void
 }
 
-export default function ResultsGrid({
+/** Commands the page toolbar can invoke on the grid from outside. */
+export interface ResultsGridHandle {
+  /** Opens the paste-from-clipboard dialog (works with no grid mounted). */
+  openPasteDialog: () => void
+}
+
+const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function ResultsGrid({
   result,
   onAddComputedColumn,
   onOpenAiTransform,
   onRevertGrid,
   drillFilters = [],
   onClearDrill,
-}: ResultsGridProps) {
+  onRowsPasted,
+  onColumnTypeChange,
+}: ResultsGridProps,
+  ref,
+) {
   const gridRef = useRef<AgGridReact>(null)
   /** Wrapper around the grid; used to capture the right-click position early. */
   const gridWrapRef = useRef<HTMLDivElement | null>(null)
@@ -382,6 +495,20 @@ export default function ResultsGrid({
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   /** Anchor element for the toolbar's feature-help popover. */
   const [helpAnchor, setHelpAnchor] = useState<HTMLElement | null>(null)
+  /** Paste-from-clipboard dialog (the touch/restricted-clipboard fallback).
+   *  Also opened from the results header via `ResultsGridHandle`, so it works
+   *  before any query has run — the paste then creates a brand-new table. */
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasteDraft, setPasteDraft] = useState('')
+  /** Does the pasted block's first row hold column headers? Pre-filled by
+   *  auto-detection while the user edits the draft; their manual toggle wins. */
+  const [pasteSkipHeader, setPasteSkipHeader] = useState(false)
+  /** Flips true the moment the user toggles the header checkbox themselves. */
+  const pasteHeaderTouched = useRef(false)
+  /** Transient feedback after a paste, e.g. "Pasted 12 row(s) · 3 new". */
+  const [pasteNotice, setPasteNotice] = useState('')
+  /** Timer id of the running paste-notice timeout, so a new paste restarts it. */
+  const pasteNoticeTimer = useRef<number | undefined>(undefined)
   /** Latest pointer position. Captured in the capture phase, because AG Grid's
    *  own `cellContextMenu` callback fires before our bubble-phase handler. */
   const pointerRef = useRef({ x: 0, y: 0 })
@@ -404,9 +531,16 @@ export default function ResultsGrid({
   }, [result, drillFilters, passesDrill])
 
 
-  const handleKindChange = useCallback((name: string, kind: ColumnKind) => {
-    setColumnKinds((prev) => (prev[name] === kind ? prev : { ...prev, [name]: kind }))
-  }, [])
+  const handleKindChange = useCallback(
+    (name: string, kind: ColumnKind) => {
+      setColumnKinds((prev) => (prev[name] === kind ? prev : { ...prev, [name]: kind }))
+      // Write the override through to the page's result as the canonical kind
+      // string (detectColumnKind recognizes it), so the chart builders and the
+      // summary tab reflect the type change in real time.
+      onColumnTypeChange?.(name, kind)
+    },
+    [onColumnTypeChange],
+  )
 
   const handleHeaderRename = useCallback((name: string, label: string) => {
     setColumnLabels((prev) => {
@@ -489,6 +623,365 @@ export default function ResultsGrid({
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
   }, [result])
+
+  /** Shows a transient "Pasted …" line next to the row count. */
+  const showPasteNotice = useCallback((message: string) => {
+    setPasteNotice(message)
+    window.clearTimeout(pasteNoticeTimer.current)
+    pasteNoticeTimer.current = window.setTimeout(() => setPasteNotice(''), 4000)
+  }, [])
+
+  /** Lets the results header's Paste button open this dialog even before any
+   *  query has run (the grid itself is not rendered then). */
+  useImperativeHandle(
+    ref,
+    () => ({
+      openPasteDialog: () => {
+        setPasteDraft('')
+        setPasteSkipHeader(false)
+        pasteHeaderTouched.current = false
+        setPasteOpen(true)
+      },
+    }),
+    [],
+  )
+
+  /** Draft edits auto-set the header checkbox until the user overrides it:
+   *  with a grid, on when the first row matches the column headers; without
+   *  one, on by default — an Excel copy made to start a table includes them. */
+  const handlePasteDraftChange = useCallback(
+    (value: string) => {
+      setPasteDraft(value)
+      if (pasteHeaderTouched.current) return
+      const block = parseTsv(value)
+      if (block.length === 0 || block.every((row) => row.every((cell) => cell.trim() === ''))) {
+        return
+      }
+      if (!result) {
+        setPasteSkipHeader(true)
+        return
+      }
+      const api = gridRef.current?.api
+      const displayedColumns = (api?.getAllDisplayedColumns() ?? []).filter(
+        (column) => column.getColDef().field != null,
+      )
+      const names =
+        displayedColumns.length > 0
+          ? displayedColumns.map((column) => column.getColDef().field as string)
+          : result.columns.map((column) => column.name)
+      const first = block[0]
+      const hits = first.reduce((acc, cell, index) => {
+        const name = names[index]
+        if (!name) return acc
+        const label = columnLabels[name]
+        const lower = cell.trim().toLowerCase()
+        return lower === name.toLowerCase() || (label != null && lower === label.toLowerCase())
+          ? acc + 1
+          : acc
+      }, 0)
+      const matched = first.length >= 2 ? hits / first.length >= 0.6 : hits === 1
+      // The dialog's paste replaces the table, so a self-evident header row —
+      // every cell non-empty text, sitting above rows with numeric values —
+      // is auto-checked even when its names differ from the current columns:
+      // a replacing paste with new headers defines a brand-new column set.
+      const dataBelow = block.slice(1)
+      const headerish =
+        first.length >= 2 &&
+        dataBelow.length > 0 &&
+        first.every((cell) => {
+          const value = cell.trim()
+          return (
+            value !== '' && !Number.isFinite(Number(value)) && !/^\d{4}-\d{2}-\d{2}/.test(value)
+          )
+        }) &&
+        dataBelow.some((row) =>
+          row.some((cell) => {
+            const value = cell.trim()
+            return value !== '' && Number.isFinite(Number(value))
+          }),
+        )
+      setPasteSkipHeader(matched || headerish)
+    },
+    [result, columnLabels],
+  )
+
+  /** Merges a pasted TSV block into the grid data, Excel-style: the block
+   *  fills cells starting at the focused cell (top-left when nothing is
+   *  focused), and pastes that extend past the last row append new rows.
+   *  Blank rows are dropped. Header handling: ``options.skipHeader`` (the
+   *  Paste dialog's checkbox) wins when given; the Ctrl+V path instead skips
+   *  a first row that looks like the column headers, so a round-trip copy of
+   *  this grid pastes back cleanly. With ``options.replace`` (the Paste
+   *  dialog) the existing rows are cleared first — the block becomes the
+   *  whole table: with a header row, the pasted names become the new column
+   *  headers; without one, the grid's leading column names are kept. With no
+   *  query results at all, the paste creates a brand-new table: the header
+   *  row (when enabled) names the columns, otherwise generic "Column N"
+   *  names are generated. */
+  const applyPastedText = useCallback(
+    (text: string, options?: { skipHeader?: boolean; replace?: boolean }) => {
+      if (!onRowsPasted) return
+      let block = parseTsv(text)
+      // Blank rows — empty lines or Excel's trailing selection rows — are
+      // never meaningful data. Drop them up front and report how many.
+      const emptySkipped = block.filter((row) => row.every((cell) => cell.trim() === '')).length
+      if (emptySkipped > 0) {
+        block = block.filter((row) => row.some((cell) => cell.trim() !== ''))
+      }
+      if (block.length === 0) {
+        if (emptySkipped > 0) showPasteNotice('Nothing to paste — every row was empty.')
+        return
+      }
+
+      // No grid yet: build a table from scratch. Column count comes from the
+      // widest pasted row; names from the header row when enabled (deduped),
+      // else "Column N". Types are inferred: all-numeric → number, all
+      // ISO-looking → date, otherwise text.
+      if (!result) {
+        const width = block.reduce((w, row) => Math.max(w, row.length), 0)
+        const useHeader = options?.skipHeader === true
+        const headerRow = useHeader ? block[0] : null
+        const freshRows = useHeader ? block.slice(1) : block
+        if (width === 0 || freshRows.length === 0) {
+          showPasteNotice(
+            width === 0
+              ? 'Nothing to paste — no columns found.'
+              : 'Only a header row was pasted — add some data rows below it.',
+          )
+          return
+        }
+        const names = dedupeColumnNames(
+          Array.from({ length: width }, (_, index) => headerRow?.[index] ?? ''),
+        )
+        const columns = names.map((name, index) => ({
+          name,
+          type: inferColumnType(freshRows.map((row) => (row[index] ?? '').trim())),
+        }))
+        const rows = freshRows.map((row) =>
+          Object.fromEntries(
+            columns.map((column, index) => {
+              const raw = (row[index] ?? '').trim()
+              const value =
+                column.type === 'number' && raw !== '' && Number.isFinite(Number(raw))
+                  ? Number(raw)
+                  : raw
+              return [column.name, value]
+            }),
+          ),
+        )
+        onRowsPasted(rows, columns)
+        const parts = [
+          `Pasted ${rows.length} row(s) · ${columns.length} column(s)`,
+          ...(emptySkipped > 0 ? [`${emptySkipped} empty skipped`] : []),
+        ]
+        showPasteNotice(`${parts.join(' · ')} — new table created.`)
+        return
+      }
+
+      const api = gridRef.current?.api
+
+      // Column order comes from the live grid when it is mounted; an empty
+      // result renders no grid, so the Paste dialog falls back to the raw
+      // column list (every pasted row is then appended). Non-data columns
+      // (e.g. the row-selection column) have no field and must be skipped or
+      // the whole paste would shift one column to the right.
+      const displayedColumns = (api?.getAllDisplayedColumns() ?? []).filter(
+        (column) => column.getColDef().field != null,
+      )
+      const columnNames = displayedColumns.map((column) => column.getColDef().field as string)
+      const names = columnNames.length > 0 ? columnNames : result.columns.map((c) => c.name)
+
+      // The Paste dialog replaces the whole table: clear the existing rows and
+      // rebuild from the top-left — every pasted row lands fresh and grid
+      // columns without a pasted value become blank. The Ctrl+V path keeps the
+      // Excel-style fill-from-focused-cell merge.
+      const replaceMode = options?.replace === true
+
+      // Start cell: the grid's focused cell, else the cell focused in the DOM
+      // (AG Grid only tracks real mouse/keyboard focus), else the top-left.
+      // A replacing paste always starts at the top-left, so skip the lookup.
+      const focused = replaceMode ? null : (api?.getFocusedCell() ?? null)
+      let startColIndex = focused?.column
+        ? displayedColumns.findIndex((column) => column.getColId() === focused.column.getColId())
+        : -1
+      let rowStart = focused?.rowIndex ?? -1
+      if (startColIndex < 0 || rowStart < 0) {
+        const cell = document.activeElement?.closest('.ag-cell') as HTMLElement | null
+        const rowEl = cell?.closest('.ag-row') as HTMLElement | null
+        if (cell && rowEl) {
+          if (startColIndex < 0) {
+            const colId = cell.getAttribute('col-id')
+            const idx = colId ? displayedColumns.findIndex((c) => c.getColId() === colId) : -1
+            if (idx >= 0) startColIndex = idx
+          }
+          if (rowStart < 0) {
+            const parsed = Number(rowEl.getAttribute('row-index'))
+            if (Number.isFinite(parsed) && parsed >= 0) rowStart = parsed
+          }
+        }
+      }
+      const colStart = startColIndex >= 0 ? startColIndex : 0
+      const startRow = Math.max(0, rowStart)
+
+      // Rows in display (filter + sort) order, so a focused cell's rowIndex
+      // maps onto this list. Node enumeration can come back short on large
+      // paginated grids, so only trust it when it accounts for every row —
+      // otherwise fall back to result.rows order. Either way the merge starts
+      // from the full dataset, so pasting can never drop untouched rows.
+      // A replacing paste starts from an empty row set, so every pasted row
+      // is built fresh (the existing rows are discarded).
+      const displayOrder: Record<string, unknown>[] = []
+      if (!replaceMode) {
+        api?.forEachNodeAfterFilterAndSort((node) => {
+          if (node.data) displayOrder.push(node.data as Record<string, unknown>)
+        })
+      }
+      const rowSource = replaceMode
+        ? []
+        : displayOrder.length === result.rows.length
+          ? displayOrder
+          : result.rows
+
+      const labels = (index: number) => {
+        const name = names[colStart + index]
+        if (!name) return []
+        const label = columnLabels[name]
+        return label ? [label.toLowerCase(), name.toLowerCase()] : [name.toLowerCase()]
+      }
+
+      // Header detection: at least 60% of the first pasted row (min 2 cells,
+      // or an exact single-column match) equals the target column's name. The
+      // dialog's checkbox (``options.skipHeader``) wins when given — checked
+      // drops the first row, unchecked pastes it as data; the Ctrl+V path
+      // passes no option and keeps the auto-detection.
+      const first = block[0]
+      const headerHits = first.reduce(
+        (hits, cell, index) => (labels(index).includes(cell.trim().toLowerCase()) ? hits + 1 : hits),
+        0,
+      )
+      const looksLikeHeader =
+        colStart === 0 &&
+        (first.length >= 2 ? headerHits / first.length >= 0.6 : headerHits === 1)
+      const skipHeader = options?.skipHeader ?? looksLikeHeader
+      const dataRows = skipHeader ? block.slice(1) : block
+      if (dataRows.length === 0) {
+        showPasteNotice('Only a header row was pasted — nothing to add.')
+        return
+      }
+
+      // A replacing paste (the Paste dialog) rebuilds the whole table from the
+      // block. When the block includes its header row, the pasted names become
+      // the new column headers — the old headers do not survive the replace. A
+      // data-only block keeps the grid's column names, with "Column N" fill-ins
+      // for pasted columns beyond the grid's width.
+      if (replaceMode) {
+        const width = block.reduce((w, row) => Math.max(w, row.length), 0)
+        const headerRow = skipHeader ? first : null
+        const baseNames = Array.from({ length: width }, (_, index) =>
+          headerRow ? (headerRow[index] ?? '') : (names[index] ?? `Column ${index + 1}`),
+        )
+        const existingTypes = new Map(result.columns.map((column) => [column.name, column.type]))
+        const columns = dedupeColumnNames(baseNames).map((name, index) => {
+          if (!headerRow && index < names.length) {
+            const adopted = existingTypes.get(names[index])
+            if (adopted) return { name, type: adopted }
+          }
+          return {
+            name,
+            type: inferColumnType(dataRows.map((row) => (row[index] ?? '').trim())),
+          }
+        })
+        const rows = dataRows.map((row) =>
+          Object.fromEntries(
+            columns.map((column, index) => {
+              const raw = (row[index] ?? '').trim()
+              const value =
+                column.type === 'number' && raw !== '' && Number.isFinite(Number(raw))
+                  ? Number(raw)
+                  : raw
+              return [column.name, value]
+            }),
+          ),
+        )
+        onRowsPasted(rows, columns)
+        const parts = [
+          `Pasted ${rows.length} row(s) · ${columns.length} column(s)`,
+          ...(emptySkipped > 0 ? [`${emptySkipped} empty skipped`] : []),
+        ]
+        showPasteNotice(`${parts.join(' · ')} — table replaced.`)
+        return
+      }
+
+      // Number-kind columns accept "12.5" as a number so filters and charts
+      // treat the pasted value like the rest of the column.
+      const columnTypes = new Map(result.columns.map((column) => [column.name, column.type]))
+      const kindCache = new Map<string, ColumnKind>()
+      const kindOf = (name: string): ColumnKind => {
+        const cached = kindCache.get(name)
+        if (cached) return cached
+        const kind = columnKinds[name] ?? detectColumnKind(name, columnTypes.get(name) ?? '', result.rows)
+        kindCache.set(name, kind)
+        return kind
+      }
+
+      const builtRows: Record<string, unknown>[] = rowSource.slice()
+      let appended = 0
+      let skippedCols = 0
+      for (let r = 0; r < dataRows.length; r += 1) {
+        const idx = startRow + r
+        if (idx < rowSource.length) {
+          builtRows[idx] = { ...rowSource[idx] }
+        } else {
+          builtRows[idx] = Object.fromEntries(result.columns.map((column) => [column.name, '']))
+          appended += 1
+        }
+        const cells = dataRows[r]
+        for (let c = 0; c < cells.length; c += 1) {
+          const name = names[colStart + c]
+          if (!name) {
+            skippedCols = Math.max(skippedCols, cells.length - c)
+            break
+          }
+          const raw = cells[c]
+          if (kindOf(name) === 'number') {
+            const trimmed = raw.trim()
+            builtRows[idx][name] =
+              trimmed !== '' && Number.isFinite(Number(trimmed)) ? Number(trimmed) : trimmed
+          } else {
+            builtRows[idx][name] = raw
+          }
+        }
+      }
+
+      onRowsPasted(builtRows)
+      const parts = [`Pasted ${dataRows.length} row(s)`]
+      if (replaceMode) parts.push('table replaced')
+      else if (appended > 0) parts.push(`${appended} new`)
+      if (emptySkipped > 0) parts.push(`${emptySkipped} empty skipped`)
+      if (skippedCols > 0) parts.push(`${skippedCols} column(s) beyond the table skipped`)
+      showPasteNotice(parts.join(' · '))
+    },
+    [result, columnKinds, columnLabels, onRowsPasted, showPasteNotice],
+  )
+
+  // Ctrl+V anywhere in the grid pastes straight from the clipboard: the paste
+  // event only carries data on a user gesture, which a keypress is. The
+  // listener sits on document (the event's target can be the focused cell or
+  // the document itself) and only acts when the grid has focus.
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      const wrap = gridWrapRef.current
+      if (!wrap) return
+      const path = event.composedPath()
+      if (!path.includes(wrap) && !wrap.contains(document.activeElement)) return
+      const text = event.clipboardData?.getData('text/plain')
+      if (!text) return
+      event.preventDefault()
+      applyPastedText(text)
+    }
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [applyPastedText])
 
   // AG Grid dispatches its own `cellContextMenu` handler before React's
   // bubble-phase listeners run, so the right-click position has to be recorded
@@ -655,11 +1148,83 @@ export default function ResultsGrid({
     [menu, result],
   )
 
+  // Paste-from-clipboard dialog: the touch/restricted-clipboard fallback, and
+  // the only paste entry point before any query has run (it then creates a
+  // brand-new table). Rendered in both the empty and the grid states.
+  const pasteDialog = (
+    <Dialog open={pasteOpen} onClose={() => setPasteOpen(false)} fullWidth maxWidth="sm">
+      <DialogTitle>Paste from clipboard</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Copy cells in Excel (or anywhere) and paste below — Ctrl+V on desktop, or long-press →
+          Paste on touch. On the grid itself, Ctrl+V pastes Excel-style from the focused cell. A
+          paste here
+          {result
+            ? ' replaces the whole table — pasted headers (when included) become the column headers'
+            : ' creates a brand-new table from the block'}
+          ; blank rows are dropped.
+        </Typography>
+        <TextField
+          autoFocus
+          multiline
+          minRows={6}
+          maxRows={14}
+          fullWidth
+          placeholder={'column A\tcolumn B\nvalue\tvalue'}
+          value={pasteDraft}
+          onChange={(event) => handlePasteDraftChange(event.target.value)}
+        />
+        <FormControlLabel
+          sx={{ mt: 1, alignItems: 'flex-start' }}
+          control={
+            <Checkbox
+              size="small"
+              checked={pasteSkipHeader}
+              onChange={(event) => {
+                setPasteSkipHeader(event.target.checked)
+                pasteHeaderTouched.current = true
+              }}
+            />
+          }
+          label={
+            result
+              ? 'First row contains column headers — skip it'
+              : 'First row contains column headers — name the new columns'
+          }
+          slotProps={{ typography: { variant: 'body2', sx: { mt: 0.5 } } }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setPasteOpen(false)} sx={{ minHeight: 40 }}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          disabled={!pasteDraft.trim()}
+          onClick={() => {
+            const text = pasteDraft
+            setPasteOpen(false)
+            setPasteDraft('')
+            applyPastedText(text, { skipHeader: pasteSkipHeader, replace: true })
+          }}
+          sx={{ minHeight: 40 }}
+        >
+          {result ? 'Paste into grid' : 'Paste as new table'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
+
   if (!result) {
     return (
-      <Box sx={{ textAlign: 'center', py: { xs: 5, md: 8 } }}>
-        <Typography color="text.secondary">Run a query to see results here.</Typography>
-      </Box>
+      <>
+        <Box sx={{ textAlign: 'center', py: { xs: 5, md: 8 } }}>
+          <Typography color="text.secondary">
+            Run a query, upload a file, or paste data to see results here.
+          </Typography>
+        </Box>
+        {pasteDialog}
+      </>
     )
   }
 
@@ -668,12 +1233,19 @@ export default function ResultsGrid({
   return (
     <Stack spacing={1.5} sx={{ width: '100%' }}>
       <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-        <Typography variant="body2" color="text.secondary">
-          {drillFilters.length > 0
-            ? `${drilledCount.toLocaleString()} of ${result.row_count.toLocaleString()} rows`
-            : `${result.row_count.toLocaleString()} row${result.row_count === 1 ? '' : 's'}`}{' '}
-          · {result.elapsed_ms.toLocaleString()} ms
-        </Typography>
+        <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <Typography variant="body2" color="text.secondary">
+            {drillFilters.length > 0
+              ? `${drilledCount.toLocaleString()} of ${result.row_count.toLocaleString()} rows`
+              : `${result.row_count.toLocaleString()} row${result.row_count === 1 ? '' : 's'}`}{' '}
+            · {result.elapsed_ms.toLocaleString()} ms
+          </Typography>
+          {pasteNotice && (
+            <Typography variant="body2" color="success.main">
+              {pasteNotice}
+            </Typography>
+          )}
+        </Stack>
         <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Tooltip title="See everything this table can do">
             <IconButton
@@ -701,7 +1273,7 @@ export default function ResultsGrid({
             </Tooltip>
           )}
           {onRevertGrid && (
-            <Tooltip title="Restore the grid to the state before the last AI edit">
+            <Tooltip title="Restore the grid to the state before the last AI edit or paste">
               <Button
                 size="small"
                 variant="outlined"
@@ -832,6 +1404,11 @@ export default function ResultsGrid({
         onClose={() => setTypesOpen(false)}
         onKindChange={handleKindChange}
       />
+
+      {/* Paste fallback for touch screens and restricted clipboards: the
+          textarea receives the paste as a normal user gesture, so no
+          clipboard-read permission is needed. */}
+      {pasteDialog}
 
       {/* Right-click menu. AG Grid Community ships no context menu, so this
           covers its Enterprise column menu items plus copy / filter helpers. */}
@@ -991,6 +1568,11 @@ export default function ResultsGrid({
             detail="Copy cell / row / selected rows from the right-click menu. The Copy button copies the rows you selected, or the whole result when nothing is selected — paste it straight into Excel."
           />
           <HelpRow
+            icon={<ContentPasteIcon fontSize="small" />}
+            title="Paste"
+            detail="Press Ctrl+V on the grid for an Excel-style fill, or use the Paste button in the results header: the dialog paste clears the current rows and replaces the table with the block (or creates a new table before any query has run). The header row is auto-detected or toggle it with the checkbox, blank rows are dropped, numbers land as numbers, and Revert undoes the paste."
+          />
+          <HelpRow
             icon={<SwapVertIcon fontSize="small" />}
             title="Sort"
             detail="Click a header to sort, or use Sort ascending / descending / Clear sort in the right-click menu."
@@ -1036,7 +1618,7 @@ export default function ResultsGrid({
             <HelpRow
               icon={<UndoIcon fontSize="small" />}
               title="Revert"
-              detail="Undo the last AI edit and restore the previous table."
+              detail="Undo the last AI edit or paste and restore the previous table."
             />
           )}
           <HelpRow
@@ -1048,4 +1630,6 @@ export default function ResultsGrid({
       </Popover>
     </Stack>
   )
-}
+})
+
+export default ResultsGrid

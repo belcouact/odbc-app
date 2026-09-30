@@ -2,7 +2,7 @@ import type { EChartsOption } from 'echarts'
 import type { ChartDataResponse, ChartOperation, ChartType } from '../api/client'
 import { buildChartData, computeKpiCards, type ChartSort, type KpiCard } from './chartData'
 import { buildChartOption } from './chartOptions'
-import { CHART_TYPE_LABELS, SERIES_CAPABLE_TYPES } from './chartCatalog'
+import { CHART_TYPE_LABELS, SECONDARY_AXIS_TYPES, SERIES_CAPABLE_TYPES } from './chartCatalog'
 
 /**
  * A dashboard visual's configuration: everything needed to rebuild one chart
@@ -28,7 +28,7 @@ export interface VisualConfig {
   barMode?: 'grouped' | 'stacked' | 'percent'
   horizontal?: boolean
   area?: boolean
-  /** Secondary (right) axis columns, combo charts only. */
+  /** Secondary (right) axis columns, for dual-axis chart types only. */
   y2?: string[]
   y2Operation?: ChartOperation
 }
@@ -73,8 +73,11 @@ export interface VisualChart {
  */
 export function buildVisualChart(rows: Record<string, unknown>[], config: VisualConfig): VisualChart {
   const seriesCapable = SERIES_CAPABLE_TYPES.includes(config.chartType)
-  const combo = config.chartType === 'combo'
-  const y2 = combo && config.y2?.length ? config.y2 : undefined
+  // A breakdown (Legend) column already owns the series list, so the secondary
+  // axis only applies when no breakdown is set.
+  const secondaryCapable =
+    SECONDARY_AXIS_TYPES.includes(config.chartType) && !(seriesCapable && config.series)
+  const y2 = secondaryCapable && config.y2?.length ? config.y2 : undefined
 
   const data =
     config.chartType === 'kpi'

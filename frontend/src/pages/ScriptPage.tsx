@@ -833,12 +833,14 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   // The Chart tab charts the grid table loaded in the Query tab, so wrap the
   // workspace snapshot in the QueryResult shape ChartsPanel expects.
   const chartResult = useMemo<QueryResult | null>(() => {
-    const { rows, columns, sqlText } = snapshotForSubtitle
+    const { rows, columns, columnTypes, sqlText } = snapshotForSubtitle
     if (rows.length === 0) return null
     const names = columns.length > 0 ? columns : Object.keys(rows[0] ?? {})
     return {
       rows,
-      columns: names.map((name) => ({ name, type: '' })),
+      // Carry the grid's column types (including user type edits) so the chart
+      // builder's column panel reflects them instead of re-sampling rows.
+      columns: names.map((name) => ({ name, type: columnTypes[name] ?? '' })),
       row_count: rows.length,
       elapsed_ms: 0,
       sql: sqlText,

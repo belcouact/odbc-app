@@ -24,6 +24,7 @@ import FileOpenIcon from '@mui/icons-material/FileOpen'
 import FileUploadIcon from '@mui/icons-material/FileUpload'
 import FilterAltIcon from '@mui/icons-material/FilterAlt'
 import GridViewIcon from '@mui/icons-material/GridView'
+import ContentPasteIcon from '@mui/icons-material/ContentPaste'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined'
 import HistoryIcon from '@mui/icons-material/History'
@@ -92,10 +93,11 @@ import type {
   SavedSqlQuery,
   TableInfo,
 } from '../types'
-import ResultsGrid from '../components/ResultsGrid'
+import ResultsGrid, { type ResultsGridHandle } from '../components/ResultsGrid'
 import SummaryPanel from '../components/SummaryPanel'
 import AiGridTransformDialog from '../components/AiGridTransformDialog'
 import { evaluateFormula, type ComputedColumn } from '../utils/formula'
+import type { ColumnKind } from '../utils/columns'
 import PredefinedSqlPage from './PredefinedSqlPage'
 import { subscribe } from '../editorBus'
 import type { EditorAction } from '../editorBus'
@@ -1339,6 +1341,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       sqlText,
       table,
       columns: (effectiveResult?.columns ?? []).map((col) => col.name),
+      columnTypes: Object.fromEntries(
+        (effectiveResult?.columns ?? []).map((col) => [col.name, col.type]),
+      ),
       rows: effectiveResult?.rows ?? [],
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1752,6 +1757,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   }
 
   const uploadInputRef = useRef<HTMLInputElement>(null)
+  /** Opens the grid's paste dialog from the results header — works before any
+   *  query has run, when the grid itself is not mounted. */
+  const gridHandleRef = useRef<ResultsGridHandle | null>(null)
 
   // ---- AI grid edit (transform the current grid rows via a generated script) ----
   const [aiTransformOpen, setAiTransformOpen] = useState(false)
@@ -1791,6 +1799,49 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     setComputedColumns(last.computedColumns)
     setGridHistory((prev) => prev.slice(0, -1))
     setNotice('Grid reverted to the previous state.')
+  }
+
+  /** Column-type override from the grid (Column Types dialog): written back
+   *  into the result's column types as the canonical kind string, so the
+   *  chart builders' column panels and the summary tab reflect it in real
+   *  time (detectColumnKind recognizes the canonical strings). */
+  const handleColumnTypeChange = useCallback((name: string, kind: ColumnKind) => {
+    setResult((prev) =>
+      prev
+        ? {
+            ...prev,
+            columns: prev.columns.map((column) =>
+              column.name === name ? { ...column, type: kind } : column,
+            ),
+          }
+        : prev,
+    )
+  }, [])
+
+  /** Apply clipboard-pasted rows: snapshot the current grid so Revert can undo
+   *  the paste, then swap in the merged rows. Pasting before any query has run
+   *  creates a brand-new table, and a replacing paste that includes its header
+   *  row passes fresh ``columns`` — the pasted headers become the table's. */
+  const handleGridPaste = (rows: Record<string, unknown>[], columns?: QueryResult['columns']) => {
+    setGridHistory((prev) => (result ? [...prev, { result, computedColumns }] : prev))
+    // Pasted rows carry computed columns already baked in (the grid hands its
+    // effective rows back), so reset them — same contract as the AI transform.
+    setComputedColumns([])
+    // A replacing paste with a header row redefines the columns; a fill paste
+    // omits them and keeps the current column set.
+    const nextColumns =
+      columns && columns.length > 0
+        ? columns
+        : result
+          ? (effectiveResult?.columns ?? result.columns)
+          : []
+    setResult({
+      rows,
+      columns: nextColumns,
+      row_count: rows.length,
+      elapsed_ms: 0,
+      sql: result?.sql ?? '',
+    })
   }
 
   /** Parse a user-selected CSV/Excel file and show its rows in the grid. */
@@ -2298,6 +2349,17 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             >
               Upload
             </Button>
+            <Tooltip title="Paste rows from the clipboard — clears the current rows and replaces the table contents (creates a new table when no results are loaded yet)">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<ContentPasteIcon />}
+                onClick={() => gridHandleRef.current?.openPasteDialog()}
+                sx={{ minHeight: 40 }}
+              >
+                Paste
+              </Button>
+            </Tooltip>
             <Button
               size="small"
               variant="outlined"
@@ -2544,10 +2606,13 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               drilling through to the grid and coming back. */}
           <Box sx={{ display: resultTab === 'grid' ? 'block' : 'none' }}>
             <ResultsGrid
+              ref={gridHandleRef}
               result={effectiveResult}
               onAddComputedColumn={(col) => setComputedColumns((prev) => [...prev, col])}
               onOpenAiTransform={() => setAiTransformOpen(true)}
               onRevertGrid={gridHistory.length > 0 ? handleGridRevert : undefined}
+              onRowsPasted={handleGridPaste}
+              onColumnTypeChange={handleColumnTypeChange}
               drillFilters={drillFilters}
               onClearDrill={() => setDrillFilters([])}
             />

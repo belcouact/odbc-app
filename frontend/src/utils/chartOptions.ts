@@ -53,6 +53,13 @@ function scatterTooltip(xName: string, yName: string) {
   }
 }
 
+/** Names of the series the aggregation routed to the secondary (right) axis. */
+function secondaryNames(data: ChartDataResponse): string[] {
+  return Array.isArray(data.extra?.secondary_series)
+    ? (data.extra!.secondary_series as string[])
+    : []
+}
+
 /**
  * Build an ECharts option from aggregated chart data. Used by the ChartsPanel
  * so charts render consistently. Returns null when there is no data to draw.
@@ -96,6 +103,18 @@ export function buildChartOption(
     const fillArea = chartType === 'area' || chartType === 'stackarea' || !!display?.area
     const stacked = chartType === 'stackarea'
     const step = chartType === 'stepline' ? ('middle' as const) : false
+    // Secondary (Y2) columns get their own right-hand value axis.
+    const secondary = secondaryNames(data)
+    const isSecondary = (name: string) => secondary.includes(name)
+    const primary = data.series.filter((s) => !isSecondary(s.name))
+    const secondarySeries = data.series.filter((s) => isSecondary(s.name))
+    const hasSecondary = secondarySeries.length > 0
+    const yAxis: EChartsOption['yAxis'] = hasSecondary
+      ? [
+          { type: 'value', name: primary[0]?.name, position: 'left' },
+          { type: 'value', name: secondarySeries[0]?.name, position: 'right' },
+        ]
+      : { type: 'value' }
     return {
       tooltip: display?.hasSeries ? yMetricTooltip(yName) : { trigger: 'axis' },
       legend: { top: 0, type: 'scroll' },
@@ -105,15 +124,17 @@ export function buildChartOption(
         data: labels,
         axisLabel: { rotate },
       },
-      yAxis: { type: 'value' },
+      yAxis,
       dataZoom: zoom,
-      series: data.series.map((s) => ({
+      series: [...primary, ...secondarySeries].map((s) => ({
         name: s.name,
         type: 'line',
         data: s.data,
         smooth: !step,
         step,
-        ...(stacked ? { stack: 'total' } : {}),
+        ...(hasSecondary && isSecondary(s.name) ? { yAxisIndex: 1 } : {}),
+        // Only the primary lines stack; the secondary axis has its own scale.
+        ...(stacked && !isSecondary(s.name) ? { stack: 'total' } : {}),
         // Area fill is a display-only toggle (single-series looks best).
         ...(fillArea ? { areaStyle: { opacity: 0.15 } } : {}),
       })),
@@ -181,7 +202,13 @@ export function buildChartOption(
     const isStackbar = chartType === 'stackbar'
     const mode = isStackbar ? 'stacked' : (display?.barMode ?? 'grouped')
     const stackOn = isStackbar || (!!display?.hasSeries && mode !== 'grouped')
-    let seriesData = data.series.map((s) => (s.data as number[]).map((v) => Number(v) || 0))
+    // Secondary (Y2) columns draw as lines on the opposite value axis.
+    const secondary = secondaryNames(data)
+    const isSecondary = (name: string) => secondary.includes(name)
+    const primary = data.series.filter((s) => !isSecondary(s.name))
+    const secondarySeries = data.series.filter((s) => isSecondary(s.name))
+    const hasSecondary = secondarySeries.length > 0
+    let seriesData = primary.map((s) => (s.data as number[]).map((v) => Number(v) || 0))
     // 100% stacked: rescale each category to its own total.
     if (stackOn && mode === 'percent') {
       const totals = labels.map((_, i) =>
@@ -199,6 +226,13 @@ export function buildChartOption(
         ? { max: 100, axisLabel: { formatter: '{value}%' } }
         : {}),
     }
+    // Vertical bars put the second value axis on the right; horizontal bars
+    // put it on top, mirroring the primary axis.
+    const secondaryAxis = {
+      type: 'value' as const,
+      name: secondarySeries[0]?.name,
+      position: (display?.horizontal ? 'top' : 'right') as 'top' | 'right',
+    }
     const categoryAxis = {
       type: 'category' as const,
       data: labels,
@@ -206,8 +240,14 @@ export function buildChartOption(
     }
     // Horizontal bars: category axis on Y (first category on top).
     const axes = display?.horizontal
-      ? { xAxis: valueAxis, yAxis: { ...categoryAxis, inverse: true } }
-      : { xAxis: categoryAxis, yAxis: valueAxis }
+      ? {
+          xAxis: hasSecondary ? [valueAxis, secondaryAxis] : valueAxis,
+          yAxis: { ...categoryAxis, inverse: true },
+        }
+      : {
+          xAxis: categoryAxis,
+          yAxis: hasSecondary ? [valueAxis, secondaryAxis] : valueAxis,
+        }
     const yName = (Array.isArray(y) ? y[0] : y) || data.series[0]?.name || 'Value'
     return {
       tooltip: display?.hasSeries
@@ -217,13 +257,22 @@ export function buildChartOption(
       grid: { left: 16, right: 16, top: 40, bottom: display?.horizontal ? 16 : gridBottom, containLabel: true },
       ...axes,
       dataZoom: display?.horizontal ? undefined : zoom,
-      series: data.series.map((s, i) => ({
-        name: s.name,
-        type: 'bar',
-        data: seriesData[i],
-        barMaxWidth: 40,
-        ...(stackOn ? { stack: 'total' } : {}),
-      })),
+      series: [
+        ...primary.map((s, i) => ({
+          name: s.name,
+          type: 'bar' as const,
+          data: seriesData[i],
+          barMaxWidth: 40,
+          ...(stackOn ? { stack: 'total' } : {}),
+        })),
+        ...secondarySeries.map((s) => ({
+          name: s.name,
+          type: 'line' as const,
+          data: s.data,
+          smooth: true,
+          ...(display?.horizontal ? { xAxisIndex: 1 } : { yAxisIndex: 1 }),
+        })),
+      ],
     }
   }
 
@@ -269,10 +318,8 @@ export function buildChartOption(
   if (chartType === 'combo') {
     // Primary Y columns draw as bars on the left axis; secondary (y2) as lines
     // on the right axis. The aggregation layer tags secondary series in extra.
-    const secondaryNames = Array.isArray(data.extra?.secondary_series)
-      ? (data.extra!.secondary_series as string[])
-      : []
-    const isSecondary = (name: string) => secondaryNames.includes(name)
+    const tagged = secondaryNames(data)
+    const isSecondary = (name: string) => tagged.includes(name)
     const bars = data.series.filter((s) => !isSecondary(s.name))
     const lines = data.series.filter((s) => isSecondary(s.name))
     const leftName = bars[0]?.name ?? (Array.isArray(y) ? y[0] : y) ?? 'Value'

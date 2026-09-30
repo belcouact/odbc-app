@@ -1,6 +1,6 @@
 import type { ChartDataResponse, ChartOperation } from '../api/client'
 import type { ChartType } from '../types'
-import { SINGLE_SERIES_TYPES } from './chartCatalog'
+import { SECONDARY_AXIS_TYPES, SINGLE_SERIES_TYPES } from './chartCatalog'
 import type { ColumnKind } from './columns'
 
 /**
@@ -39,9 +39,9 @@ export interface ChartBuildConfig {
   /** Histogram bin count. */
   bins?: number
   sort?: ChartSort
-  /** Secondary-axis columns (combo charts): drawn as lines on the right axis. */
+  /** Secondary-axis columns (combo / bar / line charts): drawn on the right axis. */
   y2?: string[]
-  /** Aggregation applied to the secondary (right) axis of combo charts. */
+  /** Aggregation applied to the secondary (right) axis. */
   y2Operation?: ChartOperation
 }
 
@@ -303,28 +303,22 @@ function categoryData(rows: Row[], cfg: ChartBuildConfig): ChartDataResponse | n
   // claims the first Y.
   const singleSeries = SINGLE_SERIES_TYPES.includes(chartType)
   const yCols = (singleSeries ? y.slice(0, 1) : series ? y.slice(0, 1) : y).filter(Boolean)
-  if (!x || yCols.length === 0) return null
-
-  const buckets = buildBuckets(rows, x, series ?? '')
-  const matrix = matrixFromBuckets(buckets, yCols, operation)
-  const finalized = finalizeCategory(buckets.labels, matrix, sort, topN)
-  return { labels: finalized.labels, series: finalized.matrix }
-}
-
-/** Combo: primary Y columns as bars on the left axis, secondary (y2) as lines on the right. */
-function comboData(rows: Row[], cfg: ChartBuildConfig): ChartDataResponse | null {
-  const { x, y, y2, operation, y2Operation = operation, sort = 'none', topN = 0 } = cfg
-  const yCols = (y ?? []).filter(Boolean)
-  const y2Cols = (y2 ?? []).filter(Boolean)
+  // Secondary-axis columns are a separate measure; a breakdown column already
+  // owns the series list, so the two never combine.
+  const y2Cols =
+    !series && SECONDARY_AXIS_TYPES.includes(chartType) ? (cfg.y2 ?? []).filter(Boolean) : []
   if (!x || (yCols.length === 0 && y2Cols.length === 0)) return null
 
-  const buckets = buildBuckets(rows, x, '')
-  // Bars aggregate with the primary operation; lines with their own operation.
+  const buckets = buildBuckets(rows, x, series ?? '')
   const matrix = [
     ...matrixFromBuckets(buckets, yCols, operation),
-    ...matrixFromBuckets(buckets, y2Cols, y2Operation),
+    ...(y2Cols.length > 0
+      ? matrixFromBuckets(buckets, y2Cols, cfg.y2Operation ?? operation)
+      : []),
   ]
   const finalized = finalizeCategory(buckets.labels, matrix, sort, topN)
+  if (y2Cols.length === 0) return { labels: finalized.labels, series: finalized.matrix }
+  // The option builder tags these names so it can route them to the right axis.
   const secondarySet = new Set(y2Cols)
   return {
     labels: finalized.labels,
@@ -500,9 +494,7 @@ export function buildChartData(rows: Row[], cfg: ChartBuildConfig): ChartDataRes
       return paretoData(rows, cfg.x, yCols[0] ?? '', cfg.operation)
     case 'gauge':
       return gaugeData(rows, yCols, cfg.operation)
-    case 'combo':
-      return comboData(rows, cfg)
-    default: // trend / stepline / area / stackarea / bar / stackbar / pie /
+    default: // trend / stepline / area / stackarea / bar / stackbar / combo / pie /
       // doughnut / rose / radar / waterfall / funnel / treemap / heatmap
       return categoryData(rows, cfg)
   }

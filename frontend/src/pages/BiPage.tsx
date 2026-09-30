@@ -219,7 +219,10 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
         source: 'grid',
         connection_id: workspace.connectionId || null,
         sql_text: workspace.sqlText || null,
-        columns: workspace.columns.map((name) => ({ name, type: '' })),
+        columns: workspace.columns.map((name) => ({
+          name,
+          type: workspace.columnTypes[name] ?? '',
+        })),
         rows: workspace.rows,
       })
       setNotice(`Saved "${created.name}" (${formatCount(created.row_count)} rows)`)
@@ -246,7 +249,10 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
         source: 'grid',
         connection_id: workspace.connectionId || null,
         sql_text: workspace.sqlText || null,
-        columns: workspace.columns.map((name) => ({ name, type: '' })),
+        columns: workspace.columns.map((name) => ({
+          name,
+          type: workspace.columnTypes[name] ?? '',
+        })),
         rows: workspace.rows,
       })
       setSnapshots((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
@@ -317,9 +323,15 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
   // re-run, so a stored snapshot can be charted fully offline.
   const chartResult = useMemo<QueryResult | null>(() => {
     if (!detail || detail.rows.length === 0) return null
+    // The stored columns carry their types (grid type edits travel with the
+    // save), so the chart builder's column panel honors them rather than
+    // re-sampling the rows.
+    const storedTypes = new Map(
+      (detail.columns ?? []).map((column) => [column.name, column.type]),
+    )
     return {
       rows: detail.rows,
-      columns: columnNames(detail).map((name) => ({ name, type: '' })),
+      columns: columnNames(detail).map((name) => ({ name, type: storedTypes.get(name) ?? '' })),
       row_count: detail.rows.length,
       elapsed_ms: 0,
       sql: detail.sql_text ?? '',

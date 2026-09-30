@@ -94,6 +94,21 @@ export const SINGLE_SERIES_TYPES: ChartType[] = [
   'gauge',
 ]
 
+/**
+ * Chart types that can plot a second measure on a right-hand value axis
+ * (the "Y2" shelf). Combo already splits bars and lines across the two axes;
+ * the rest draw their secondary columns as lines beside their primary marks.
+ */
+export const SECONDARY_AXIS_TYPES: ChartType[] = [
+  'bar',
+  'stackbar',
+  'trend',
+  'stepline',
+  'area',
+  'stackarea',
+  'combo',
+]
+
 /** Chart types that support a breakdown (color-by) dimension. */
 export const SERIES_CAPABLE_TYPES: ChartType[] = [
   'bar',

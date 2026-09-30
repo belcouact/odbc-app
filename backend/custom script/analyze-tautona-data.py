@@ -1,6 +1,13 @@
 """
 Standalone lab-results analysis for laminates.
 
+Before the analysis runs, a native Windows dialog lists every test component
+(ANALYSIS + RESULT_NAME) found in the data and lets the user uncheck the ones
+to leave out; only the checked components are analyzed. Set the environment
+variable LAMINATE_SKIP_PICKER=1 to skip the dialog and analyze everything
+(used by automated runs; also the fallback when PowerShell/native UI is not
+available).
+
 Grouping (hierarchy ignored): (MG_DESC, ANALYSIS, RESULT_NAME)
   #1  Profiling          - per-group stats + out-of-spec overview
   #2  Capability         - Cp/Cpk/Ppk + histograms       [numeric results]
@@ -28,7 +35,9 @@ aggregation; SPC uses precomputed columns (no per-group re-parsing).
 import os
 import json
 import time
+import shutil
 import tempfile
+import subprocess
 import webbrowser
 from pathlib import Path
 import numpy as np
@@ -633,6 +642,173 @@ def _pareto_option(idx, count_data, cum_data):
 
 
 # ----------------------------------------------------------------------------
+# COMPONENT PICKER (native Windows dialog)
+# ----------------------------------------------------------------------------
+# The script editor runs scripts non-interactively (no stdin), and tkinter is
+# not bundled with the packaged app, so the picker is a PowerShell/WinForms
+# dialog launched as a child process: it reads the component list from a JSON
+# file and writes the checked indices back to another JSON file.
+PICKER_SKIP_ENV = "LAMINATE_SKIP_PICKER"
+PICKER_TIMEOUT = 1800          # seconds to wait for the user's OK/Cancel
+
+PICKER_PS = r"""
+param([Parameter(Mandatory=$true)][string]$InPath,
+      [Parameter(Mandatory=$true)][string]$OutPath)
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$items = Get-Content -LiteralPath $InPath -Raw -Encoding UTF8 | ConvertFrom-Json
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Select test components to analyze'
+$form.ClientSize = New-Object System.Drawing.Size(600, 560)
+$form.StartPosition = 'CenterScreen'
+$form.TopMost = $true
+
+$lbl = New-Object System.Windows.Forms.Label
+$lbl.Text = 'Uncheck the components you do NOT want in the report:'
+$lbl.SetBounds(12, 12, 576, 20)
+$form.Controls.Add($lbl)
+
+$list = New-Object System.Windows.Forms.CheckedListBox
+$list.SetBounds(12, 36, 576, 460)
+$list.CheckOnClick = $true
+$list.IntegralHeight = $false
+$list.Anchor = 'Top,Left,Right,Bottom'
+$form.Controls.Add($list)
+
+foreach ($it in $items) { [void]$list.Items.Add([string]$it.text, [bool]$it.checked) }
+
+$btnAll = New-Object System.Windows.Forms.Button
+$btnAll.Text = 'Select all'
+$btnAll.SetBounds(12, 508, 100, 32)
+$btnAll.Anchor = 'Bottom,Left'
+$form.Controls.Add($btnAll)
+
+$btnNone = New-Object System.Windows.Forms.Button
+$btnNone.Text = 'Select none'
+$btnNone.SetBounds(120, 508, 100, 32)
+$btnNone.Anchor = 'Bottom,Left'
+$form.Controls.Add($btnNone)
+
+$btnOK = New-Object System.Windows.Forms.Button
+$btnOK.Text = 'OK'
+$btnOK.SetBounds(488, 508, 100, 32)
+$btnOK.Anchor = 'Bottom,Right'
+$form.Controls.Add($btnOK)
+
+$btnCancel = New-Object System.Windows.Forms.Button
+$btnCancel.Text = 'Cancel'
+$btnCancel.SetBounds(380, 508, 100, 32)
+$btnCancel.Anchor = 'Bottom,Right'
+$form.Controls.Add($btnCancel)
+
+$form.AcceptButton = $btnOK
+$form.CancelButton = $btnCancel
+$form.Add_Shown({ $list.Focus() })
+
+$script:ok = $false
+$btnAll.Add_Click({
+    for ($i = 0; $i -lt $list.Items.Count; $i++) { $list.SetItemChecked($i, $true) }
+})
+$btnNone.Add_Click({
+    for ($i = 0; $i -lt $list.Items.Count; $i++) { $list.SetItemChecked($i, $false) }
+})
+$btnOK.Add_Click({ $script:ok = $true; $form.Close() })
+$btnCancel.Add_Click({ $form.Close() })
+
+[void]$form.ShowDialog()
+
+if ($script:ok) {
+    $sel = @()
+    for ($i = 0; $i -lt $list.Items.Count; $i++) {
+        if ($list.GetItemChecked($i)) { $sel += $i }
+    }
+    $out = '{"ok":true,"selected":[' + ($sel -join ',') + ']}'
+} else {
+    $out = '{"ok":false,"selected":[]}'
+}
+[System.IO.File]::WriteAllText($OutPath, $out, (New-Object System.Text.UTF8Encoding($false)))
+"""
+
+
+def component_pairs(df):
+    """Distinct (ANALYSIS, RESULT_NAME) components in the frame, sorted."""
+    seen = set()
+    for an, rn in zip(df["ANALYSIS"].astype(str), df["RESULT_NAME"].astype(str)):
+        seen.add((an, rn))
+    return sorted(seen, key=lambda k: (k[0], k[1]))
+
+
+def pick_components(df):
+    """Ask which test components to analyze.
+
+    Returns the selected (ANALYSIS, RESULT_NAME) pairs, or None meaning
+    'analyze everything' (picker skipped, unavailable, or nothing checked).
+    Raises when the user cancels the dialog.
+    """
+    if os.environ.get(PICKER_SKIP_ENV):
+        print(f"Component picker skipped ({PICKER_SKIP_ENV} set) - analyzing all components.")
+        return None
+    if os.name != "nt":
+        print("Component picker needs Windows - analyzing all components.")
+        return None
+
+    pairs = component_pairs(df)
+    if len(pairs) <= 1:
+        return None
+
+    exe = shutil.which("powershell") or shutil.which("pwsh")
+    if not exe:
+        print("PowerShell not found - analyzing all components.")
+        return None
+
+    tmpdir = tempfile.mkdtemp(prefix="lam_pick_")
+    ps_path = os.path.join(tmpdir, "picker.ps1")
+    in_path = os.path.join(tmpdir, "items.json")
+    out_path = os.path.join(tmpdir, "selection.json")
+    try:
+        with open(ps_path, "w", encoding="utf-8") as f:
+            f.write(PICKER_PS)
+        with open(in_path, "w", encoding="utf-8") as f:
+            json.dump([{"text": f"{an} \u00b7 {rn}", "checked": True}
+                       for an, rn in pairs], f, ensure_ascii=False)
+        print(f"Waiting for the component selection dialog "
+              f"({len(pairs)} components)...")
+        subprocess.run(
+            [exe, "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass",
+             "-File", ps_path, in_path, out_path],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            timeout=PICKER_TIMEOUT)
+        with open(out_path, encoding="utf-8-sig") as f:
+            res = json.load(f)
+    except subprocess.TimeoutExpired:
+        print("Component selection timed out - analyzing all components.")
+        return None
+    except (OSError, ValueError) as exc:
+        print(f"Component picker unavailable ({exc}) - analyzing all components.")
+        return None
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    if not res.get("ok"):
+        raise RuntimeError("Component selection cancelled - analysis aborted.")
+
+    idx = res.get("selected") or []
+    if isinstance(idx, int):
+        idx = [idx]
+    sel = [pairs[i] for i in idx
+           if isinstance(i, int) and 0 <= i < len(pairs)]
+    if not sel:
+        print("No components selected - analyzing all components.")
+        return None
+    print(f"Selected {len(sel)} of {len(pairs)} components.")
+    return sel
+
+
+# ----------------------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------------------
 def main():
@@ -651,6 +827,19 @@ def main():
     missing = [c for c in GROUP_COLS + ["RESPONSE2"] if c not in df.columns]
     if missing:
         raise RuntimeError(f"Missing required columns: {missing}")
+
+    # ---- Let the user choose which test components to analyze ----
+    chosen = pick_components(df)
+    if chosen is not None:
+        keep_comp = set(chosen)
+        mask = pd.Series(
+            [(a, r) in keep_comp for a, r in
+             zip(df["ANALYSIS"].astype(str), df["RESULT_NAME"].astype(str))],
+            index=df.index)
+        df = df[mask].copy()
+        if df.empty:
+            raise RuntimeError("No rows left after component selection.")
+        print(f"Analyzing {df.shape[0]} rows for the selected components")
 
     # ---- Precompute once on the whole frame (replaces per-group parsing) ----
     df["_num"] = pd.to_numeric(df["RESPONSE2"], errors="coerce")

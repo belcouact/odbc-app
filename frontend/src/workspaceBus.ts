@@ -17,6 +17,9 @@ export interface WorkspaceSnapshot {
   table: string
   /** Column names of the last query result loaded in the grid (empty when none). */
   columns: string[]
+  /** Column types keyed by name (DB type or canonical kind strings) — lets the
+   *  chart builders honor grid type edits without re-sampling rows. */
+  columnTypes: Record<string, string>
   /** Rows currently loaded in the grid (empty when none). */
   rows: Record<string, unknown>[]
 }
@@ -27,6 +30,7 @@ let current: WorkspaceSnapshot = {
   sqlText: '',
   table: '',
   columns: [],
+  columnTypes: {},
   rows: [],
 }
 
