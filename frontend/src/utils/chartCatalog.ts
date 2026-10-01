@@ -28,6 +28,11 @@ export const CHART_TYPE_LABELS: Record<ChartType, string> = {
   histogram: 'Histogram',
   box: 'Box plot',
   scatter: 'Scatter',
+  bubble: 'Bubble',
+  trendline: 'Scatter + trendline',
+  errorbar: 'Error bars',
+  spc: 'Control chart (SPC)',
+  sankey: 'Sankey',
   gauge: 'Gauge',
   kpi: 'KPI cards',
 }
@@ -73,6 +78,11 @@ export const DEFAULT_OPERATION: Record<ChartType, ChartOperation> = {
   histogram: 'sum',
   box: 'sum',
   scatter: 'none',
+  bubble: 'none',
+  trendline: 'none',
+  errorbar: 'mean',
+  spc: 'mean',
+  sankey: 'sum',
   gauge: 'sum',
   kpi: 'sum',
 }
@@ -81,7 +91,17 @@ export const DEFAULT_OPERATION: Record<ChartType, ChartOperation> = {
 export const CATEGORICAL_OPERATIONS: ChartOperation[] = ['count', 'distinct']
 
 /** Chart types whose Y axis must be numeric. */
-export const NUMERIC_Y_TYPES: ChartType[] = ['histogram', 'box', 'scatter', 'kpi', 'gauge']
+export const NUMERIC_Y_TYPES: ChartType[] = [
+  'histogram',
+  'box',
+  'scatter',
+  'bubble',
+  'trendline',
+  'errorbar',
+  'spc',
+  'kpi',
+  'gauge',
+]
 
 /** Chart types that draw exactly one series. */
 export const SINGLE_SERIES_TYPES: ChartType[] = [
@@ -92,6 +112,7 @@ export const SINGLE_SERIES_TYPES: ChartType[] = [
   'funnel',
   'treemap',
   'gauge',
+  'sankey',
 ]
 
 /**
@@ -119,4 +140,6 @@ export const SERIES_CAPABLE_TYPES: ChartType[] = [
   'stackarea',
   'waterfall',
   'scatter',
+  'bubble',
+  'trendline',
 ]

@@ -374,6 +374,9 @@ PAGE = Template("""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>ODBC Query — Script Templates</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#f4f5f7; --card:#ffffff; --ink:#15171c; --muted:#5c6473;
@@ -390,7 +393,7 @@ PAGE = Template("""<!DOCTYPE html>
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0; background:var(--bg); color:var(--ink);
-  font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font:16px/1.55 "Lora",Georgia,"Times New Roman",serif;
 }
 .wrap{max-width:1080px; margin:0 auto; padding:24px 16px 48px}
 header h1{font-size:1.55rem; line-height:1.25; margin:0 0 10px; letter-spacing:-.01em}

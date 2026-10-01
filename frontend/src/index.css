@@ -6,19 +6,19 @@ body,
   padding: 0;
 }
 
-/* Light color scheme (matches the editorial data-desk theme). */
+/* Light color scheme (matches the warm Anthropic-branded theme). */
 :root {
   color-scheme: light;
 }
 
-/* Atmospheric light canvas: a subtle wash of cool teal and warm terracotta
-   drifting behind the app so the background is never a flat gray. */
+/* Warm paper canvas: a subtle wash of clay and dusty blue drifting behind the
+   app so the background is never a flat gray. */
 body {
-  background-color: #f4f6f8;
+  background-color: #faf9f5;
   background-image:
-    radial-gradient(1200px 620px at 8% -8%, rgba(15, 110, 110, 0.06), transparent 60%),
-    radial-gradient(1000px 520px at 96% -4%, rgba(194, 84, 43, 0.05), transparent 55%),
-    radial-gradient(900px 500px at 50% 115%, rgba(22, 114, 140, 0.05), transparent 60%);
+    radial-gradient(1200px 620px at 8% -8%, rgba(217, 119, 87, 0.07), transparent 60%),
+    radial-gradient(1000px 520px at 96% -4%, rgba(106, 155, 204, 0.06), transparent 55%),
+    radial-gradient(900px 500px at 50% 115%, rgba(120, 140, 93, 0.05), transparent 60%);
   background-attachment: fixed;
   /* Never allow a stray horizontal scrollbar on small screens. */
   overflow-x: hidden;
@@ -37,12 +37,115 @@ textarea.code {
     monospace;
 }
 
-/* Consistent, keyboard-visible focus ring (teal = primary). Scoped to
+/* Consistent, keyboard-visible focus ring (clay = primary accent). Scoped to
    interactive elements that MUI does not already outline (buttons, links,
    tab stop widgets) to avoid double-ringing text fields. */
 :where(a, button, [role='button'], [tabindex]):focus-visible {
-  outline: 2px solid rgba(15, 110, 110, 0.7);
+  outline: 2px solid rgba(217, 119, 87, 0.75);
   outline-offset: 2px;
+}
+
+/* View-change reveal: App.tsx keys the main content on the active view, so a
+   remount replays this fade-up. Short enough to never feel like a wait. */
+@keyframes view-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.view-enter {
+  animation: view-fade-up 0.28s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Tab-switch softening: a paper-tinted veil that fades out over the incoming
+   view. It sits on top of the (always-mounted) pages for ~300ms so switching
+   tabs reads as a crossfade instead of a hard cut — without remounting them. */
+@keyframes view-flash {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.view-flash {
+  animation: view-flash 0.3s ease-out both;
+  pointer-events: none;
+}
+
+/* Grid result entrance: staggered opacity fade on freshly loaded rows.
+   Opacity-only because AG Grid positions rows with inline transforms — any
+   transform animation here would fight the grid's own layout engine. */
+@keyframes grid-row-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.grid-rows-enter .ag-center-cols-container .ag-row {
+  animation: grid-row-fade-in 0.3s ease-out both;
+}
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(2) { animation-delay: 25ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(3) { animation-delay: 50ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(4) { animation-delay: 75ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(5) { animation-delay: 100ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(6) { animation-delay: 125ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(7) { animation-delay: 150ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(8) { animation-delay: 175ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(9) { animation-delay: 200ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(10) { animation-delay: 225ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(11) { animation-delay: 250ms; }
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(12) { animation-delay: 275ms; }
+/* Rows beyond the first dozen all share the final delay so late rows don't
+   visibly pop in one-by-one while scrolling. */
+.grid-rows-enter .ag-center-cols-container .ag-row:nth-child(n + 13) { animation-delay: 300ms; }
+
+/* Run-button failure feedback: a quick horizontal shake that reads as
+   "something went wrong" without a toast. Short so it never blocks retries. */
+@keyframes run-btn-shake {
+  10%,
+  90% {
+    transform: translateX(-2px);
+  }
+  20%,
+  80% {
+    transform: translateX(3px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
+.run-btn-shake {
+  animation: run-btn-shake 0.4s ease-in-out both;
+}
+
+/* ag-grid (Quartz) tuned to the warm palette: cream-tinted headers, clay
+   selection and hover, hairline dividers that match MUI's divider color. */
+.ag-theme-quartz {
+  --ag-header-background-color: #f3f1ea;
+  --ag-header-foreground-color: #141413;
+  --ag-border-color: #e8e6dc;
+  --ag-row-border-color: #eeece3;
+  --ag-row-hover-color: rgba(217, 119, 87, 0.06);
+  --ag-selected-row-background-color: rgba(217, 119, 87, 0.12);
+  --ag-range-selection-border-color: #d97757;
+  --ag-range-selection-background-color: rgba(217, 119, 87, 0.08);
+  --ag-accent-color: #d97757;
+  --ag-even-row-background-color: #ffffff;
+  --ag-odd-row-background-color: #fcfbf8;
+  --ag-font-family: 'Lora', Georgia, 'Times New Roman', serif;
 }
 
 /* Respect users who prefer reduced motion: collapse all transitions/animations. */
@@ -60,20 +163,20 @@ textarea.code {
 /* Slim, unobtrusive scrollbars to match the data-dense layout. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(15, 110, 110, 0.35) transparent;
+  scrollbar-color: rgba(217, 119, 87, 0.35) transparent;
 }
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: rgba(15, 110, 110, 0.3);
+  background-color: rgba(217, 119, 87, 0.3);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(15, 110, 110, 0.5);
+  background-color: rgba(217, 119, 87, 0.5);
 }
 *::-webkit-scrollbar-track {
   background: transparent;

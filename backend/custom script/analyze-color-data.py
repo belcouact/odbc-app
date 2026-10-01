@@ -486,11 +486,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Color Data — Lab Colour Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#f4f6f8;--card:#fff;--ink:#1f2933;--brand:#1f3a5f;--line:#d7dee8;--muted:#6b7785}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);overflow-x:hidden;
-     font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px}
+     font-family:"Lora", Georgia, "Times New Roman", serif;font-size:14px}
 header{position:sticky;top:0;z-index:20;background:var(--brand);color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
 .hdr{max-width:1600px;margin:0 auto;padding:5px 12px 2px}
 h1{margin:0;font-size:15px;font-weight:650}

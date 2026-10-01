@@ -41,7 +41,7 @@ import ViewTimelineIcon from '@mui/icons-material/ViewTimeline'
 
 import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
-import theme from './theme'
+import theme, { BRAND } from './theme'
 import { api, sendTabLeftBeacon } from './api/client'
 import type { FeedbackThread, UpdateStatus } from './api/client'
 import WorkspacePage, { type WorkspacePageHandle } from './pages/WorkspacePage'
@@ -53,7 +53,8 @@ import FlowDiagramPage from './pages/FlowDiagramPage'
 import ExternalAppPage from './pages/ExternalAppPage'
 import AiSidebar from './components/AiSidebar'
 import GuidedTour, { TOUR_STORAGE_KEY } from './components/GuidedTour'
-import type { AiMode } from './types'
+import { emit } from './editorBus'
+import type { AiMode, GridDrillFilter } from './types'
 
 type View =
   | 'editor'
@@ -922,6 +923,12 @@ function AppShell() {
   const closeAi = useCallback(() => setAiOpen(false), [])
   const openEditor = useCallback(() => setView('editor'), [])
   const openScript = useCallback(() => setView('script'), [])
+  // Analyze → Summary drill-through: filter the Query grid, then reveal it
+  // (an empty filter set just clears the filter and stays put).
+  const drillThroughGrid = useCallback((filters: GridDrillFilter[]) => {
+    emit({ type: 'drill-grid', filters })
+    if (filters.length > 0) setView('editor')
+  }, [])
   const openBi = useCallback(() => setView('bi'), [])
   const closeHelp = useCallback(() => setHelpOpen(false), [])
   // Opening the board reads everything on it; closing re-reads, so a post that
@@ -1123,7 +1130,7 @@ function AppShell() {
               borderRadius: '50%',
               bgcolor: '#ffffff',
               p: 0.35,
-              boxShadow: '0 0 0 1px #e3e7ec',
+              boxShadow: '0 0 0 1px #e8e6dc, 0 2px 8px rgba(217, 119, 87, 0.18)',
             }}
           />
           <Box
@@ -1137,8 +1144,9 @@ function AppShell() {
             <Typography
               component="span"
               sx={{
+                fontFamily: BRAND.bodyFont,
                 fontWeight: 700,
-                letterSpacing: '-0.01em',
+                letterSpacing: '-0.02em',
                 fontSize: '1rem',
                 lineHeight: 1.15,
                 color: 'text.primary',
@@ -1324,6 +1332,7 @@ function AppShell() {
         component="main"
         sx={{
           flexGrow: 1,
+          position: 'relative',
           p:
             view === 'flowdiagram' || view === 'project' || view === 'problemsolving'
               ? 0
@@ -1332,12 +1341,27 @@ function AppShell() {
           justifyContent: 'center',
         }}
       >
+        {/* Soft crossfade on tab switch. The pages themselves must stay mounted
+            (their state survives view switches), so instead of animating them we
+            key a paper-tinted veil on the view: switching tabs remounts it and
+            replays the fade-out, which reads as a gentle transition. */}
+        <Box
+          key={view}
+          className="view-flash"
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 1,
+            bgcolor: 'background.default',
+            pointerEvents: 'none',
+          }}
+        />
         {/* All pages stay mounted so their state survives view switches. */}
         <Box sx={{ width: '100%', display: view === 'editor' ? 'block' : 'none' }}>
           <WorkspacePage ref={workspaceRef} onOpenAi={openAi} />
         </Box>
         <Box sx={{ width: '100%', display: view === 'script' ? 'block' : 'none' }}>
-          <ScriptPage ref={scriptRef} onOpenAi={openAi} />
+          <ScriptPage ref={scriptRef} onOpenAi={openAi} onDrillThrough={drillThroughGrid} />
         </Box>
         <Box sx={{ width: '100%', display: view === 'bi' ? 'block' : 'none' }}>
           <BiPage ref={biRef} onOpenAi={openAi} />

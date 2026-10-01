@@ -1,5 +1,15 @@
 [
   {
+    "version": "2.0.8",
+    "date": "2026-10-01",
+    "notes": "1. Workspace — live feedback: query results now fade in with a soft staggered animation while a skeleton placeholder shows during the run; the Run button flips to a green Done tick on success and a shaking red Failed on error; KPI numbers count up to their value and the cards lift slightly on hover.\n2. Message pop-ups — success colour: success toasts (reconnect, upload, connection test, AI test) now use a bright green background with dark text for a clearer \"all good\" signal; errors keep their own distinct style.\n3. Feedback window: the Discussion window now has the same rounded corners as the reply box (an oversized-corner glitch is fixed), shows a progress bar at the top while a post's content is being fetched, and adds Previous / Next buttons above the message — with a position counter — so you can step through the board's feedback in order.\n4. Script tab: the data-source card stacks its controls in full-width rows on wide screens too (matching the narrow layout), and the View button now sits on the same row as the Template dropdown."
+  },
+  {
+    "version": "2.0.7",
+    "date": "2026-10-01",
+    "notes": "1. Chart area — histogram binning: the bin-count slider is replaced by a Bin size box plus Start and End boxes. Leave them blank to auto-fit the data (10 even buckets), type a bin size to set the bucket width, or set a start/end range to clip the domain — values outside the range are dropped.\n2. Message bar: pop-up messages (upload, save, errors) now sit on a dark green background, with a larger, rounder close button centred against the text so it is easier to hit on both desktop and touch screens."
+  },
+  {
     "version": "2.0.6",
     "date": "2026-09-30",
     "notes": "1. Results grid — paste data: a new Paste button sits next to Upload, and Ctrl+V pastes straight from Excel. When the grid already holds rows the paste replaces them (Revert undoes it); a pasted header row becomes the table's column names, and empty rows are dropped.\n2. Chart area — secondary Y axis: bar, stacked bar, trend, step line, area, stacked area and combo charts now offer the Y2 (secondary) shelf, so a second measure is plotted on its own right-hand axis (the top axis for horizontal bars).\n3. Chart area — Visualizations pane: the chart type panel now collapses and expands sideways into a slim rail on the right, matching the Fields rail, instead of folding up and down.\n4. Chart area — column types: a column type changed in the results grid is reflected in the chart builder's column panel straight away, and a saved BI snapshot keeps the types its columns had.\n5. Laminate Lab Results (analyze-tautona-data): the script now opens a native Windows dialog first, listing every test component (ANALYSIS + RESULT_NAME) so unwanted ones can be unchecked; set LAMINATE_SKIP_PICKER=1 to analyze everything without the dialog."
@@ -13,15 +23,5 @@
     "version": "2.0.4",
     "date": "2026-09-29",
     "notes": "1. BI → Chart: a new \"AI Chart\" button sits above \"Add to dashboard\". Describe the chart you want in the AI sidebar and it renders straight onto the BI chart builder — where it can be tweaked and added to the dashboard like any other visual. Charts generated from the Analyze tab keep landing there as before.\n2. Colour Explorer template (analyze-color-data): both ΔE reference dropdowns now show the LD sample NAME instead of the item code, so picking a reference no longer requires knowing the LD_item."
-  },
-  {
-    "version": "2.0.3",
-    "date": "2026-09-22",
-    "notes": "1. Settings → AI: a new \"Saved settings\" dropdown sits right under the Enable AI switch and lists every configuration you have saved. Picking one refills the whole form — provider, endpoint, API key, model and temperature — so switching between providers is one click instead of retyping. Each Save refreshes its entry in the list, and up to 20 are kept."
-  },
-  {
-    "version": "2.0.2",
-    "date": "2026-09-19",
-    "notes": "1. AI assistant: a new Chat tab answers general questions — explanations, calculations, \"what does this app do\" — with no database or editor context attached. The sparkle button in the top-right corner opens it directly.\n2. Results grid: right-click a cell or a column header for a new menu — copy a cell / row / selected rows, filter by or filter out a value, open or clear a filter, sort or clear the sort, pin a column left or right, autosize one column or all of them, reset columns, and hide or show columns. The grid had no right-click menu before.\n3. Results grid — Copy fixed: it used to copy every row even when you had selected a few, and in some cases only the first row landed in Excel. It now copies exactly the rows you selected, or the whole result when nothing is selected, and Excel pastes it into real rows and columns. The button is also just \"Copy\" now.\n4. Results grid — small numbers: values below 1 (for example 0.05) are no longer rewritten as a percentage (\"5%\"). Numbers are shown as they come back from the database, with thousands separators and up to 4 decimals.\n5. Results grid — a \"?\" icon next to the AI edit button opens a short guide to everything the table can do: built-in features (double-click a header to rename it, Shift+click headers to sort by several columns at once) and the ones added on top (data types, add column, AI edit, revert).\n6. Settings → AI: saving says the assistant picks the new settings up on your next message, and choosing a provider/model that already has a key on file restores that key straight away."
   }
 ]

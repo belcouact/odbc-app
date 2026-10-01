@@ -1,5 +1,5 @@
 {
-  "published": "2026-09-30T18:27:05",
+  "published": "2026-10-01T07:47:10",
   "templates": [
     {
       "name": "analyze-color-data.py",
@@ -63,7 +63,7 @@
         ]
       },
       "size": "19 KB",
-      "updated": "2026-09-18",
+      "updated": "2026-10-01",
       "example": {
         "name": "raw_item_statistical_report.html",
         "object": "templates/examples/raw_item_statistical_report.html",
@@ -96,7 +96,7 @@
         ]
       },
       "size": "20 KB",
-      "updated": "2026-09-18",
+      "updated": "2026-10-01",
       "example": {
         "name": "machine_up_down_timeline.html",
         "object": "templates/examples/machine_up_down_timeline.html",
@@ -130,7 +130,7 @@
         ]
       },
       "size": "34 KB",
-      "updated": "2026-09-09",
+      "updated": "2026-10-01",
       "example": {
         "name": "yield_trend_charts.html",
         "object": "templates/examples/yield_trend_charts.html",
@@ -209,7 +209,7 @@
         ]
       },
       "size": "49 KB",
-      "updated": "2026-09-30",
+      "updated": "2026-10-01",
       "example": {
         "name": "Laminate_Analysis.html",
         "object": "templates/examples/Laminate_Analysis.html",

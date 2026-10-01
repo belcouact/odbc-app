@@ -485,6 +485,19 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
   /** Wrapper around the grid; used to capture the right-click position early. */
   const gridWrapRef = useRef<HTMLDivElement | null>(null)
   const [copied, setCopied] = useState(false)
+  /** Last result object the entrance effect saw; reference-equality is the
+   *  "is this a fresh query result?" signal (grid edits mutate in place). */
+  const prevResultRef = useRef<QueryResult | null>(null)
+  /** Briefly true after a new result arrives so rows replay a staggered fade. */
+  const [rowsEntering, setRowsEntering] = useState(false)
+  useEffect(() => {
+    if (!result || result === prevResultRef.current) return
+    prevResultRef.current = result
+    setRowsEntering(true)
+    // Longest stagger (300ms) + animation (300ms) + small buffer.
+    const timer = window.setTimeout(() => setRowsEntering(false), 900)
+    return () => window.clearTimeout(timer)
+  }, [result])
   /** User-chosen data kinds, keyed by column name. Overrides auto-detection. */
   const [columnKinds, setColumnKinds] = useState<Record<string, ColumnKind>>({})
   /** Renamed header labels, keyed by the original column name. Display only. */
@@ -611,18 +624,21 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
     if (!result || result.rows.length === 0) return
     const headers = result.columns.map((column) => column.name)
     // A row selection narrows the copy to those rows; with nothing selected the
-    // whole result is copied. Build the TSV snapshot from the raw data and write
-    // it to the clipboard directly — the grid clipboard API can silently fail
-    // depending on selection state / focus.
+    // whole result is copied — except in drill-through mode, where only the
+    // rows surviving the drill filter go out. Build the TSV snapshot from the
+    // raw data and write it to the clipboard directly — the grid clipboard API
+    // can silently fail depending on selection state / focus.
     const selected = gridRef.current?.api?.getSelectedNodes() ?? []
     const rows =
       selected.length > 0
         ? selected.map((node) => (node.data ?? {}) as Record<string, unknown>)
-        : result.rows
+        : drillFilters.length > 0
+          ? result.rows.filter(passesDrill)
+          : result.rows
     await writeToClipboard(toTsv(headers, rows))
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
-  }, [result])
+  }, [result, drillFilters.length, passesDrill])
 
   /** Shows a transient "Pasted …" line next to the row count. */
   const showPasteNotice = useCallback((message: string) => {
@@ -1357,7 +1373,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
       ) : (
         <Box
           ref={gridWrapRef}
-          className="ag-theme-quartz"
+          className={rowsEntering ? 'ag-theme-quartz grid-rows-enter' : 'ag-theme-quartz'}
           sx={{ height: { xs: 420, md: 560 }, width: '100%' }}
         >
           <AgGridReact

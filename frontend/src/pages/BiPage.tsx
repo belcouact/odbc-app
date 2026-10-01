@@ -887,9 +887,16 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
         open={Boolean(notice)}
         autoHideDuration={5000}
         onClose={() => setNotice('')}
-        message={notice}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      />
+      >
+        <Alert
+          severity={notice.startsWith('Failed') ? 'error' : 'success'}
+          variant="filled"
+          onClose={() => setNotice('')}
+        >
+          {notice}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

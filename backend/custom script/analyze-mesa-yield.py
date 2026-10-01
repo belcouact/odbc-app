@@ -6,6 +6,7 @@ import os
 import tempfile
 import webbrowser
 from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
 import pandas as pd
 
@@ -479,7 +480,7 @@ table_html = (
     "<button type='button' class='btn-download' onclick='downloadStatsExcel()'>Download to Excel</button>"
     "</div>"
     "<div style='overflow-x:auto;'>"
-    "<table id='stats-table' border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse; font-family:sans-serif; font-size:11px; background:#fff;'>"
+    "<table id='stats-table' border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse; font-family:Lora, Georgia, serif; font-size:11px; background:#fff;'>"
     "<thead style='background:#eee;'>" + header + "</thead>"
     "<tbody id='stats-tbody'>" + rows_html + "</tbody>"
     "</table>"
@@ -495,11 +496,14 @@ html_content = f"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yield Trend & Statistics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-body {{ background:#f4f6f9; padding:20px; font-family:sans-serif; }}
-h1 {{ font-family:sans-serif; }}
+body {{ background:#f4f6f9; padding:20px; font-family:"Lora", Georgia, "Times New Roman", serif; }}
+h1 {{ font-family:inherit; }}
 .tab-buttons {{ display:flex; flex-wrap:wrap; gap:8px; }}
 .tab-buttons button {{
   padding:10px 24px;
@@ -975,7 +979,7 @@ function resetSettings() {{
 
 # Save the report to the user's Downloads folder (create it if needed); the OS
 # temp folder is used only as a fallback when Downloads cannot be written.
-output_name = "yield_trend_charts.html"
+output_name = f"yield_trend_charts_{datetime.now():%Y%m%d_%H%M%S}.html"
 candidates = [
     Path.home() / "Downloads",                               # standard Downloads (default)
     Path(tempfile.gettempdir()) / "yield_trend",             # temp folder fallback only

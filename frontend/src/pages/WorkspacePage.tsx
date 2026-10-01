@@ -19,6 +19,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CloseIcon from '@mui/icons-material/Close'
 import CodeIcon from '@mui/icons-material/Code'
 import DeleteIcon from '@mui/icons-material/Delete'
+import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import FileOpenIcon from '@mui/icons-material/FileOpen'
 import FileUploadIcon from '@mui/icons-material/FileUpload'
@@ -42,6 +43,7 @@ import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
+import Skeleton from '@mui/material/Skeleton'
 import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
@@ -94,7 +96,6 @@ import type {
   TableInfo,
 } from '../types'
 import ResultsGrid, { type ResultsGridHandle } from '../components/ResultsGrid'
-import SummaryPanel from '../components/SummaryPanel'
 import AiGridTransformDialog from '../components/AiGridTransformDialog'
 import { evaluateFormula, type ComputedColumn } from '../utils/formula'
 import type { ColumnKind } from '../utils/columns'
@@ -1169,13 +1170,21 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const [cancelling, setCancelling] = useState(false)
   const cancelPendingRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  /** Brief post-run feedback for the Run buttons: 'success' morphs them green
+   *  with a check, 'error' shakes them; auto-clears so the label restores. */
+  const [runFeedback, setRunFeedback] = useState<'success' | 'error' | null>(null)
+  const runFeedbackTimer = useRef<number | undefined>(undefined)
+  const signalRunFeedback = useCallback((ok: boolean) => {
+    setRunFeedback(ok ? 'success' : 'error')
+    window.clearTimeout(runFeedbackTimer.current)
+    runFeedbackTimer.current = window.setTimeout(() => setRunFeedback(null), 1500)
+  }, [])
+  useEffect(() => () => window.clearTimeout(runFeedbackTimer.current), [])
   /** Schema-loading (tables/columns) failure — shown inside the Builder tab
    *  so it is visible where the user is working, not in the results panel. */
   const [schemaError, setSchemaError] = useState<string | null>(null)
   const [exporting, setExporting] = useState<ExportFormat | null>(null)
-  /** Which view the results area shows: the raw grid or the summary statistics. */
-  const [resultTab, setResultTab] = useState<'grid' | 'summary'>('grid')
-  /** Drill-through conditions pushed from the Summary tab onto the results grid. */
+  /** Drill-through conditions pushed from the Analyze Summary tab onto the grid. */
   const [drillFilters, setDrillFilters] = useState<GridDrillFilter[]>([])
   /** Color_Data auto-enrichment: one entry per stage, newest state wins. */
   const [enrichSteps, setEnrichSteps] = useState<ColorEnrichStep[]>([])
@@ -1190,12 +1199,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     setComputedColumns([])
     setDrillFilters([])
   }, [result])
-
-  /** Clicking a summary group filters the grid to its rows and switches views. */
-  const handleDrillThrough = useCallback((filters: GridDrillFilter[]) => {
-    setDrillFilters(filters)
-    if (filters.length > 0) setResultTab('grid')
-  }, [])
 
   /** Derived columns declared by the selected template (e.g. Color_Data parses
    *  LD_item / WOL / Batch / Sample_type out of NAME). Kept out of the
@@ -1706,9 +1709,13 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       setGridHistory([])
       setResult(final)
       setUploadActive(false)
+      signalRunFeedback(true)
     } catch (err) {
       if (err instanceof QueryCanceledError) setNotice('Query canceled.')
-      else setError(err instanceof Error ? err.message : 'Query failed')
+      else {
+        setError(err instanceof Error ? err.message : 'Query failed')
+        signalRunFeedback(false)
+      }
     } finally {
       setRunning(false)
       setQueryProgress(null)
@@ -1747,9 +1754,13 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       setGridHistory([])
       setResult(final)
       setUploadActive(false)
+      signalRunFeedback(true)
     } catch (err) {
       if (err instanceof QueryCanceledError) setNotice('Query canceled.')
-      else setError(err instanceof Error ? err.message : 'Query failed')
+      else {
+        setError(err instanceof Error ? err.message : 'Query failed')
+        signalRunFeedback(false)
+      }
     } finally {
       setRunning(false)
       setQueryProgress(null)
@@ -1760,6 +1771,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   /** Opens the grid's paste dialog from the results header — works before any
    *  query has run, when the grid itself is not mounted. */
   const gridHandleRef = useRef<ResultsGridHandle | null>(null)
+  // Anchor for "jump to the grid" — the Summary tab's drill-through scrolls here.
+  const gridAnchorRef = useRef<HTMLDivElement | null>(null)
 
   // ---- AI grid edit (transform the current grid rows via a generated script) ----
   const [aiTransformOpen, setAiTransformOpen] = useState(false)
@@ -2244,6 +2257,17 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       case 'request-run':
         requestRunFromRef()
         break
+      case 'drill-grid':
+        // The Analyze page's Summary tab drills through to this grid.
+        setDrillFilters(action.filters)
+        // App.tsx reveals this page right after emitting the action; wait a
+        // tick for the layout to paint, then bring the results grid into view.
+        if (action.filters.length > 0) {
+          window.setTimeout(() => {
+            gridAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }, 120)
+        }
+        break
     }
   }
 
@@ -2317,7 +2341,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between' }}
         >
           <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <Typography variant="h6">Results</Typography>
+            <Typography variant="h6">Data</Typography>
             {result && (
               <Chip
                 size="small"
@@ -2528,30 +2552,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           </Paper>
         )}
 
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs
-            value={resultTab}
-            onChange={(_event: SyntheticEvent, value: 'grid' | 'summary') => setResultTab(value)}
-            variant="scrollable"
-            scrollButtons="auto"
-          >
-            <Tab
-              value="grid"
-              icon={<GridViewIcon />}
-              iconPosition="start"
-              label="Grid"
-              sx={{ minHeight: 48 }}
-            />
-            <Tab
-              value="summary"
-              icon={<FunctionsIcon />}
-              iconPosition="start"
-              label="Summary"
-              sx={{ minHeight: 48 }}
-            />
-          </Tabs>
-        </Box>
-
         {/* Color_Data auto-enrichment progress: one line per stage, collapsing
             to the snackbar summary once the genealogy has been added. */}
         {(enriching || enrichError) && (
@@ -2600,26 +2600,21 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           </Alert>
         )}
 
-        <Box sx={{ position: 'relative', minHeight: 240 }}>
-          {/* Both views stay mounted so their settings survive switching tabs —
-              e.g. a pivot keeps its Rows/Columns/Values and axis filters after
-              drilling through to the grid and coming back. */}
-          <Box sx={{ display: resultTab === 'grid' ? 'block' : 'none' }}>
-            <ResultsGrid
-              ref={gridHandleRef}
-              result={effectiveResult}
-              onAddComputedColumn={(col) => setComputedColumns((prev) => [...prev, col])}
-              onOpenAiTransform={() => setAiTransformOpen(true)}
-              onRevertGrid={gridHistory.length > 0 ? handleGridRevert : undefined}
-              onRowsPasted={handleGridPaste}
-              onColumnTypeChange={handleColumnTypeChange}
-              drillFilters={drillFilters}
-              onClearDrill={() => setDrillFilters([])}
-            />
-          </Box>
-          <Box sx={{ display: resultTab === 'summary' ? 'block' : 'none' }}>
-            <SummaryPanel result={effectiveResult} onDrillThrough={handleDrillThrough} />
-          </Box>
+        <Box
+          ref={gridAnchorRef}
+          sx={{ position: 'relative', minHeight: 240, scrollMarginTop: '72px' }}
+        >
+          <ResultsGrid
+            ref={gridHandleRef}
+            result={effectiveResult}
+            onAddComputedColumn={(col) => setComputedColumns((prev) => [...prev, col])}
+            onOpenAiTransform={() => setAiTransformOpen(true)}
+            onRevertGrid={gridHistory.length > 0 ? handleGridRevert : undefined}
+            onRowsPasted={handleGridPaste}
+            onColumnTypeChange={handleColumnTypeChange}
+            drillFilters={drillFilters}
+            onClearDrill={() => setDrillFilters([])}
+          />
           {running && (
             <Box
               sx={{
@@ -2644,6 +2639,12 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   : 'Running query…'}
               </Typography>
               <LinearProgress sx={{ width: 'min(240px, 60vw)' }} />
+              {/* Skeleton rows hint at the table that is about to land. */}
+              <Stack spacing={1} sx={{ width: 'min(320px, 70vw)', mt: 1 }}>
+                <Skeleton variant="rectangular" height={22} />
+                <Skeleton variant="rectangular" height={22} />
+                <Skeleton variant="rectangular" height={22} />
+              </Stack>
             </Box>
           )}
           {uploading && (
@@ -3512,12 +3513,30 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               <Button
                 variant="contained"
                 size="large"
-                startIcon={running ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
+                color={runFeedback === 'success' ? 'success' : 'primary'}
+                startIcon={
+                  running ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : runFeedback === 'success' ? (
+                    <CheckCircleIcon />
+                  ) : runFeedback === 'error' ? (
+                    <ErrorOutlineOutlinedIcon />
+                  ) : (
+                    <PlayArrowIcon />
+                  )
+                }
                 onClick={() => void handleRun()}
                 disabled={running || !canRunBuilder}
+                className={runFeedback === 'error' ? 'run-btn-shake' : undefined}
                 sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
               >
-                {running ? 'Running…' : 'Run Query'}
+                {running
+                  ? 'Running…'
+                  : runFeedback === 'success'
+                    ? 'Done'
+                    : runFeedback === 'error'
+                      ? 'Failed'
+                      : 'Run Query'}
               </Button>
               {running && (
                 <Button
@@ -4026,12 +4045,30 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 >
                   <Button
                     variant="contained"
-                    startIcon={running ? <CircularProgress size={18} color="inherit" /> : <PlayArrowIcon />}
+                    color={runFeedback === 'success' ? 'success' : 'primary'}
+                    startIcon={
+                      running ? (
+                        <CircularProgress size={18} color="inherit" />
+                      ) : runFeedback === 'success' ? (
+                        <CheckCircleIcon />
+                      ) : runFeedback === 'error' ? (
+                        <ErrorOutlineOutlinedIcon />
+                      ) : (
+                        <PlayArrowIcon />
+                      )
+                    }
                     onClick={() => void handleRun()}
                     disabled={running || !sqlText.trim()}
+                    className={runFeedback === 'error' ? 'run-btn-shake' : undefined}
                     sx={{ minHeight: 48 }}
                   >
-                    {running ? 'Running…' : 'Run'}
+                    {running
+                      ? 'Running…'
+                      : runFeedback === 'success'
+                        ? 'Done'
+                        : runFeedback === 'error'
+                          ? 'Failed'
+                          : 'Run'}
                   </Button>
                   {running && (
                     <Button

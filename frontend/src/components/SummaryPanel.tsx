@@ -28,6 +28,7 @@ import TableContainer from '@mui/material/TableContainer'
 import TableFooter from '@mui/material/TableFooter'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import TableSortLabel from '@mui/material/TableSortLabel'
 import TextField from '@mui/material/TextField'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -377,6 +378,19 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
   const [copied, setCopied] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  /** Sort rule of the statistics table (null = the natural grouping order). */
+  const [tableSort, setTableSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null)
+
+  /** Click cycle on a sortable header: asc → desc → off. */
+  const handleTableSort = useCallback((key: string) => {
+    setTableSort((prev) =>
+      prev && prev.key === key
+        ? prev.dir === 'asc'
+          ? { key, dir: 'desc' }
+          : null
+        : { key, dir: 'asc' },
+    )
+  }, [])
 
   /** Auto-detected data kind for each column (Number / Text / Boolean / Date). */
   const columnKinds = useMemo(() => {
@@ -521,6 +535,34 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
     return { rows, groups: buckets.size, truncated }
   }, [result, groupBy, statColumns, grainOf])
 
+  /** Summary rows in the chosen sort order: labels and the column name
+   *  compare as text, statistics as numbers; rows without a value for the
+   *  sorted statistic always sink to the bottom, whatever the direction. */
+  const sortedSummaryRows = useMemo(() => {
+    if (!tableSort) return summary.rows
+    const { key, dir } = tableSort
+    const factor = dir === 'asc' ? 1 : -1
+    const statField = key.startsWith('stat:')
+      ? STAT_FIELDS.find((field) => field.key === key.slice(5))
+      : undefined
+    const labelIndex = key.startsWith('label:') ? Number(key.slice(6)) : -1
+    const rows = [...summary.rows]
+    rows.sort((a, b) => {
+      if (statField) {
+        const av = a[statField.key]
+        const bv = b[statField.key]
+        if (av === null && bv === null) return 0
+        if (av === null) return 1
+        if (bv === null) return -1
+        return (av - bv) * factor
+      }
+      const av = labelIndex >= 0 ? String(a.labels[labelIndex] ?? '') : a.column
+      const bv = labelIndex >= 0 ? String(b.labels[labelIndex] ?? '') : b.column
+      return av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' }) * factor
+    })
+    return rows
+  }, [summary, tableSort])
+
   // ---- Pivot ----
 
   /**
@@ -653,7 +695,8 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
           'text',
           ...STAT_FIELDS.map(() => 'number' as const),
         ]
-        const rows = summary.rows.map((row) => [
+        // The export mirrors the on-screen order, honouring the table sort.
+        const rows = sortedSummaryRows.map((row) => [
           ...row.labels,
           row.column,
           ...STAT_FIELDS.map((f) => row[f.key]),
@@ -701,7 +744,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
       ])
       return { headers, rows, types }
     },
-    [layout, groupBy, summary, pivot, pivotRows, pivotCols],
+    [layout, groupBy, summary, sortedSummaryRows, pivot, pivotRows, pivotCols],
   )
 
   const handleCopy = useCallback(async () => {
@@ -784,6 +827,13 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
       <Box sx={{ position: 'relative' }}>{formatStat(value)}</Box>
     </Box>
   )
+
+  /** Shared props of a sortable header label (active arrow + click cycle). */
+  const sortLabelProps = (key: string) => ({
+    active: tableSort?.key === key,
+    direction: tableSort?.key === key ? (tableSort.dir ?? 'asc') : ('asc' as const),
+    onClick: () => handleTableSort(key),
+  })
 
   /** Grain selector shown under a date column's chip on the Rows/Columns shelf. */
   const grainPicker = (name: string) =>
@@ -1249,21 +1299,43 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
               <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    {groupBy.map((name) => (
-                      <TableCell key={name} sx={{ fontWeight: 600 }}>
-                        {name}
+                    {groupBy.map((name, labelIndex) => (
+                      <TableCell
+                        key={name}
+                        sx={{ fontWeight: 600 }}
+                        sortDirection={
+                          tableSort?.key === `label:${labelIndex}` ? tableSort.dir : false
+                        }
+                      >
+                        <TableSortLabel {...sortLabelProps(`label:${labelIndex}`)}>
+                          {name}
+                        </TableSortLabel>
                       </TableCell>
                     ))}
-                    <TableCell sx={{ fontWeight: 600 }}>{COLUMN_HEADER}</TableCell>
+                    <TableCell
+                      sx={{ fontWeight: 600 }}
+                      sortDirection={tableSort?.key === 'column' ? tableSort.dir : false}
+                    >
+                      <TableSortLabel {...sortLabelProps('column')}>{COLUMN_HEADER}</TableSortLabel>
+                    </TableCell>
                     {STAT_FIELDS.map((field) => (
-                      <TableCell key={field.key} align="right" sx={{ fontWeight: 600 }}>
-                        {field.label}
+                      <TableCell
+                        key={field.key}
+                        align="right"
+                        sx={{ fontWeight: 600 }}
+                        sortDirection={
+                          tableSort?.key === `stat:${field.key}` ? tableSort.dir : false
+                        }
+                      >
+                        <TableSortLabel {...sortLabelProps(`stat:${field.key}`)}>
+                          {field.label}
+                        </TableSortLabel>
                       </TableCell>
                     ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {summary.rows.map((row, index) => (
+                  {sortedSummaryRows.map((row, index) => (
                     <TableRow
                       key={`${row.column}-${index}`}
                       hover

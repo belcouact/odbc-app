@@ -277,7 +277,7 @@ function AboutSection({
           p: { xs: 2, sm: 3 },
           mb: 2,
           background:
-            'linear-gradient(135deg, rgba(15, 110, 110, 0.07) 0%, rgba(194, 84, 43, 0.05) 100%)',
+            'linear-gradient(135deg, rgba(217, 119, 87, 0.09) 0%, rgba(106, 155, 204, 0.06) 100%)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
@@ -344,7 +344,7 @@ function AboutSection({
               width: 34,
               height: 34,
               borderRadius: 2,
-              bgcolor: 'rgba(15, 110, 110, 0.10)',
+              bgcolor: 'rgba(217, 119, 87, 0.12)',
               color: 'primary.main',
             }}
           >
@@ -438,9 +438,9 @@ function AboutSection({
                     p: 2,
                     mb: hasHistory || historyLoading ? 2.5 : 0,
                     borderRadius: 2,
-                    bgcolor: 'rgba(15, 110, 110, 0.06)',
+                    bgcolor: 'rgba(217, 119, 87, 0.07)',
                     border: '1px solid',
-                    borderColor: 'rgba(15, 110, 110, 0.20)',
+                    borderColor: 'rgba(217, 119, 87, 0.24)',
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
@@ -513,7 +513,7 @@ function AboutSection({
                               border: '2px solid',
                               borderColor: current ? 'primary.main' : 'divider',
                               boxShadow: current
-                                ? '0 0 0 3px rgba(15, 110, 110, 0.15)'
+                                ? '0 0 0 3px rgba(217, 119, 87, 0.18)'
                                 : 'none',
                               zIndex: 1,
                             }}

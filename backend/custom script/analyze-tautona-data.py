@@ -220,8 +220,11 @@ def write_single_html(master, charts, echarts_js, out_path):
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Laminate Analysis — Statistical &amp; Capability Summary</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#f4f6f8;color:#222}
+body{font-family:"Lora",Georgia,"Times New Roman",serif;margin:0;background:#f4f6f8;color:#222}
 header{background:#1f3a5f;color:#fff;padding:14px 24px;position:sticky;top:0;z-index:5}
 .hdr{display:flex;justify-content:space-between;align-items:center;gap:12px;max-width:1500px;margin:0 auto}
 h1{margin:0;font-size:20px}h2{margin:0;font-size:16px}
@@ -1079,7 +1082,7 @@ def main():
 
     print("Building single-file dashboard...")
     echarts_js = get_echarts_js()
-    out_path = os.path.join(out_dir, "Laminate_Analysis.html")
+    out_path = os.path.join(out_dir, f"Laminate_Analysis_{time.strftime('%Y%m%d_%H%M%S')}.html")
     write_single_html(master, charts, echarts_js, out_path)
     print(f"Done in {time.perf_counter() - t0:.1f}s. Output: {out_path}")
     # Clickable file link (Windows file URI) so you can open the HTML directly.

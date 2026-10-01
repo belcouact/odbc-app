@@ -24,6 +24,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import BookmarksIcon from '@mui/icons-material/Bookmarks'
 import CodeIcon from '@mui/icons-material/Code'
+import FunctionsIcon from '@mui/icons-material/Functions'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import StorageIcon from '@mui/icons-material/Storage'
 import TerminalIcon from '@mui/icons-material/Terminal'
@@ -73,6 +74,7 @@ import type { DownloadResult, SnapshotMeta } from '../api/client'
 import type {
   AiMode,
   DbConnection,
+  GridDrillFilter,
   QueryResult,
   QuerySource,
   ScriptEntry,
@@ -83,8 +85,9 @@ import type {
 import { emit, subscribe } from '../editorBus'
 import { getWorkspaceSnapshot } from '../workspaceBus'
 import ChartsPanel from '../components/ChartsPanel'
+import SummaryPanel from '../components/SummaryPanel'
 
-type ScriptTab = 'script' | 'chart'
+type ScriptTab = 'script' | 'chart' | 'summary'
 
 interface DeleteTarget {
   id: string
@@ -106,6 +109,9 @@ export interface ScriptPageHandle {
 interface ScriptPageProps {
   /** Open the global AI sidebar in the given specialty (Query / Analyze / Chart). */
   onOpenAi?: (mode: AiMode) => void
+  /** Drill through from the Summary tab: filter the Query grid by these
+   *  conditions and reveal it. An empty array only clears the filter. */
+  onDrillThrough?: (filters: GridDrillFilter[]) => void
   /** The shell asks the page to refresh through this handle when the tab is
    *  opened. A boolean "active" prop would instead re-render the page on every
    *  switch — including the ones where it is only being hidden. */
@@ -248,8 +254,8 @@ function renderOutputLinks(text: string): ReactNode[] {
   return out
 }
 
-function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
-  const [tab, setTab] = useState<ScriptTab>('chart')
+function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
+  const [tab, setTab] = useState<ScriptTab>('script')
   /** ECharts option pushed in from the AI sidebar's Chart assistant. */
   const [aiOption, setAiOption] = useState<{ option: EChartsOption; nonce: number } | null>(null)
   /** Whether the "Custom scripts" pop-up (saved pre-defined scripts) is open. */
@@ -829,9 +835,9 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   const selectedSnapshotRowCount =
     snapshotRows?.id === snapshotId ? snapshotRows.rows.length : selectedSnapshot?.row_count ?? 0
 
-  // ---- Chart tab data ----
-  // The Chart tab charts the grid table loaded in the Query tab, so wrap the
-  // workspace snapshot in the QueryResult shape ChartsPanel expects.
+  // ---- Chart / Summary tab data ----
+  // Both tabs work on the grid table loaded in the Query tab, so wrap the
+  // workspace snapshot in the QueryResult shape the panels expect.
   const chartResult = useMemo<QueryResult | null>(() => {
     const { rows, columns, columnTypes, sqlText } = snapshotForSubtitle
     if (rows.length === 0) return null
@@ -883,8 +889,9 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
         <Box>
           <Typography variant="h5">Analyze</Typography>
           <Typography variant="body2" color="text.secondary">
-            Chart or script the rows currently in the grid. Scripts run in
-            Python with the rows passed as <b>data</b> (a list of row dicts).
+            Script, chart or summarize the rows currently in the grid. Scripts
+            run in Python with the rows passed as <b>data</b> (a list of row
+            dicts), and the Summary tab aggregates them in the browser.
           </Typography>
         </Box>
 
@@ -895,19 +902,17 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
           scrollButtons="auto"
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
-          <Tab value="chart" icon={<BarChartIcon />} iconPosition="start" label="Chart" />
           <Tab value="script" icon={<TerminalIcon />} iconPosition="start" label="Script" />
+          <Tab value="chart" icon={<BarChartIcon />} iconPosition="start" label="Chart" />
+          <Tab value="summary" icon={<FunctionsIcon />} iconPosition="start" label="Summary" />
         </Tabs>
 
         {tab === 'script' && (
           <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
             <Stack spacing={2}>
-              <Stack
-                direction={{ xs: 'column', md: 'row' }}
-                spacing={1}
-                useFlexGap
-                sx={{ alignItems: { xs: 'stretch', md: 'center' }, flexWrap: 'wrap' }}
-              >
+              {/* Stacked at every width: each control gets its own full-width
+                  row, matching the reference layout on wide screens too. */}
+              <Stack spacing={1} useFlexGap>
                 <ToggleButtonGroup
                   value={dataSource}
                   exclusive
@@ -932,10 +937,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                 </ToggleButtonGroup>
 
                 {dataSource === 'snapshot' && (
-                  <FormControl
-                    size="small"
-                    sx={{ minWidth: { xs: '100%', md: 260 }, flexShrink: 0 }}
-                  >
+                  <FormControl size="small" sx={{ minWidth: '100%' }}>
                     <InputLabel shrink>Snapshot</InputLabel>
                     <Select
                       value={snapshotId}
@@ -983,13 +985,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                   )}
                 </Typography>
 
-                <Stack
-                  data-tour="script-template"
-                  direction="row"
-                  spacing={1}
-                  useFlexGap
-                  sx={{ alignItems: 'center', flexWrap: 'wrap' }}
-                >
+                <Stack data-tour="script-template" spacing={1} useFlexGap>
                   <FormControlLabel
                     control={
                       <Checkbox
@@ -1003,38 +999,51 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                     }
                     label="Use template"
                   />
-                  {useTemplate && (
-                    <FormControl size="small" sx={{ minWidth: { xs: '100%', md: 220 } }}>
-                      <InputLabel shrink>Template</InputLabel>
-                      <Select
-                        value={selectedTemplate}
-                        onChange={(e: SelectChangeEvent) => handleSelectTemplate(e.target.value)}
-                        label="Template"
-                        displayEmpty
-                        renderValue={(v) =>
-                          v !== '' ? v : templatesLoading ? 'Loading…' : 'Select a template…'
-                        }
-                      >
-                        {templates.map((t) => (
-                          <MenuItem key={t.name} value={t.name}>
-                            {t.title ? `${t.title} (${t.name})` : t.name}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  )}
-                  <Button
-                    variant="outlined"
-                    startIcon={<VisibilityIcon />}
-                    onClick={() => {
-                      setTemplateOpen(true)
-                      if (templates.length === 0) void loadTemplates()
-                    }}
-                    sx={{ minHeight: 48 }}
-                    aria-haspopup="dialog"
+                  {/* Wide screens: the dropdown grows to fill the row and the
+                      View button stays beside it. Phones: the 100% minWidth
+                      wraps the button onto its own row, as before. */}
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    useFlexGap
+                    sx={{ alignItems: 'center', flexWrap: 'wrap' }}
                   >
-                    View
-                  </Button>
+                    {useTemplate && (
+                      <FormControl
+                        size="small"
+                        sx={{ flexGrow: 1, minWidth: { xs: '100%', md: 0 } }}
+                      >
+                        <InputLabel shrink>Template</InputLabel>
+                        <Select
+                          value={selectedTemplate}
+                          onChange={(e: SelectChangeEvent) => handleSelectTemplate(e.target.value)}
+                          label="Template"
+                          displayEmpty
+                          renderValue={(v) =>
+                            v !== '' ? v : templatesLoading ? 'Loading…' : 'Select a template…'
+                          }
+                        >
+                          {templates.map((t) => (
+                            <MenuItem key={t.name} value={t.name}>
+                              {t.title ? `${t.title} (${t.name})` : t.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    )}
+                    <Button
+                      variant="outlined"
+                      startIcon={<VisibilityIcon />}
+                      onClick={() => {
+                        setTemplateOpen(true)
+                        if (templates.length === 0) void loadTemplates()
+                      }}
+                      sx={{ flexShrink: 0, minHeight: 48 }}
+                      aria-haspopup="dialog"
+                    >
+                      View
+                    </Button>
+                  </Stack>
                 </Stack>
               </Stack>
 
@@ -1315,6 +1324,12 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                 </Typography>
               </Box>
             )}
+          </Paper>
+        )}
+
+        {tab === 'summary' && (
+          <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
+            <SummaryPanel result={chartResult} onDrillThrough={onDrillThrough} />
           </Paper>
         )}
       </Stack>

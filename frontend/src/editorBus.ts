@@ -3,6 +3,7 @@
  * Pre-defined pages emit these actions; the workspace subscribes and reacts.
  */
 import type { EChartsOption } from 'echarts'
+import type { GridDrillFilter } from './types'
 
 export type EditorAction =
   | { type: 'load-builder'; query: Record<string, unknown>; connectionId?: string }
@@ -22,8 +23,10 @@ export type EditorAction =
   | { type: 'request-run' }
   /** Apply an AI-generated ECharts option to a page's Chart tab. */
   | { type: 'apply-chart'; option: EChartsOption; /** Destination page; defaults to the Analyze page. */ target?: 'script' | 'bi' }
-  /** Bring the Analyze page to a specific tab (Chart / Script). */
-  | { type: 'show-analyze-tab'; tab: 'chart' | 'script' }
+  /** Bring the Analyze page to a specific tab (Chart / Script / Summary). */
+  | { type: 'show-analyze-tab'; tab: 'chart' | 'script' | 'summary' }
+  /** Apply drill-through filters (empty array clears them) to the Query grid. */
+  | { type: 'drill-grid'; filters: GridDrillFilter[] }
 
 type Listener = (action: EditorAction) => void
 

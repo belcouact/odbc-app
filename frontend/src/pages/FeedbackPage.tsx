@@ -3,6 +3,8 @@ import type { ChangeEvent, ReactNode } from 'react'
 import AddIcon from '@mui/icons-material/Add'
 import AttachFileIcon from '@mui/icons-material/AttachFile'
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
@@ -153,11 +155,20 @@ function AuthorLine({ name, version, at }: { name: string; version: string; at: 
   )
 }
 
-/** Attachments of a post: image thumbnails, other files as links. */
-function AttachmentList({ attachments }: { attachments: FeedbackAttachment[] }) {
+/** Attachments of a post: image thumbnails, other files as links.
+ *  `large` sizes images for the discussion view, where a screenshot is the
+ *  content — a 132px thumbnail is unreadable there, so images stretch to the
+ *  column width (capped) instead of a fixed mini tile. */
+function AttachmentList({
+  attachments,
+  large = false,
+}: {
+  attachments: FeedbackAttachment[]
+  large?: boolean
+}) {
   if (attachments.length === 0) return null
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1.5 }}>
       {attachments.map((attachment) =>
         isImage(attachment) ? (
           <Box
@@ -174,6 +185,7 @@ function AttachmentList({ attachments }: { attachments: FeedbackAttachment[] }) 
               overflow: 'hidden',
               border: '1px solid',
               borderColor: 'divider',
+              ...(large && { maxWidth: { xs: '100%', sm: 560 } }),
             }}
           >
             <Box
@@ -181,7 +193,17 @@ function AttachmentList({ attachments }: { attachments: FeedbackAttachment[] }) 
               src={attachment.url}
               alt={attachment.name}
               loading="lazy"
-              sx={{ width: { xs: 96, sm: 132 }, height: { xs: 72, sm: 96 }, objectFit: 'cover' }}
+              sx={
+                large
+                  ? {
+                      width: '100%',
+                      height: 'auto',
+                      maxHeight: { xs: 300, md: 420 },
+                      objectFit: 'contain',
+                      bgcolor: '#ffffff',
+                    }
+                  : { width: { xs: 96, sm: 132 }, height: { xs: 72, sm: 96 }, objectFit: 'cover' }
+              }
             />
           </Box>
         ) : (
@@ -532,7 +554,7 @@ function ThreadCard({
         borderLeft: '3px solid',
         borderLeftColor: active ? 'primary.main' : 'transparent',
         borderColor: active ? 'primary.main' : 'divider',
-        bgcolor: active ? alpha('#0f6e6e', 0.04) : 'background.paper',
+        bgcolor: active ? alpha('#d97757', 0.05) : 'background.paper',
         transition: 'border-color 120ms ease, box-shadow 120ms ease',
         '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
         // Hover is a desktop affordance only; touch devices keep the resting style.
@@ -703,7 +725,7 @@ function ThreadTable({
                     borderLeft: '3px solid',
                     borderLeftColor: active ? 'primary.main' : 'transparent',
                   },
-                  bgcolor: active ? alpha('#0f6e6e', 0.04) : undefined,
+                  bgcolor: active ? alpha('#d97757', 0.05) : undefined,
                   '&:focus-visible': {
                     outline: '2px solid',
                     outlineColor: 'primary.main',
@@ -847,15 +869,24 @@ function ThreadComposerDialog({
 
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth="sm">
-      <DialogTitle sx={{ pr: 6 }}>
-        {editing ? 'Edit feedback' : 'New feedback'}
+      <DialogTitle
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          pr: 1,
+        }}
+      >
+        <Box component="span">{editing ? 'Edit feedback' : 'New feedback'}</Box>
         <IconButton
           aria-label="Close"
           onClick={onClose}
           disabled={saving}
-          sx={{ position: 'absolute', right: 8, top: 8, minWidth: 44, minHeight: 44 }}
+          size="small"
+          sx={{ color: 'text.secondary' }}
         >
-          <CloseIcon />
+          <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
       <DialogContent dividers>
@@ -958,13 +989,13 @@ function ThreadDetailView({
   onToggleStatus: (thread: FeedbackThread) => void
   onNotice: (notice: Notice) => void
 }) {
-  const [replyBody, setReplyBody] = useState('')
-  const [replyAttachments, setReplyAttachments] = useState<FeedbackAttachment[]>([])
-  const [sending, setSending] = useState(false)
+  // Whether the reply window is open. The draft itself lives inside
+  // ReplyDialog, so a thread switch needs no cleanup here.
+  const [replyOpen, setReplyOpen] = useState(false)
 
+  // A thread switch closes any reply window left open on the previous post.
   useEffect(() => {
-    setReplyBody('')
-    setReplyAttachments([])
+    setReplyOpen(false)
   }, [detail?.thread.id])
 
   if (loading && !detail) {
@@ -997,24 +1028,17 @@ function ThreadDetailView({
   const { thread, replies } = detail
   const meta = categoryMeta(thread.category)
 
-  const sendReply = async () => {
-    if (!replyBody.trim()) return
-    setSending(true)
-    const ok = await onReply(replyBody.trim(), replyAttachments)
-    setSending(false)
-    if (ok) {
-      setReplyBody('')
-      setReplyAttachments([])
-    }
-  }
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      {/* The post and its replies scroll on their own… */}
+      {/* The post and its replies scroll on their own…
+          On the wide desktop panel the thread is centered in a readable
+          column (~860px): full-bleed 1400px lines of serif body text would be
+          as hard to read as the cramped old popup was. */}
       <Box sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', pr: 0.5 }}>
+        <Box sx={{ maxWidth: 860, mx: 'auto' }}>
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
-            <Typography variant="h6" sx={{ flexGrow: 1, minWidth: 0, lineHeight: 1.35 }}>
+            <Typography variant="h5" sx={{ flexGrow: 1, minWidth: 0, lineHeight: 1.3 }}>
               {thread.title}
             </Typography>
             <Chip label={meta.label} color={meta.color} size="small" variant="outlined" />
@@ -1027,21 +1051,39 @@ function ThreadDetailView({
             version={thread.app_version}
             at={thread.created_at}
           />
-          <Typography variant="body2" sx={{ mt: 1.5, whiteSpace: 'pre-wrap' }}>
+          <Typography variant="body1" sx={{ mt: 1.5, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
             {thread.body}
           </Typography>
-          <AttachmentList attachments={thread.attachments} />
+          <AttachmentList attachments={thread.attachments} large />
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2, flexWrap: 'wrap' }}>
-            <Button
-              variant={thread.liked_by_me ? 'contained' : 'outlined'}
-              color={thread.liked_by_me ? 'primary' : 'inherit'}
-              startIcon={thread.liked_by_me ? <ThumbUpIcon /> : <ThumbUpOutlinedIcon />}
-              aria-pressed={thread.liked_by_me}
-              onClick={onToggleLike}
-              sx={{ minHeight: 48 }}
+            {/* Icon-only vote: the label was pure repetition of the thumb
+                icon, so the count moves into the tooltip and aria-label. */}
+            <Tooltip
+              title={`Same problem — ${thread.like_count} ${thread.like_count === 1 ? 'vote' : 'votes'}`}
             >
-              Same problem ({thread.like_count})
+              <Button
+                size="small"
+                variant={thread.liked_by_me ? 'contained' : 'outlined'}
+                color={thread.liked_by_me ? 'primary' : 'inherit'}
+                aria-pressed={thread.liked_by_me}
+                aria-label={`Same problem — ${thread.like_count} ${thread.like_count === 1 ? 'vote' : 'votes'}`}
+                onClick={onToggleLike}
+                sx={{ minHeight: 36, minWidth: 36, p: 0.75 }}
+              >
+                {thread.liked_by_me ? <ThumbUpIcon /> : <ThumbUpOutlinedIcon />}
+              </Button>
+            </Tooltip>
+            {/* The writing surface lives in its own window now, so the thread
+                itself keeps every pixel for reading. */}
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<SendIcon />}
+              onClick={() => setReplyOpen(true)}
+              sx={{ minHeight: 36 }}
+            >
+              Reply
             </Button>
             {thread.mine && (
               <>
@@ -1082,17 +1124,26 @@ function ThreadDetailView({
           )}
         </Box>
 
-        <Divider sx={{ my: 2 }} />
+        <Divider sx={{ my: 2.5 }} />
 
-        <Box>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+        <Box sx={{ pb: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
             {replies.length === 0
               ? 'No replies yet'
               : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
           </Typography>
           <Stack spacing={1.5}>
             {replies.map((reply) => (
-              <Paper key={reply.id} variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
+              <Paper
+                key={reply.id}
+                variant="outlined"
+                sx={{
+                  p: { xs: 1.5, sm: 2 },
+                  bgcolor: '#fcfbf8',
+                  borderLeft: '3px solid',
+                  borderColor: 'primary.light',
+                }}
+              >
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
                   <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                     <AuthorLine
@@ -1101,70 +1152,149 @@ function ThreadDetailView({
                       at={reply.created_at}
                     />
                   </Box>
-                  {reply.mine && (
-                    <Tooltip title="Delete reply">
-                      <IconButton
-                        aria-label="Delete reply"
-                        onClick={() => onDeleteReply(reply)}
-                        size="small"
-                        sx={{ minWidth: 44, minHeight: 44, mt: -0.5 }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  )}
+                  {/* Reply sits left of the destructive Delete icon with a
+                      wide gap so a stray tap cannot hit Delete. */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: -0.5 }}>
+                    <Button
+                      size="small"
+                      color="primary"
+                      startIcon={<SendIcon />}
+                      onClick={() => setReplyOpen(true)}
+                      sx={{ minHeight: 44 }}
+                    >
+                      Reply
+                    </Button>
+                    {reply.mine && (
+                      <Tooltip title="Delete reply">
+                        <IconButton
+                          aria-label="Delete reply"
+                          onClick={() => onDeleteReply(reply)}
+                          size="small"
+                          sx={{ minWidth: 44, minHeight: 44 }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
                 </Box>
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.5 }}>
+                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', mt: 0.5, lineHeight: 1.65 }}>
                   {reply.body}
                 </Typography>
-                <AttachmentList attachments={reply.attachments} />
+                <AttachmentList attachments={reply.attachments} large />
               </Paper>
             ))}
           </Stack>
         </Box>
-      </Box>
-
-      {/* …while the composer stays in reach, however long the thread grows. */}
-      <Box
-        sx={{
-          flexShrink: 0,
-          mt: 2,
-          pt: 1.5,
-          borderTop: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
-        <TextField
-          label="Write a reply"
-          placeholder="Add details, agree, or answer the question"
-          value={replyBody}
-          onChange={(event) => setReplyBody(event.target.value)}
-          slotProps={{ htmlInput: { maxLength: 8000 } }}
-          multiline
-          minRows={2}
-          fullWidth
-        />
-        <Box sx={{ mt: 1 }}>
-          <AttachmentField
-            attachments={replyAttachments}
-            onChange={setReplyAttachments}
-            onNotice={onNotice}
-            disabled={sending}
-            action={
-              <Button
-                variant="contained"
-                onClick={sendReply}
-                disabled={sending || !replyBody.trim()}
-                startIcon={sending ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
-                sx={{ minHeight: 48, minWidth: { xs: 96, sm: 140 }, flexShrink: 0 }}
-              >
-                Reply
-              </Button>
-            }
-          />
         </Box>
       </Box>
+
+      <ReplyDialog
+        key={thread.id}
+        open={replyOpen}
+        onClose={() => setReplyOpen(false)}
+        onSubmit={onReply}
+        onNotice={onNotice}
+      />
     </Box>
+  )
+}
+
+/** Compose a reply in its own window.
+ *
+ * The thread used to keep a reply box pinned to its bottom edge, which cost
+ * the reading area a permanent slice of the popup. Writing now happens in a
+ * focused dialog instead, opened from the Reply buttons on the post and on
+ * each reply, so the thread view is nothing but content. */
+function ReplyDialog({
+  open,
+  onClose,
+  onSubmit,
+  onNotice,
+}: {
+  open: boolean
+  onClose: () => void
+  onSubmit: (body: string, attachments: FeedbackAttachment[]) => Promise<boolean>
+  onNotice: (notice: Notice) => void
+}) {
+  const [body, setBody] = useState('')
+  const [attachments, setAttachments] = useState<FeedbackAttachment[]>([])
+  const [sending, setSending] = useState(false)
+
+  // Every opening starts a fresh draft.
+  useEffect(() => {
+    if (!open) return
+    setBody('')
+    setAttachments([])
+  }, [open])
+
+  const submit = async () => {
+    if (!body.trim()) return
+    setSending(true)
+    const ok = await onSubmit(body.trim(), attachments)
+    setSending(false)
+    if (ok) onClose()
+  }
+
+  return (
+    <Dialog open={open} onClose={sending ? undefined : onClose} fullWidth maxWidth="sm">
+      <DialogTitle
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          pr: 1,
+        }}
+      >
+        <Box component="span">Write a reply</Box>
+        <IconButton
+          aria-label="Close"
+          onClick={onClose}
+          disabled={sending}
+          size="small"
+          sx={{ color: 'text.secondary' }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <TextField
+          label="Your reply"
+          placeholder="Add details, agree, or answer the question"
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          slotProps={{ htmlInput: { maxLength: 8000 } }}
+          multiline
+          minRows={5}
+          maxRows={12}
+          fullWidth
+          autoFocus
+        />
+        <Box sx={{ mt: 2 }}>
+          <AttachmentField
+            attachments={attachments}
+            onChange={setAttachments}
+            onNotice={onNotice}
+            disabled={sending}
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2 }}>
+        <Button onClick={onClose} color="inherit" disabled={sending} sx={{ minHeight: 48 }}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          onClick={submit}
+          disabled={sending || !body.trim()}
+          startIcon={sending ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
+          sx={{ minHeight: 48, minWidth: 140 }}
+        >
+          Reply
+        </Button>
+      </DialogActions>
+    </Dialog>
   )
 }
 
@@ -1258,6 +1388,10 @@ function FeedbackPage() {
 
   // Opening a post always opens its own window, so the list keeps its width.
   const openThread = (thread: FeedbackThread) => {
+    // Switching posts drops the previous post's content at once, so the
+    // loading skeletons — not the stale thread — fill the window while the
+    // new detail is being fetched.
+    if (thread.id !== selectedId) setDetail(null)
     setSelectedId(thread.id)
     setDetailOpen(true)
   }
@@ -1374,6 +1508,14 @@ function FeedbackPage() {
     }
     return `${threads.length} ${threads.length === 1 ? 'post' : 'posts'}`
   }, [listLoading, threads.length, visibleThreads.length])
+
+  // Prev/next navigation inside the discussion window steps through the board
+  // list the user was browsing, honouring the active search and filters.
+  const selectedIndex = visibleThreads.findIndex((thread) => thread.id === selectedId)
+  const navStep = (delta: number) => {
+    const next = selectedIndex + delta
+    if (next >= 0 && next < visibleThreads.length) openThread(visibleThreads[next])
+  }
 
   const detailView = (
     <ThreadDetailView
@@ -1693,22 +1835,30 @@ function FeedbackPage() {
         </Box>
       </Box>
 
-      {/* One post, one window: a full-screen sheet on a phone and a large
-          square-cornered panel on a desktop. The window keeps the board's
-          square corners, so it reads as another workspace, not a bubble. */}
+      {/* One post, one window: a full-screen sheet on a phone and a near-full
+          workspace panel on a desktop. The window is deliberately as large as
+          the screen allows — the point of a discussion is the content, so the
+          panel claims 92vh of height and the xl width band, leaving the board
+          visible only as a thin frame. Corners match the reply window's 16px
+          radius (the theme default); the phone sheet stays square because a
+          full-screen sheet with rounded corners just shows background gaps. */}
       <Dialog
         open={detailOpen && (!!selectedId || detailLoading)}
         onClose={() => setDetailOpen(false)}
         fullScreen={!isDesktop}
         fullWidth
-        maxWidth="lg"
+        maxWidth="xl"
         slotProps={{
           paper: {
             sx: {
-              borderRadius: 0,
+              // A string, not a number: sx multiplies numeric borderRadius
+              // values by theme.shape.borderRadius (12), which turned `16`
+              // into a 192px blob. '16px' matches the reply window's corners.
+              borderRadius: { xs: 0, md: '16px' },
               // The panel needs a definite height so the thread can scroll
               // inside it while the reply box stays put at the bottom.
-              height: { xs: '100%', md: 'min(860px, 86vh)' },
+              height: { xs: '100%', md: 'min(1150px, 92vh)' },
+              maxWidth: { md: 'min(1400px, 96vw)' },
             },
           },
         }}
@@ -1717,30 +1867,31 @@ function FeedbackPage() {
           sx={{
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             gap: 1,
             py: 1,
-            pr: 7,
+            pr: 1,
             borderBottom: '1px solid',
             borderColor: 'divider',
             flexShrink: 0,
           }}
         >
-          Discussion
+          <Box component="span">Discussion</Box>
+          {/* A normal flex child, so the bar's own `alignItems: center` is what
+              centres it. Absolute positioning was the bug: with no positioned
+              ancestor nearby the offsets resolved against the whole window. */}
           <IconButton
             aria-label="Close discussion"
             onClick={() => setDetailOpen(false)}
-            sx={{
-              position: 'absolute',
-              right: { xs: 4, sm: 8 },
-              top: { xs: 4, sm: 8 },
-              // This is the only exit from the window, so keep it a full touch
-              // target even where the theme compacts dialog-title buttons.
-              '&&': { minWidth: 48, minHeight: 48 },
-            }}
+            size="small"
+            sx={{ color: 'text.secondary' }}
           >
-            <CloseIcon />
+            <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
+        {/* Visible while the clicked post's content is being fetched — the
+            bar sits under the title so the window itself reads as busy. */}
+        {detailLoading && <LinearProgress sx={{ flexShrink: 0 }} />}
         <DialogContent
           sx={{
             px: { xs: 1.5, sm: 3 },
@@ -1750,7 +1901,49 @@ function FeedbackPage() {
             overflow: 'hidden',
           }}
         >
-          {detailView}
+          {/* Previous / next: move through the posts of the board the user was
+              browsing, in its current order. 48px targets keep the taps easy
+              on touch screens. */}
+          <Box
+            sx={{
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 1,
+              pt: 0.5,
+              pb: 1,
+            }}
+          >
+            <Button
+              size="small"
+              startIcon={<ChevronLeftIcon />}
+              onClick={() => navStep(-1)}
+              disabled={selectedIndex <= 0}
+              sx={{ minHeight: 48 }}
+            >
+              Previous
+            </Button>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ minWidth: 64, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}
+            >
+              {selectedIndex >= 0 ? `${selectedIndex + 1} / ${visibleThreads.length}` : '–'}
+            </Typography>
+            <Button
+              size="small"
+              endIcon={<ChevronRightIcon />}
+              onClick={() => navStep(1)}
+              disabled={selectedIndex < 0 || selectedIndex >= visibleThreads.length - 1}
+              sx={{ minHeight: 48 }}
+            >
+              Next
+            </Button>
+          </Box>
+          <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {detailView}
+          </Box>
         </DialogContent>
       </Dialog>
 

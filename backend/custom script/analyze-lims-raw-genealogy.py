@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import statistics
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -88,7 +89,8 @@ def generate_report(
 
     output_file = Path(
         output_file
-        or Path.home() / "Downloads" / "raw_item_statistical_report.html"
+        or Path.home() / "Downloads"
+        / f"raw_item_statistical_report_{datetime.now():%Y%m%d_%H%M%S}.html"
     ).expanduser().resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -98,11 +100,14 @@ def generate_report(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Raw Item Statistical Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="{ECHARTS_URL}"></script>
 <style>
 :root{{--navy:#17324d;--blue:#1677ff;--ink:#17202a;--muted:#64748b;--line:#dbe4ee;--bg:#f4f7fb}}
 *{{box-sizing:border-box}}
-body{{margin:0;background:var(--bg);color:var(--ink);font-family:Segoe UI,Arial,sans-serif}}
+body{{margin:0;background:var(--bg);color:var(--ink);font-family:"Lora",Georgia,"Times New Roman",serif}}
 header{{background:linear-gradient(120deg,var(--navy),#24577d);color:#fff;padding:28px 34px 24px}}
 header h1{{margin:0 0 7px;font-size:26px}}
 header p{{margin:0;color:#d8e6f2}}
