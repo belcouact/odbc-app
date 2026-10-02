@@ -11,6 +11,10 @@ import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
@@ -33,6 +37,8 @@ import TextField from '@mui/material/TextField'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
+import useMediaQuery from '@mui/material/useMediaQuery'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CloseIcon from '@mui/icons-material/Close'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
@@ -42,13 +48,14 @@ import FilterAltIcon from '@mui/icons-material/FilterAlt'
 import InsightsIcon from '@mui/icons-material/Insights'
 import TableRowsIcon from '@mui/icons-material/TableRows'
 import { api, downloadBlob } from '../api/client'
-import type { ChartOperation } from '../api/client'
+import type { AiStatsResult, ChartOperation } from '../api/client'
 import type { DateGrain, GridDrillFilter, QueryResult } from '../types'
 import { aggregateGroup, quantileSorted, toNumber } from '../utils/chartData'
 import { CATEGORICAL_OPERATIONS, OPERATIONS } from '../utils/chartCatalog'
 import {
   COLUMN_KIND_LABELS,
   DATE_GRAIN_OPTIONS,
+  aiExamplePlaceholder,
   detectColumnKind,
   groupingKey,
   type ColumnKind,
@@ -381,6 +388,33 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
   /** Sort rule of the statistics table (null = the natural grouping order). */
   const [tableSort, setTableSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null)
 
+  /** AI-written statistical analysis (runs Python against the current rows). */
+  const isCompact = useMediaQuery('(max-width:700px)')
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiResult, setAiResult] = useState<AiStatsResult | null>(null)
+
+  const runAiSummary = useCallback(async () => {
+    if (!result) return
+    setAiBusy(true)
+    setAiError(null)
+    setAiResult(null)
+    try {
+      const stats = await api.aiStats({
+        columns: result.columns,
+        rows: result.rows.slice(0, 1000),
+        requirement: aiPrompt,
+      })
+      setAiResult(stats)
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'The AI summary failed.')
+    } finally {
+      setAiBusy(false)
+    }
+  }, [result, aiPrompt])
+
   /** Click cycle on a sortable header: asc → desc → off. */
   const handleTableSort = useCallback((key: string) => {
     setTableSort((prev) =>
@@ -402,6 +436,11 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
   }, [result])
 
   const allNames = useMemo(() => (result?.columns ?? []).map((c) => c.name), [result])
+  /** Data-aware example prompt shown as the AI dialog's placeholder. */
+  const aiExample = useMemo(
+    () => aiExamplePlaceholder(result?.columns ?? [], result?.rows ?? [], 'summary'),
+    [result],
+  )
   const numericNames = useMemo(
     () => allNames.filter((name) => columnKinds[name] === 'number'),
     [allNames, columnKinds],
@@ -929,6 +968,15 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
           {onDrillThrough ? ' · click a group to filter the grid' : ''}
         </Typography>
         <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center' }}>
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<AutoAwesomeIcon />}
+            onClick={() => setAiOpen(true)}
+            sx={{ minHeight: 40 }}
+          >
+            AI summary
+          </Button>
           {/* Below md the palette stacks above the shelves, so the collapse
               toggle has to live here (the side rail is desktop-only). */}
           <Button
@@ -1598,6 +1646,110 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
           )}
         </Stack>
       </Box>
+
+      <Dialog
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        fullScreen={isCompact}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AutoAwesomeIcon color="primary" />
+          <Box sx={{ flexGrow: 1 }}>AI statistical summary</Box>
+          <IconButton aria-label="Close" onClick={() => setAiOpen(false)} sx={{ minWidth: 48, minHeight: 48 }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              The assistant writes a Python script and runs it against the first{' '}
+              {Math.min(result.rows.length, 1000).toLocaleString()} row
+              {result.rows.length === 1 ? '' : 's'} shown here, then reports what it finds.
+            </Typography>
+            <TextField
+              label="What should the analysis focus on? (optional)"
+              placeholder={aiExample}
+              value={aiPrompt}
+              onChange={(event) => setAiPrompt(event.target.value)}
+              multiline
+              minRows={2}
+              fullWidth
+            />
+            <Box>
+              <Button
+                variant="contained"
+                startIcon={aiBusy ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                onClick={runAiSummary}
+                disabled={aiBusy}
+                sx={{ minHeight: 44 }}
+              >
+                {aiBusy ? 'Analyzing…' : aiResult ? 'Run again' : 'Run analysis'}
+              </Button>
+            </Box>
+
+            {aiError ? <Alert severity="error">{aiError}</Alert> : null}
+
+            {aiResult?.timed_out ? (
+              <Alert severity="warning">
+                The analysis did not finish within {Math.round(aiResult.elapsed_ms / 1000)}s and was stopped.
+              </Alert>
+            ) : null}
+
+            {aiResult ? (
+              <>
+                {aiResult.stdout ? (
+                  <Box
+                    component="pre"
+                    sx={{
+                      m: 0,
+                      p: 1.5,
+                      bgcolor: 'action.hover',
+                      borderRadius: 1,
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      whiteSpace: 'pre-wrap',
+                      overflowX: 'auto',
+                    }}
+                  >
+                    {aiResult.stdout}
+                  </Box>
+                ) : (
+                  <Alert severity="info">The analysis produced no printed output.</Alert>
+                )}
+                {aiResult.stderr ? <Alert severity="warning">{aiResult.stderr}</Alert> : null}
+                <Box component="details">
+                  <Box component="summary" sx={{ cursor: 'pointer', fontWeight: 600 }}>
+                    Python script
+                  </Box>
+                  <Box
+                    component="pre"
+                    sx={{
+                      m: 0,
+                      mt: 1,
+                      p: 1.5,
+                      bgcolor: 'action.hover',
+                      borderRadius: 1,
+                      fontFamily: 'monospace',
+                      fontSize: 12.5,
+                      whiteSpace: 'pre-wrap',
+                      overflowX: 'auto',
+                    }}
+                  >
+                    {aiResult.script}
+                  </Box>
+                </Box>
+              </>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAiOpen(false)} sx={{ minHeight: 44 }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   )
 }

@@ -1,5 +1,10 @@
 [
   {
+    "version": "2.2.0",
+    "date": "2026-10-02",
+    "notes": "1. AI dashboard builder: one-click example-prompt buttons that fill the input with a ready-made dashboard request built from your current data (KPI cards plus trend and breakdown charts), so you get several charts at once instead of a single one.\n2. Chart builder: the \"Edit in chart builder\" action on a dashboard tile loads that tile's settings into the full chart picker, so you can adjust and update it in place.\n3. Dashboard charts: new charts are always added to the dashboard while keeping the charts you already have — nothing is overwritten.\n4. Dashboard AI charts: the legend is now placed at the bottom of every chart for a consistent, more readable layout.\n5. Chart-type icons: the Error bars and Control chart (SPC) tiles now use icons that match what they represent."
+  },
+  {
     "version": "2.1.0",
     "date": "2026-10-02",
     "notes": "1. BI page — Relationships: link warehouse tables on a shared column (left or inner join), drill from a row to its related rows in the linked table, or view a flat joined table; relationships are saved, editable and deletable.\n2. Relationship diagram: all relationships in one view — tables as nodes connected by lines labelled with the key pair, colored/solid for left joins and dashed green for inner joins, with arrows showing direction; hover a line for details.\n3. Charts across tables: in the Chart tab, pick a relationship as the chart data source to chart fields from both tables at once (joined dataset, up to 5,000 rows).\n4. Warehouse section: snapshots and relationships combined into one tabbed, collapsible card with live counts.\n5. Edit grid window: AI edit, data types and calculated columns combined into a single dialog with tabs; the data types tab redesigned as responsive cards with a per-column type dropdown.\n6. Snapshots: one-click button to load stored rows back into the Query grid."
@@ -18,10 +23,5 @@
     "version": "2.0.7",
     "date": "2026-10-01",
     "notes": "1. Chart area — histogram binning: the bin-count slider is replaced by a Bin size box plus Start and End boxes. Leave them blank to auto-fit the data (10 even buckets), type a bin size to set the bucket width, or set a start/end range to clip the domain — values outside the range are dropped.\n2. Message bar: pop-up messages (upload, save, errors) now sit on a dark green background, with a larger, rounder close button centred against the text so it is easier to hit on both desktop and touch screens."
-  },
-  {
-    "version": "2.0.6",
-    "date": "2026-09-30",
-    "notes": "1. Results grid — paste data: a new Paste button sits next to Upload, and Ctrl+V pastes straight from Excel. When the grid already holds rows the paste replaces them (Revert undoes it); a pasted header row becomes the table's column names, and empty rows are dropped.\n2. Chart area — secondary Y axis: bar, stacked bar, trend, step line, area, stacked area and combo charts now offer the Y2 (secondary) shelf, so a second measure is plotted on its own right-hand axis (the top axis for horizontal bars).\n3. Chart area — Visualizations pane: the chart type panel now collapses and expands sideways into a slim rail on the right, matching the Fields rail, instead of folding up and down.\n4. Chart area — column types: a column type changed in the results grid is reflected in the chart builder's column panel straight away, and a saved BI snapshot keeps the types its columns had.\n5. Laminate Lab Results (analyze-tautona-data): the script now opens a native Windows dialog first, listing every test component (ANALYSIS + RESULT_NAME) so unwanted ones can be unchecked; set LAMINATE_SKIP_PICKER=1 to analyze everything without the dialog."
   }
 ]

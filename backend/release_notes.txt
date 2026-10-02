@@ -1,6 +1,5 @@
-1. BI page — Relationships: link warehouse tables on a shared column (left or inner join), drill from a row to its related rows in the linked table, or view a flat joined table; relationships are saved, editable and deletable.
-2. Relationship diagram: all relationships in one view — tables as nodes connected by lines labelled with the key pair, colored/solid for left joins and dashed green for inner joins, with arrows showing direction; hover a line for details.
-3. Charts across tables: in the Chart tab, pick a relationship as the chart data source to chart fields from both tables at once (joined dataset, up to 5,000 rows).
-4. Warehouse section: snapshots and relationships combined into one tabbed, collapsible card with live counts.
-5. Edit grid window: AI edit, data types and calculated columns combined into a single dialog with tabs; the data types tab redesigned as responsive cards with a per-column type dropdown.
-6. Snapshots: one-click button to load stored rows back into the Query grid.
+1. AI dashboard builder: one-click example-prompt buttons that fill the input with a ready-made dashboard request built from your current data (KPI cards plus trend and breakdown charts), so you get several charts at once instead of a single one.
+2. Chart builder: the "Edit in chart builder" action on a dashboard tile loads that tile's settings into the full chart picker, so you can adjust and update it in place.
+3. Dashboard charts: new charts are always added to the dashboard while keeping the charts you already have — nothing is overwritten.
+4. Dashboard AI charts: the legend is now placed at the bottom of every chart for a consistent, more readable layout.
+5. Chart-type icons: the Error bars and Control chart (SPC) tiles now use icons that match what they represent.

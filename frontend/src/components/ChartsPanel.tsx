@@ -21,14 +21,15 @@ import DataUsageIcon from '@mui/icons-material/DataUsage'
 import DonutLargeIcon from '@mui/icons-material/DonutLarge'
 import FilterAltIcon from '@mui/icons-material/FilterAlt'
 import GridViewIcon from '@mui/icons-material/GridView'
+import HeightIcon from '@mui/icons-material/Height'
 import HubIcon from '@mui/icons-material/Hub'
 import InsightsIcon from '@mui/icons-material/Insights'
 import MultilineChartIcon from '@mui/icons-material/MultilineChart'
 import NumbersIcon from '@mui/icons-material/Numbers'
 import PieChartIcon from '@mui/icons-material/PieChart'
 import PushPinIcon from '@mui/icons-material/PushPin'
+import QueryStatsIcon from '@mui/icons-material/QueryStats'
 import RadarIcon from '@mui/icons-material/Radar'
-import RuleIcon from '@mui/icons-material/Rule'
 import ScatterPlotIcon from '@mui/icons-material/ScatterPlot'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
 import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt'
@@ -119,8 +120,8 @@ const CHART_TYPES: { value: ChartType; label: string; icon: ReactElement; color:
   { value: 'scatter', label: 'Scatter', color: '#7cb342', icon: <ScatterPlotIcon /> },
   { value: 'bubble', label: 'Bubble', color: '#00acc1', icon: <BubbleChartIcon /> },
   { value: 'trendline', label: 'Scatter + trendline', color: '#9e9d24', icon: <InsightsIcon /> },
-  { value: 'errorbar', label: 'Error bars', color: '#455a64', icon: <UnfoldMoreIcon /> },
-  { value: 'spc', label: 'Control chart (SPC)', color: '#c62828', icon: <RuleIcon /> },
+  { value: 'errorbar', label: 'Error bars', color: '#455a64', icon: <HeightIcon /> },
+  { value: 'spc', label: 'Control chart (SPC)', color: '#c62828', icon: <QueryStatsIcon /> },
   { value: 'sankey', label: 'Sankey', color: '#0277bd', icon: <HubIcon /> },
   { value: 'gauge', label: 'Gauge', color: '#0288d1', icon: <SpeedIcon /> },
 ]
@@ -283,6 +284,8 @@ interface ChartsPanelProps {
   onClearAi?: () => void
   /** Opens the AI chart assistant dialog. */
   onAiChart?: () => void
+  /** Label for the AI button — the Dashboard page names its pop-up explicitly. */
+  aiLabel?: string
   /** Disables the AI chart button (e.g. while an upload is in progress). */
   aiDisabled?: boolean
   /** Pins the current configuration onto the snapshot's dashboard. */
@@ -297,6 +300,7 @@ export default function ChartsPanel({
   aiOption,
   onClearAi,
   onAiChart,
+  aiLabel = 'AI Chart',
   aiDisabled,
   onAddToDashboard,
   addLabel = 'Add to dashboard',
@@ -1297,7 +1301,7 @@ export default function ChartsPanel({
             disabled={aiDisabled}
             sx={{ minHeight: 48, width: '100%', mt: 0.5 }}
           >
-            AI Chart
+            {aiLabel}
           </Button>
         )}
 

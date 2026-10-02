@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, memo } from 'react'
 import type { Ref } from 'react'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import BookmarksIcon from '@mui/icons-material/Bookmarks'
 import CloseIcon from '@mui/icons-material/Close'
@@ -24,6 +25,8 @@ import TableChartIcon from '@mui/icons-material/TableChart'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import ButtonBase from '@mui/material/ButtonBase'
+import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Dialog from '@mui/material/Dialog'
@@ -51,6 +54,7 @@ import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { api } from '../api/client'
 import type {
+  AiDashboardChart,
   RelationshipJoinPreview,
   SnapshotDetail,
   SnapshotMeta,
@@ -60,12 +64,17 @@ import type {
 import ChartsPanel from '../components/ChartsPanel'
 import type { ChartPreset } from '../components/ChartsPanel'
 import DashboardPanel from '../components/DashboardPanel'
+import EChart from '../components/EChart'
+import KpiCards from '../components/KpiCards'
 import RelationshipsPanel from '../components/RelationshipsPanel'
 import { subscribe } from '../editorBus'
 import type { GridLoadPayload } from '../editorBus'
-import type { QueryResult, QuerySource, AiMode } from '../types'
+import type { QueryResult, QuerySource } from '../types'
 import type { EChartsOption } from 'echarts'
+import { aiDashboardExamples, aiExamplePlaceholder } from '../utils/columns'
 import {
+  aiChartToVisual,
+  buildVisualChart,
   newVisualId,
   visualTitle,
   type DashboardVisual,
@@ -83,8 +92,6 @@ export interface BiPageHandle {
 
 interface BiPageProps {
   ref?: Ref<BiPageHandle>
-  /** Open the AI sidebar (used by the chart builder's AI chart button). */
-  onOpenAi?: (mode: AiMode) => void
   /** Load a snapshot's rows back into the Query grid (swaps the view there). */
   onLoadToGrid?: (payload: GridLoadPayload) => void
 }
@@ -119,7 +126,7 @@ function columnNames(detail: SnapshotDetail): string[] {
   return Object.keys(detail.rows[0] ?? {})
 }
 
-function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
+function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
   const isCompact = useMediaQuery('(max-width:700px)')
 
   /** How-to pop-up for this page (opened from the help icon). */
@@ -144,7 +151,22 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
   const [dashboardLoading, setDashboardLoading] = useState(false)
   const [dashboardSaving, setDashboardSaving] = useState(false)
   const [editingVisualId, setEditingVisualId] = useState<string | null>(null)
-  const [chartPreset, setChartPreset] = useState<ChartPreset | null>(null)
+  /** Config of the tile being edited, pushed into the Chart tab's builder. */
+  const [editingPreset, setEditingPreset] = useState<ChartPreset | null>(null)
+
+  // ---- AI dashboard builder pop-up (the BI "Chart" tab) ----
+  /** Whether the AI chart pop-up is open. */
+  const [aiOpen, setAiOpen] = useState(false)
+  /** The user's plain-language description of the dashboard they want. */
+  const [aiPrompt, setAiPrompt] = useState('')
+  /** Chart specs the AI designed for the current prompt. */
+  const [aiCharts, setAiCharts] = useState<AiDashboardChart[]>([])
+  /** Indices of the designed charts selected to pin to the dashboard. */
+  const [aiPicked, setAiPicked] = useState<number[]>([])
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState('')
+  /** Collapsible "Columns in this data" chip list (collapsed to keep the pop-up compact). */
+  const [aiColumnsOpen, setAiColumnsOpen] = useState(false)
 
   // AI-generated chart option handed over by the AI sidebar (targeted at BI).
   const [aiOption, setAiOption] = useState<{ option: EChartsOption; nonce: number } | null>(null)
@@ -249,7 +271,12 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
     setDetail(null)
     setVisuals([])
     setEditingVisualId(null)
-    setChartPreset(null)
+    setEditingPreset(null)
+    setAiOpen(false)
+    setAiPrompt('')
+    setAiCharts([])
+    setAiPicked([])
+    setAiError('')
     // Chart data restarts on the plain table; cached join previews are stale
     // after a data refresh, so drop them too.
     setChartJoinId('')
@@ -371,7 +398,7 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
         setDetail(null)
         setVisuals([])
         setEditingVisualId(null)
-        setChartPreset(null)
+        setAiOpen(false)
       }
       setDeleteTarget(null)
       setNotice('Snapshot deleted')
@@ -403,7 +430,13 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
     }
   }, [detail])
 
-  const chartSource: QuerySource = { kind: 'upload' }
+  // ChartsPanel takes a QuerySource (unused for rendering, but required by its
+  // API). A snapshot only remembers the SQL it came from, so reconstruct that.
+  const chartSource = useMemo<QuerySource>(() => {
+    const sql = detail?.sql_text?.trim()
+    if (sql) return { kind: 'sql', connectionId: detail?.connection_id ?? '', sql }
+    return { kind: 'upload' }
+  }, [detail])
 
   // ---- Joined chart data (relationships touching the opened snapshot) ----
   // Promise callbacks keep state updates off the effect's synchronous path.
@@ -478,6 +511,22 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
     }
   }, [joinActive, joinData])
 
+  // The dataset the AI pop-up describes and previews: the joined table when a
+  // relationship is selected, otherwise the snapshot's own rows.
+  const activeResult = useMemo(() => joinResult ?? chartResult, [joinResult, chartResult])
+  const activeRows = activeResult?.rows ?? []
+  const activeColumns = activeResult?.columns ?? []
+  /** Data-aware example prompt shown as the AI builder dialog's placeholder. */
+  const aiExample = useMemo(
+    () => aiExamplePlaceholder(activeColumns, activeRows, 'dashboard'),
+    [activeResult, activeColumns, activeRows],
+  )
+  /** One-click multi-chart example prompts shown above the AI builder's input. */
+  const aiExamples = useMemo(
+    () => aiDashboardExamples(activeColumns, activeRows),
+    [activeResult, activeColumns, activeRows],
+  )
+
   // ---- Dashboard editing ----
   // Every change is written straight through to the warehouse so the dashboard
   // survives a reload; on failure the previous list is restored.
@@ -501,39 +550,115 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
     [selectedId, visuals],
   )
 
-  /** Pin the chart builder's current configuration (or update the tile being edited). */
-  const handleAddVisual = useCallback(
+  /** Ask the AI to design charts for the description in the pop-up. */
+  const handleGenerateCharts = useCallback(async () => {
+    const requirement = aiPrompt.trim()
+    if (!requirement || aiBusy) return
+    setAiBusy(true)
+    setAiError('')
+    try {
+      const { charts } = await api.aiDashboard({
+        requirement,
+        columns: activeColumns,
+        rows: activeRows,
+      })
+      setAiCharts(charts)
+      // Select everything the AI proposed; the user can deselect before pinning.
+      setAiPicked(charts.map((_chart, index) => index))
+    } catch (err) {
+      setAiCharts([])
+      setAiPicked([])
+      setAiError(err instanceof Error ? err.message : 'The AI request failed. Please try again.')
+    } finally {
+      setAiBusy(false)
+    }
+  }, [aiPrompt, aiBusy, activeColumns, activeRows])
+
+  /** Tick or untick a designed chart for pinning. */
+  const togglePick = useCallback((index: number) => {
+    setAiPicked((prev) =>
+      prev.includes(index) ? prev.filter((item) => item !== index) : [...prev, index],
+    )
+  }, [])
+
+  /** Pin the selected AI-designed charts (or replace the tile being edited). */
+  const handlePinCharts = useCallback(() => {
+    const configs = aiPicked
+      .slice()
+      .sort((a, b) => a - b)
+      .map((index) => aiCharts[index])
+      .filter((spec): spec is AiDashboardChart => Boolean(spec))
+      .map((spec) => aiChartToVisual(spec))
+    if (configs.length === 0) return
+
+    if (editingVisualId) {
+      // The first selected chart replaces the tile being redesigned; any extra
+      // selections are appended as new tiles.
+      const [first, ...rest] = configs
+      const next = visuals.map((visual) =>
+        visual.id === editingVisualId
+          ? { ...visual, title: visualTitle(first), config: first }
+          : visual,
+      )
+      for (const config of rest) {
+        next.push({ id: newVisualId(), title: visualTitle(config), size: 'medium', config })
+      }
+      void persistVisuals(next, 'Visual updated')
+    } else {
+      const added: DashboardVisual[] = configs.map((config) => ({
+        id: newVisualId(),
+        title: visualTitle(config),
+        size: 'medium',
+        config,
+      }))
+      void persistVisuals(
+        [...visuals, ...added],
+        `Added ${added.length} visual${added.length === 1 ? '' : 's'} to the dashboard`,
+      )
+    }
+    setEditingVisualId(null)
+    setEditingPreset(null)
+    setAiOpen(false)
+    setAiCharts([])
+    setAiPicked([])
+    setTab('dashboard')
+  }, [aiPicked, aiCharts, editingVisualId, visuals, persistVisuals])
+
+  /**
+   * Pin a manually built chart config from the Chart tab: replace the tile being
+   * edited, or append a new one, then return to the dashboard.
+   */
+  const handlePinConfig = useCallback(
     (config: VisualConfig) => {
       if (editingVisualId) {
-        const next = visuals.map((visual) =>
-          visual.id === editingVisualId
-            ? { ...visual, title: visualTitle(config), config }
-            : visual,
+        void persistVisuals(
+          visuals.map((visual) =>
+            visual.id === editingVisualId
+              ? { ...visual, title: visualTitle(config), config }
+              : visual,
+          ),
+          'Visual updated',
         )
-        void persistVisuals(next, 'Visual updated')
       } else {
-        const visual: DashboardVisual = {
-          id: newVisualId(),
-          title: visualTitle(config),
-          size: 'medium',
-          config,
-        }
-        void persistVisuals([...visuals, visual], 'Visual added to the dashboard')
+        void persistVisuals(
+          [...visuals, { id: newVisualId(), title: visualTitle(config), size: 'medium', config }],
+          'Added 1 visual to the dashboard',
+        )
       }
       setEditingVisualId(null)
-      setChartPreset(null)
+      setEditingPreset(null)
       setTab('dashboard')
     },
     [editingVisualId, visuals, persistVisuals],
   )
 
-  /** Reopen a tile's config in the chart builder. */
+  /** Load an existing tile's config into the Chart tab's builder for editing. */
   const handleEditVisual = useCallback(
     (id: string) => {
       const visual = visuals.find((item) => item.id === id)
       if (!visual) return
       setEditingVisualId(id)
-      setChartPreset({ ...visual.config, nonce: Date.now() })
+      setEditingPreset({ ...visual.config, nonce: Date.now() })
       setTab('chart')
     },
     [visuals],
@@ -582,7 +707,6 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
     (id: string) => {
       if (editingVisualId === id) {
         setEditingVisualId(null)
-        setChartPreset(null)
       }
       void persistVisuals(
         visuals.filter((visual) => visual.id !== id),
@@ -592,12 +716,41 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
     [visuals, editingVisualId, persistVisuals],
   )
 
-  /** Start a fresh chart from the dashboard's empty state. */
+  /** Open the AI dashboard builder for a brand-new build (dashboard tab). */
   const handleBuildChart = useCallback(() => {
     setEditingVisualId(null)
-    setChartPreset(null)
-    setTab('chart')
+    setEditingPreset(null)
+    setAiCharts([])
+    setAiPicked([])
+    setAiError('')
+    setAiOpen(true)
   }, [])
+
+  /**
+   * Open the AI dashboard builder to redesign the tile currently loaded in the
+   * Chart tab — the editing target is kept so its own "Update" replaces it.
+   */
+  const handleRedesignWithAi = useCallback(() => {
+    setAiCharts([])
+    setAiPicked([])
+    setAiError('')
+    setAiOpen(true)
+  }, [])
+
+  /** ECharts previews for the AI-designed specs, built from the active rows. */
+  const aiPreviews = useMemo(
+    () =>
+      aiCharts.map((spec, index) => ({
+        spec,
+        index,
+        chart: buildVisualChart(activeRows, aiChartToVisual(spec)),
+      })),
+    [aiCharts, activeRows],
+  )
+
+  // A dashboard tile always renders from the snapshot's own rows, so a joined
+  // chart (whose columns live in the joined table) cannot be pinned.
+  const joinSelected = Boolean(chartJoinId)
 
   const previewColumns = detail ? columnNames(detail) : []
   const previewRows = detail ? detail.rows.slice(0, PREVIEW_ROW_LIMIT) : []
@@ -614,14 +767,16 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
             useFlexGap
             sx={{ alignItems: 'center', justifyContent: 'space-between' }}
           >
-            <Typography variant="h5" sx={{ fontWeight: 600 }}>
-              BI
-            </Typography>
+            <Typography variant="h5">Dashboard</Typography>
             <Tooltip title="How to use this page">
               <IconButton
                 aria-label="How to use this page"
                 onClick={() => setHelpOpen(true)}
-                sx={{ flexShrink: 0, minWidth: 48, minHeight: 48 }}
+                // The 48px touch target would otherwise inflate the title row
+                // (32px line -> 48px) and push the subtitle down; the negative
+                // vertical margin cancels that extra height so the title and
+                // paragraph spacing matches the Query / Analyze pages.
+                sx={{ flexShrink: 0, minWidth: 48, minHeight: 48, my: -1 }}
               >
                 <HelpOutlineOutlinedIcon />
               </IconButton>
@@ -959,60 +1114,17 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
               />
             ) : tab === 'chart' ? (
               chartResult ? (
-                <>
-                  {chartJoins.length > 0 && (
-                    <TextField
-                      select
-                      size="small"
-                      label="Chart data"
-                      value={chartJoinId}
-                      onChange={(event) => setChartJoinId(event.target.value)}
-                      helperText={
-                        chartJoinId
-                          ? 'Charting the joined table — pinning to the dashboard works from the plain table only.'
-                          : 'Pick a relationship to chart across the linked table.'
-                      }
-                      sx={{ mb: 1.5, minWidth: { xs: '100%', sm: 320 }, maxWidth: '100%' }}
-                    >
-                      <MenuItem value="">
-                        This table — {detail.name} ({formatCount(detail.row_count)} rows)
-                      </MenuItem>
-                      {chartJoins.map((rel) => (
-                        <MenuItem key={rel.id} value={rel.id} sx={{ display: 'block', py: 0.75 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {rel.name}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            via {rel.left_column} = {rel.right_column} · {rel.join_type} join
-                          </Typography>
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  )}
-                  {joinLoading && (
-                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
-                      <CircularProgress size={18} />
-                      <Typography variant="caption" color="text.secondary">
-                        Building the joined table…
-                      </Typography>
-                    </Stack>
-                  )}
-                  {joinError?.id === chartJoinId && chartJoinId && (
-                    <Alert severity="error" sx={{ mb: 1.5 }}>
-                      {joinError.message}
-                    </Alert>
-                  )}
-                  <ChartsPanel
-                    source={chartSource}
-                    result={joinResult ?? chartResult}
-                    preset={chartPreset}
-                    aiOption={aiOption}
-                    onClearAi={() => setAiOption(null)}
-                    onAiChart={() => onOpenAi?.('chart')}
-                    onAddToDashboard={chartJoinId ? undefined : handleAddVisual}
-                    addLabel={editingVisualId ? 'Update visual' : 'Add to dashboard'}
-                  />
-                </>
+                <ChartsPanel
+                  source={chartSource}
+                  result={chartResult}
+                  preset={editingPreset}
+                  aiOption={aiOption}
+                  onClearAi={() => setAiOption(null)}
+                  onAiChart={editingVisualId ? handleRedesignWithAi : handleBuildChart}
+                  aiLabel={editingVisualId ? 'Redesign with AI' : 'Open AI chart builder'}
+                  onAddToDashboard={handlePinConfig}
+                  addLabel={editingVisualId ? 'Update visual' : 'Add to dashboard'}
+                />
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                   This snapshot has no rows to chart.
@@ -1091,7 +1203,7 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
           <Box component="ol" sx={{ m: 0, p: 0, pl: 2.5, '& li': { mb: 1, typography: 'body2', pl: 0.5 } }}>
             <li>
               <strong>Save the current grid</strong> — run a query (or upload a file) in the Query
-              tab, then press <em>Save</em> in the results toolbar. The rows are copied into the
+              tab, then press <em>Save data</em> in the results toolbar. The rows are copied into the
               local warehouse, so later re-queries do not change saved data.
             </li>
             <li>
@@ -1114,8 +1226,9 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
               charts/tables, then edit, duplicate, move, resize or remove each tile.
             </li>
             <li>
-              <strong>Chart tab</strong> — a one-off chart builder for quick exploration, including
-              an AI chart option; press <em>Add to dashboard</em> to keep a chart permanently.
+              <strong>Chart tab</strong> — describe the dashboard you want in plain language; the AI
+              reads this snapshot's column names and designs several charts. Preview each one, untick
+              the ones you do not want, then pin the rest to the dashboard.
             </li>
             <li>
               <strong>Data tab</strong> — inspect the stored rows (first 200 shown).
@@ -1130,6 +1243,313 @@ function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
             — nothing is uploaded to a server.
           </Typography>
         </DialogContent>
+      </Dialog>
+
+      {/* ---- AI dashboard builder pop-up (the Chart tab) ---- */}
+      <Dialog
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        fullScreen={isCompact}
+        fullWidth
+        maxWidth="lg"
+        slotProps={{ paper: { sx: { height: { xs: '100%', sm: 'auto' }, maxHeight: '92vh' } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AutoAwesomeIcon fontSize="small" color="primary" />
+          {editingVisualId ? 'Redesign a dashboard chart' : 'AI dashboard builder'}
+          <IconButton
+            aria-label="Close AI chart builder"
+            onClick={() => setAiOpen(false)}
+            sx={{ ml: 'auto', minWidth: 48, minHeight: 48 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {chartJoins.length > 0 && (
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Chart data"
+              value={chartJoinId}
+              onChange={(event) => setChartJoinId(event.target.value)}
+              helperText={
+                joinSelected
+                  ? 'The AI charts the joined table — pinning to the dashboard works from the plain table only.'
+                  : 'Pick a relationship to let the AI chart across the linked table.'
+              }
+              sx={{ mb: 2 }}
+            >
+              <MenuItem value="">
+                This table — {detail?.name ?? 'current data'} ({formatCount(detail?.row_count ?? 0)} rows)
+              </MenuItem>
+              {chartJoins.map((rel) => (
+                <MenuItem key={rel.id} value={rel.id} sx={{ display: 'block', py: 0.75 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {rel.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    via {rel.left_column} = {rel.right_column} · {rel.join_type} join
+                  </Typography>
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          {joinLoading && (
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
+              <CircularProgress size={18} />
+              <Typography variant="caption" color="text.secondary">
+                Building the joined table…
+              </Typography>
+            </Stack>
+          )}
+          {joinSelected && joinError?.id === chartJoinId && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {joinError.message}
+            </Alert>
+          )}
+
+          <Stack
+            direction="row"
+            useFlexGap
+            spacing={1}
+            sx={{ flexWrap: 'wrap', alignItems: 'center', mb: aiColumnsOpen ? 1 : 2 }}
+          >
+            <ButtonBase
+              onClick={() => setAiColumnsOpen((open) => !open)}
+              aria-expanded={aiColumnsOpen}
+              aria-controls="bi-ai-columns"
+              sx={{
+                display: 'flex',
+                justifyContent: 'flex-start',
+                alignItems: 'center',
+                gap: 0.5,
+                px: 0.5,
+                minHeight: 44,
+                borderRadius: 1,
+                textAlign: 'left',
+                color: 'text.primary',
+                '&:focus-visible': {
+                  outline: '2px solid',
+                  outlineColor: 'primary.main',
+                  outlineOffset: 2,
+                },
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                Columns in this data ({formatCount(activeColumns.length)})
+              </Typography>
+              <ExpandMoreIcon
+                fontSize="small"
+                sx={{
+                  color: 'text.secondary',
+                  transform: aiColumnsOpen ? 'rotate(180deg)' : 'none',
+                  transition: (theme) => theme.transitions.create('transform', { duration: 200 }),
+                }}
+              />
+            </ButtonBase>
+
+            {aiExamples.length > 0 && (
+              <Stack
+                direction="row"
+                useFlexGap
+                spacing={0.5}
+                sx={{ flexWrap: 'wrap', alignItems: 'center', ml: { sm: 'auto' } }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: { xs: 'none', sm: 'block' }, mr: 0.5 }}
+                >
+                  Try an example:
+                </Typography>
+                {aiExamples.map((example) => (
+                  <Button
+                    key={example.label}
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    startIcon={<AutoAwesomeIcon fontSize="inherit" />}
+                    onClick={() => setAiPrompt(example.prompt)}
+                    disabled={aiBusy}
+                    title={example.prompt}
+                    sx={{ minHeight: { xs: 44, sm: 34 }, textTransform: 'none', whiteSpace: 'nowrap' }}
+                  >
+                    {example.label}
+                  </Button>
+                ))}
+              </Stack>
+            )}
+          </Stack>
+          {aiColumnsOpen && (
+            <Box id="bi-ai-columns" sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 2 }}>
+              {activeColumns.map((column) => (
+                <Chip
+                  key={column.name}
+                  label={column.name}
+                  size="small"
+                  variant="outlined"
+                  title={column.type || undefined}
+                />
+              ))}
+            </Box>
+          )}
+
+          <TextField
+            autoFocus={!isCompact}
+            fullWidth
+            multiline
+            minRows={3}
+            maxRows={8}
+            label="Describe the dashboard you want"
+            placeholder={aiExample}
+            value={aiPrompt}
+            onChange={(event) => setAiPrompt(event.target.value)}
+            disabled={aiBusy}
+          />
+
+          <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', mt: 1.5, flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              startIcon={
+                aiBusy ? <CircularProgress size={18} color="inherit" /> : <AutoAwesomeIcon />
+              }
+              onClick={() => void handleGenerateCharts()}
+              disabled={aiBusy || aiPrompt.trim().length === 0}
+              sx={{ minHeight: 48 }}
+            >
+              {aiBusy
+                ? 'Designing charts…'
+                : aiCharts.length > 0
+                  ? 'Regenerate charts'
+                  : 'Generate charts'}
+            </Button>
+          </Stack>
+
+          {aiError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {aiError}
+            </Alert>
+          )}
+
+          {aiPreviews.length > 0 && (
+            <>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                Suggested charts — untick any you do not want
+              </Typography>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gap: 2,
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                }}
+              >
+                {aiPreviews.map(({ spec, index, chart }) => {
+                  const picked = aiPicked.includes(index)
+                  const config = aiChartToVisual(spec)
+                  return (
+                    <Paper
+                      key={index}
+                      variant="outlined"
+                      sx={{
+                        p: 1,
+                        minWidth: 0,
+                        borderColor: picked ? 'primary.main' : 'divider',
+                        borderWidth: picked ? 2 : 1,
+                      }}
+                    >
+                      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                        <Checkbox
+                          checked={picked}
+                          onChange={() => togglePick(index)}
+                          slotProps={{ input: { 'aria-label': `Include ${visualTitle(config)}` } }}
+                        />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="subtitle2" noWrap sx={{ fontWeight: 600 }}>
+                            {visualTitle(config)}
+                          </Typography>
+                          {spec.subtitle && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              noWrap
+                              sx={{ display: 'block' }}
+                            >
+                              {spec.subtitle}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Stack>
+                      <Box sx={{ position: 'relative', height: 220, mt: 0.5 }}>
+                        {spec.chartType === 'kpi' ? (
+                          chart.kpiCards.length > 0 ? (
+                            <KpiCards cards={chart.kpiCards} />
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">
+                              No numeric columns for KPI cards.
+                            </Typography>
+                          )
+                        ) : (
+                          <>
+                            <EChart option={chart.option} />
+                            {!chart.hasData && (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  inset: 0,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  bgcolor: 'background.paper',
+                                  px: 2,
+                                  textAlign: 'center',
+                                }}
+                              >
+                                <Typography variant="caption" color="text.secondary">
+                                  No data for this chart — try rephrasing your description.
+                                </Typography>
+                              </Box>
+                            )}
+                          </>
+                        )}
+                      </Box>
+                    </Paper>
+                  )
+                })}
+              </Box>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Button onClick={() => setAiOpen(false)} sx={{ minHeight: 44, minWidth: 48 }}>
+            Close
+          </Button>
+          <Box sx={{ flexGrow: 1 }} />
+          <Tooltip
+            title={
+              joinSelected
+                ? 'Pinning works from the plain table — switch "Chart data" back to this table first.'
+                : ''
+            }
+          >
+            <span>
+              <Button
+                variant="contained"
+                onClick={handlePinCharts}
+                disabled={joinSelected || aiPicked.length === 0}
+                sx={{ minHeight: 44 }}
+              >
+                {editingVisualId
+                  ? 'Update visual'
+                  : aiPicked.length > 0
+                    ? `Add ${aiPicked.length} to dashboard`
+                    : 'Add to dashboard'}
+              </Button>
+            </span>
+          </Tooltip>
+        </DialogActions>
       </Dialog>
 
       {/* ---- Rename dialog ---- */}

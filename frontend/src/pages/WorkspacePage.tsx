@@ -19,12 +19,14 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CloseIcon from '@mui/icons-material/Close'
 import CodeIcon from '@mui/icons-material/Code'
 import DeleteIcon from '@mui/icons-material/Delete'
+import EditIcon from '@mui/icons-material/Edit'
 import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import FileOpenIcon from '@mui/icons-material/FileOpen'
 import FileUploadIcon from '@mui/icons-material/FileUpload'
 import FilterAltIcon from '@mui/icons-material/FilterAlt'
 import GridViewIcon from '@mui/icons-material/GridView'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ContentPasteIcon from '@mui/icons-material/ContentPaste'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined'
@@ -1321,7 +1323,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       })
       setWarehouseSaveOpen(false)
       setNotice(
-        `Saved "${created.name}" (${created.row_count.toLocaleString()} rows) — manage it in the BI tab`,
+        `Saved "${created.name}" (${created.row_count.toLocaleString()} rows) — manage it in the Dashboard tab`,
       )
     } catch (err) {
       setWarehouseSaveError(err instanceof Error ? err.message : 'Failed to save the snapshot')
@@ -1812,6 +1814,17 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const gridHandleRef = useRef<ResultsGridHandle | null>(null)
   // Anchor for "jump to the grid" — the Summary tab's drill-through scrolls here.
   const gridAnchorRef = useRef<HTMLDivElement | null>(null)
+  /** Transient "Copied!" label on the results-header Copy button. */
+  const [gridCopied, setGridCopied] = useState(false)
+  /** Copies the grid selection (or all rows) via the grid's imperative handle. */
+  const handleGridCopy = useCallback(async () => {
+    const copied = await gridHandleRef.current?.copySelection()
+    if (!copied) return
+    setGridCopied(true)
+    window.setTimeout(() => setGridCopied(false), 1500)
+  }, [])
+  /** No result, or an empty one — the grid-only header actions are disabled. */
+  const gridEmpty = !effectiveResult || effectiveResult.rows.length === 0
 
   // ---- AI grid edit (transform the current grid rows via a generated script) ----
   /** Stack of grid states before each AI transform, for Revert (newest last). */
@@ -2137,6 +2150,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     } else {
       applyLoadSql(entry.sql, entry.connection_id)
     }
+    // Loading into the editor collapses the Recent runs section.
+    setHistoryOpen(false)
   }
 
   const runHistoryEntry = async (entry: HistoryEntry) => {
@@ -2156,6 +2171,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       }
     } finally {
       setHistoryBusyId(null)
+      // Running a historical query collapses the Recent runs section.
+      setHistoryOpen(false)
     }
   }
 
@@ -2173,6 +2190,144 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       setHistoryBusyId(null)
     }
   }
+
+  /** Recent runs section — expanded below the editor toolbar by the toolbar
+   *  button; closes itself whenever an entry is run or loaded. */
+  const historyPanel = historyOpen ? (
+    <Paper variant="outlined" sx={{ maxHeight: 320, overflow: 'auto', p: 1 }}>
+      {historyError && (
+        <Alert
+          severity="error"
+          sx={{ mb: historyGroups.length > 0 ? 1 : 0 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => void refreshHistory()} sx={{ minHeight: 36 }}>
+              Retry
+            </Button>
+          }
+        >
+          {historyError}
+        </Alert>
+      )}
+      {historyLoading && historyGroups.length === 0 ? (
+        // The spinner is only for a cold load, so re-opening the panel
+        // keeps the cached rows on screen instead of blanking out.
+        <Box sx={{ py: 2, textAlign: 'center' }}>
+          <CircularProgress size={22} />
+        </Box>
+      ) : historyGroups.length === 0 ? (
+        !historyError && (
+          <Typography variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
+            No recent runs yet. Run a query to record it here.
+          </Typography>
+        )
+      ) : (
+        <Stack spacing={1}>
+          {historyGroups.slice(0, RECENT_RUNS_LIMIT).map((group) => {
+            const entry = group.entry
+            return (
+              <Paper
+                key={group.entry.id}
+                variant="outlined"
+                sx={{ p: 1, bgcolor: 'action.hover', borderColor: 'divider' }}
+              >
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1}
+                  useFlexGap
+                  sx={{ alignItems: { xs: 'stretch', md: 'center' }, justifyContent: 'space-between' }}
+                >
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(entry.executed_at).toLocaleString()}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={entry.connection_name || 'Unknown connection'}
+                      />
+                      <Chip
+                        size="small"
+                        color={entry.kind === 'builder' ? 'primary' : 'secondary'}
+                        label={entry.kind === 'builder' ? 'Builder' : 'SQL'}
+                      />
+                      {group.count > 1 && (
+                        <Chip
+                          size="small"
+                          color="success"
+                          sx={{ fontWeight: 600 }}
+                          label={`×${group.count}`}
+                        />
+                      )}
+                      <Typography variant="caption" color="text.secondary">
+                        {entry.row_count.toLocaleString()} rows · {entry.elapsed_ms.toLocaleString()} ms
+                      </Typography>
+                    </Stack>
+                    <Typography
+                      variant="body2"
+                      noWrap
+                      sx={{
+                        mt: 0.25,
+                        cursor: 'pointer',
+                        '&:hover': { textDecoration: 'underline', color: 'primary.main' },
+                      }}
+                      onClick={() => loadHistoryEntry(entry)}
+                      title="Click to load in editor"
+                    >
+                      {entry.sql || '—'}
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexShrink: 0 }}>
+                    <Tooltip title="Run again">
+                      <span>
+                        <IconButton
+                          size="small"
+                          onClick={() => void runHistoryEntry(entry)}
+                          disabled={historyBusyId !== null}
+                          aria-label={`Run ${entry.sql}`}
+                        >
+                          {historyBusyId === group.entry.id ? (
+                            <CircularProgress size={18} />
+                          ) : (
+                            <PlayArrowIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Load in editor">
+                      <span>
+                        <IconButton
+                          size="small"
+                          onClick={() => loadHistoryEntry(entry)}
+                          disabled={historyBusyId !== null}
+                          aria-label={`Load ${entry.sql}`}
+                        >
+                          <FileOpenIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <span>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => void handleDeleteHistoryGroup(entry)}
+                          disabled={historyBusyId !== null}
+                          aria-label={`Delete ${entry.sql}`}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </Stack>
+                </Stack>
+              </Paper>
+            )
+          })}
+        </Stack>
+      )}
+    </Paper>
+  ) : null
 
   // ---- editorBus handlers (load from pre-defined pages) ----
   const applyBuilderState = (query: QueryDef) => {
@@ -2407,7 +2562,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               />
             )}
           </Stack>
-          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+          <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               ref={uploadInputRef}
               type="file"
@@ -2450,15 +2605,52 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             >
               XLSX
             </Button>
+            <Tooltip title="See everything this table can do">
+              <IconButton
+                size="small"
+                aria-label="Table features"
+                onClick={(event) => gridHandleRef.current?.openHelp(event.currentTarget)}
+                disabled={gridEmpty}
+                sx={{ width: 40, height: 40 }}
+              >
+                <HelpOutlineOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Edit this grid — AI transform, column data types and calculated columns">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={() => gridHandleRef.current?.openTools()}
+                disabled={gridEmpty}
+                sx={{ minHeight: 40 }}
+              >
+                Edit grid
+              </Button>
+            </Tooltip>
             <Button
               size="small"
-              variant={historyOpen ? 'contained' : 'outlined'}
-              startIcon={<HistoryIcon />}
-              onClick={toggleHistory}
+              variant="outlined"
+              startIcon={<ContentCopyIcon />}
+              onClick={() => void handleGridCopy()}
+              disabled={gridEmpty}
               sx={{ minHeight: 40 }}
             >
-              Recent runs
+              {gridCopied ? 'Copied!' : 'Copy'}
             </Button>
+            <Tooltip title="Save this grid as a snapshot in the Dashboard warehouse">
+              <Button
+                size="small"
+                variant="outlined"
+                color="primary"
+                startIcon={<SaveIcon />}
+                onClick={openWarehouseSave}
+                disabled={gridEmpty}
+                sx={{ minHeight: 40 }}
+              >
+                Save data
+              </Button>
+            </Tooltip>
           </Stack>
         </Stack>
 
@@ -2466,146 +2658,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           <Alert severity="error" onClose={() => setError(null)}>
             {error}
           </Alert>
-        )}
-
-        {/* Recent runs panel */}
-        {historyOpen && (
-          <Paper variant="outlined" sx={{ maxHeight: 320, overflow: 'auto', p: 1 }}>
-            {historyError && (
-              <Alert
-                severity="error"
-                sx={{ mb: historyGroups.length > 0 ? 1 : 0 }}
-                action={
-                  <Button color="inherit" size="small" onClick={() => void refreshHistory()} sx={{ minHeight: 36 }}>
-                    Retry
-                  </Button>
-                }
-              >
-                {historyError}
-              </Alert>
-            )}
-            {historyLoading && historyGroups.length === 0 ? (
-              // The spinner is only for a cold load, so re-opening the panel
-              // keeps the cached rows on screen instead of blanking out.
-              <Box sx={{ py: 2, textAlign: 'center' }}>
-                <CircularProgress size={22} />
-              </Box>
-            ) : historyGroups.length === 0 ? (
-              !historyError && (
-                <Typography variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
-                  No recent runs yet. Run a query to record it here.
-                </Typography>
-              )
-            ) : (
-              <Stack spacing={1}>
-                {historyGroups.slice(0, RECENT_RUNS_LIMIT).map((group) => {
-                  const entry = group.entry
-                  return (
-                  <Paper
-                    key={group.entry.id}
-                    variant="outlined"
-                    sx={{ p: 1, bgcolor: 'action.hover', borderColor: 'divider' }}
-                  >
-                    <Stack
-                      direction={{ xs: 'column', md: 'row' }}
-                      spacing={1}
-                      useFlexGap
-                      sx={{ alignItems: { xs: 'stretch', md: 'center' }, justifyContent: 'space-between' }}
-                    >
-                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                        <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            {new Date(entry.executed_at).toLocaleString()}
-                          </Typography>
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={entry.connection_name || 'Unknown connection'}
-                          />
-                          <Chip
-                            size="small"
-                            color={entry.kind === 'builder' ? 'primary' : 'secondary'}
-                            label={entry.kind === 'builder' ? 'Builder' : 'SQL'}
-                          />
-                          {group.count > 1 && (
-                            <Chip
-                              size="small"
-                              color="success"
-                              sx={{ fontWeight: 600 }}
-                              label={`×${group.count}`}
-                            />
-                          )}
-                          <Typography variant="caption" color="text.secondary">
-                            {entry.row_count.toLocaleString()} rows · {entry.elapsed_ms.toLocaleString()} ms
-                          </Typography>
-                        </Stack>
-                        <Typography
-                          variant="body2"
-                          noWrap
-                          sx={{
-                            mt: 0.25,
-                            cursor: 'pointer',
-                            '&:hover': { textDecoration: 'underline', color: 'primary.main' },
-                          }}
-                          onClick={() => {
-                            loadHistoryEntry(entry)
-                            setHistoryOpen(false)
-                          }}
-                          title="Click to load in editor"
-                        >
-                          {entry.sql || '—'}
-                        </Typography>
-                      </Box>
-                      <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexShrink: 0 }}>
-                        <Tooltip title="Run again">
-                          <span>
-                            <IconButton
-                              size="small"
-                              onClick={() => void runHistoryEntry(entry)}
-                              disabled={historyBusyId !== null}
-                              aria-label={`Run ${entry.sql}`}
-                            >
-                              {historyBusyId === group.entry.id ? (
-                                <CircularProgress size={18} />
-                              ) : (
-                                <PlayArrowIcon fontSize="small" />
-                              )}
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                        <Tooltip title="Load in editor">
-                          <span>
-                            <IconButton
-                              size="small"
-                              onClick={() => loadHistoryEntry(entry)}
-                              disabled={historyBusyId !== null}
-                              aria-label={`Load ${entry.sql}`}
-                            >
-                              <FileOpenIcon fontSize="small" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                        <Tooltip title="Delete">
-                          <span>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => void handleDeleteHistoryGroup(entry)}
-                              disabled={historyBusyId !== null}
-                              aria-label={`Delete ${entry.sql}`}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                      </Stack>
-                    </Stack>
-                  </Paper>
-                  )
-                })}
-              </Stack>
-            )}
-          </Paper>
         )}
 
         {/* Color_Data auto-enrichment progress: one line per stage, collapsing
@@ -4152,6 +4204,17 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       </Button>
                     </span>
                   </Tooltip>
+                  <Tooltip title="Show your recent SQL runs — click Run or Load to reuse them">
+                    <Button
+                      variant={historyOpen ? 'contained' : 'outlined'}
+                      startIcon={<HistoryIcon />}
+                      onClick={toggleHistory}
+                      disabled={running}
+                      sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
+                    >
+                      Recent runs
+                    </Button>
+                  </Tooltip>
                   <Button
                     variant="outlined"
                     startIcon={<AutoAwesomeIcon />}
@@ -4170,7 +4233,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         disabled={!canSavePredefined || savingQuery}
                         sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
                       >
-                        Save
+                        Save SQL
                       </Button>
                     </span>
                   </Tooltip>
@@ -4206,6 +4269,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                     </span>
                   </Tooltip>
                 </Stack>
+                {/* Recent runs section — expands under the toolbar; collapses
+                    automatically once an entry is run or loaded. */}
+                {historyPanel}
               </Stack>
             </Paper>
             {resultsPanel}
@@ -4502,7 +4568,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             {effectiveResult
               ? `${effectiveResult.rows.length.toLocaleString()} rows · ${effectiveResult.columns.length.toLocaleString()} columns`
               : 'no data'}
-            ) into the local SQLite warehouse shown in the BI tab.
+            ) into the local SQLite warehouse shown in the Dashboard tab.
           </Typography>
           <TextField
             autoFocus

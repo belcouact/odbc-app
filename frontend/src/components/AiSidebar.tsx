@@ -338,7 +338,7 @@ export default function AiSidebar({
         const option = parseEchartScript(code, snapshotNow.rows)
         const toBi = chartTarget === 'bi'
         emit({ type: 'apply-chart', option, target: toBi ? 'bi' : 'script' })
-        showNotice(toBi ? 'Chart applied to the BI chart builder.' : 'Chart applied to the Analyze tab.')
+        showNotice(toBi ? 'Chart applied to the Dashboard chart builder.' : 'Chart applied to the Analyze tab.')
         if (toBi) onOpenBi?.()
         else onOpenScript?.()
       } catch (err) {

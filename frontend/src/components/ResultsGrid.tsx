@@ -32,7 +32,6 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import FormControlLabel from '@mui/material/FormControlLabel'
-import IconButton from '@mui/material/IconButton'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemText from '@mui/material/ListItemText'
 import Menu from '@mui/material/Menu'
@@ -465,7 +464,9 @@ interface ResultsGridProps {
    *  writes it into the result so the chart builders and summary tab see the
    *  type change in real time. */
   onColumnTypeChange?: (name: string, kind: ColumnKind) => void
-  /** Opens the page's save-to-warehouse dialog (undefined hides the button). */
+  /** Opens the page's save-to-warehouse dialog; when undefined the feature-help
+   *  popover drops its "Save data" entry. The button itself lives in the page's
+   *  results header, alongside the export actions. */
   onSaveToWarehouse?: () => void
 }
 
@@ -473,6 +474,13 @@ interface ResultsGridProps {
 export interface ResultsGridHandle {
   /** Opens the paste-from-clipboard dialog (works with no grid mounted). */
   openPasteDialog: () => void
+  /** Opens the "Edit grid" tools dialog (AI transform / data types / add column). */
+  openTools: () => void
+  /** Opens the feature-help popover anchored to the given element. */
+  openHelp: (anchor: HTMLElement | null) => void
+  /** Copies the selection (or the whole result) as TSV. Resolves true when rows
+   *  were copied, so the caller can flash "Copied!". */
+  copySelection: () => Promise<boolean>
 }
 
 const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function ResultsGrid({
@@ -491,7 +499,6 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
   const gridRef = useRef<AgGridReact>(null)
   /** Wrapper around the grid; used to capture the right-click position early. */
   const gridWrapRef = useRef<HTMLDivElement | null>(null)
-  const [copied, setCopied] = useState(false)
   /** Last result object the entrance effect saw; reference-equality is the
    *  "is this a fresh query result?" signal (grid edits mutate in place). */
   const prevResultRef = useRef<QueryResult | null>(null)
@@ -629,8 +636,10 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
     gridRef.current?.api?.onFilterChanged()
   }, [drillFilters])
 
-  const handleCopy = useCallback(async () => {
-    if (!result || result.rows.length === 0) return
+  /** Copies the grid (selection, or all rows) as TSV. Returns true when rows
+   *  were copied, so the results-header button can flash "Copied!". */
+  const handleCopy = useCallback(async (): Promise<boolean> => {
+    if (!result || result.rows.length === 0) return false
     const headers = result.columns.map((column) => column.name)
     // A row selection narrows the copy to those rows; with nothing selected the
     // whole result is copied — except in drill-through mode, where only the
@@ -645,8 +654,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           ? result.rows.filter(passesDrill)
           : result.rows
     await writeToClipboard(toTsv(headers, rows))
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1500)
+    return true
   }, [result, drillFilters.length, passesDrill])
 
   /** Shows a transient "Pasted …" line next to the row count. */
@@ -656,8 +664,8 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
     pasteNoticeTimer.current = window.setTimeout(() => setPasteNotice(''), 4000)
   }, [])
 
-  /** Lets the results header's Paste button open this dialog even before any
-   *  query has run (the grid itself is not rendered then). */
+  /** Lets the page's results header drive grid-only actions (Paste / Edit grid
+   *  / feature help / Copy) from outside this component. */
   useImperativeHandle(
     ref,
     () => ({
@@ -667,8 +675,11 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         pasteHeaderTouched.current = false
         setPasteOpen(true)
       },
+      openTools: () => setToolsOpen(true),
+      openHelp: (anchor) => setHelpAnchor(anchor),
+      copySelection: () => handleCopy(),
     }),
-    [],
+    [handleCopy],
   )
 
   /** Draft edits auto-set the header checkbox until the user overrides it:
@@ -1272,28 +1283,6 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           )}
         </Stack>
         <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-          <Tooltip title="See everything this table can do">
-            <IconButton
-              size="small"
-              aria-label="Table features"
-              onClick={(event) => setHelpAnchor(event.currentTarget)}
-              sx={{ width: 40, height: 40 }}
-            >
-              <HelpOutlinedIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Edit this grid — AI transform, column data types and calculated columns">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<EditIcon />}
-              onClick={() => setToolsOpen(true)}
-              disabled={empty}
-              sx={{ minHeight: 40 }}
-            >
-              Edit grid
-            </Button>
-          </Tooltip>
           {onRevertGrid && (
             <Tooltip title="Restore the grid to the state before the last AI edit or paste">
               <Button
@@ -1305,31 +1294,6 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
                 sx={{ minHeight: 40 }}
               >
                 Revert
-              </Button>
-            </Tooltip>
-          )}
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<ContentCopyIcon />}
-            onClick={handleCopy}
-            disabled={empty}
-            sx={{ minHeight: 40 }}
-          >
-            {copied ? 'Copied!' : 'Copy'}
-          </Button>
-          {onSaveToWarehouse && (
-            <Tooltip title="Save this grid as a snapshot in the BI warehouse">
-              <Button
-                size="small"
-                variant="outlined"
-                color="primary"
-                startIcon={<SaveIcon />}
-                onClick={onSaveToWarehouse}
-                disabled={empty}
-                sx={{ minHeight: 40 }}
-              >
-                Save
               </Button>
             </Tooltip>
           )}
@@ -1617,8 +1581,8 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           {onSaveToWarehouse && (
             <HelpRow
               icon={<SaveIcon fontSize="small" />}
-              title="Save"
-              detail="Store the grid as a snapshot in the BI warehouse (the BI tab) so you can chart or inspect it later without re-running the query."
+              title="Save data"
+              detail="Store the grid as a snapshot in the Dashboard warehouse (the Dashboard tab) so you can chart or inspect it later without re-running the query."
             />
           )}
           {onRevertGrid && (

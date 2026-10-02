@@ -1033,6 +1033,22 @@ export const api = {
   ): Promise<{ summary: string }> =>
     apiFetch(client.post('/ai/summary', { stats, context: context ?? '' })),
 
+  /** Design several dashboard charts from a plain-language requirement. */
+  aiDashboard: (payload: {
+    requirement: string
+    columns?: ResultColumn[]
+    rows?: Record<string, unknown>[]
+  }): Promise<{ charts: AiDashboardChart[] }> =>
+    apiFetch(client.post('/ai/dashboard', payload, { timeout: 120000 })),
+
+  /** Ask the AI to write and run a Python statistical analysis of the rows. */
+  aiStats: (payload: {
+    columns?: ResultColumn[]
+    rows?: Record<string, unknown>[]
+    requirement?: string
+  }): Promise<AiStatsResult> =>
+    apiFetch(client.post('/ai/stats', payload, { timeout: 180000 })),
+
   /**
    * Continuous assistant conversation with streamed output (global AI sidebar).
    * `mode` selects the specialty: sql | script | chart. `onDelta` is called
@@ -1540,6 +1556,27 @@ export interface DashboardPayload {
   visuals: DashboardVisual[]
   /** Null while the snapshot has never been charted. */
   updated_at: string | null
+}
+
+/** One AI-designed chart returned by POST /api/ai/dashboard. Maps onto the
+ *  VisualConfig pipeline (see aiChartToVisual) so it renders like any pinned tile. */
+export interface AiDashboardChart {
+  chartType: ChartType
+  x: string
+  y: string[]
+  operation: ChartOperation
+  series?: string
+  title?: string
+  subtitle?: string
+}
+
+/** Result of POST /api/ai/stats: the AI-authored Python script and its output. */
+export interface AiStatsResult {
+  script: string
+  stdout: string
+  stderr: string
+  timed_out: boolean
+  elapsed_ms: number
 }
 
 /** A saved link between two warehouse snapshots (one column pair). */

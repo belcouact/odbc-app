@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import InfoIcon from '@mui/icons-material/Info'
@@ -175,6 +175,59 @@ function updateSummary(status: UpdateStatus | null): string {
   return `Up to date (v${status.current_version}).`
 }
 
+/** Roll duration of the Build Version odometer (mirrors the KPI cards' feel). */
+const VERSION_ROLL_MS = 900
+/** Full digit cycles each wheel spins through before landing on its value. */
+const VERSION_SPINS = 2
+
+/**
+ * Spins every digit of `version` like an odometer wheel, so the Build Version
+ * card animates the way the KPI cards do. Each digit cycles through 0-9 a few
+ * times and decelerates onto its final value (a plain 0 -> target roll is
+ * invisible when the digit is already 0, e.g. the "0.0" in "1.0.0"). Dots and
+ * any other non-digit characters are left untouched, and the effect is skipped
+ * for users who prefer reduced motion.
+ */
+function useVersionRoll(version: string): string {
+  const [display, setDisplay] = useState(version.replace(/\d/g, '0'))
+  const frameRef = useRef(0)
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDisplay(version)
+      return
+    }
+    const chars = [...version]
+    const targets = chars.map((ch) => (ch >= '0' && ch <= '9' ? Number(ch) : null))
+    const start = performance.now()
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / VERSION_ROLL_MS)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setDisplay(
+        chars
+          .map((ch, i) => {
+            const target = targets[i]
+            if (target === null) return ch
+            // Spin VERSION_SPINS full turns, then settle on the target digit.
+            return String(Math.floor(eased * (10 * VERSION_SPINS + target)) % 10)
+          })
+          .join(''),
+      )
+      if (t < 1) frameRef.current = requestAnimationFrame(tick)
+      else setDisplay(version)
+    }
+    frameRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frameRef.current)
+  }, [version])
+
+  return display
+}
+
+/** KPI-style version number; isolated so the hook never runs conditionally. */
+function VersionValue({ version }: { version: string }) {
+  return <>{useVersionRoll(version)}</>
+}
+
 function AboutSection({
   onStartUpdate,
 }: {
@@ -307,33 +360,59 @@ function AboutSection({
         </Box>
 
         <Grid container spacing={{ xs: 1, sm: 2 }}>
-          {APP_INFO.map((entry) => (
-            <Grid size={{ xs: 12, sm: 4 }} key={entry.label}>
-              <Paper
-                variant="outlined"
-                sx={{ p: { xs: 1.5, sm: 2 }, height: '100%', bgcolor: 'background.paper' }}
-              >
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
+          {APP_INFO.map((entry) => {
+            const isVersion = entry.label === 'Build Version'
+            const version = updateStatus?.current_version ?? '—'
+            return (
+              <Grid size={{ xs: 12, sm: 4 }} key={entry.label}>
+                <Paper
+                  variant="outlined"
                   sx={{
-                    display: 'block',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    letterSpacing: '0.07em',
-                    textTransform: 'uppercase',
+                    p: { xs: 1.5, sm: 2 },
+                    height: '100%',
+                    bgcolor: 'background.paper',
+                    // The Build Version card behaves like a KPI card: a
+                    // pointer-device hover lift, a press-scale on touch.
+                    ...(isVersion
+                      ? {
+                          transition: 'transform 0.2s ease-out, box-shadow 0.2s ease-out',
+                          '@media (hover: hover)': {
+                            '&:hover': {
+                              transform: 'translateY(-2px)',
+                              boxShadow: '0 6px 16px rgba(217, 119, 87, 0.14)',
+                            },
+                          },
+                          '&:active': { transform: 'scale(0.98)' },
+                        }
+                      : {}),
                   }}
                 >
-                  {entry.label}
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.5 }}>
-                  {entry.label === 'Build Version'
-                    ? updateStatus?.current_version ?? '—'
-                    : entry.value}
-                </Typography>
-              </Paper>
-            </Grid>
-          ))}
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{
+                      display: 'block',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      letterSpacing: '0.07em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {entry.label}
+                  </Typography>
+                  {isVersion ? (
+                    <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: 'primary.main' }}>
+                      <VersionValue version={version} />
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.5, color: 'primary.main' }}>
+                      {entry.value}
+                    </Typography>
+                  )}
+                </Paper>
+              </Grid>
+            )
+          })}
         </Grid>
       </Paper>
 

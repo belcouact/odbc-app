@@ -70,7 +70,7 @@ type View =
 const MAIN_TABS: { value: View; label: string; icon: ReactElement }[] = [
   { value: 'editor', label: 'Query', icon: <CodeIcon color="primary" /> },
   { value: 'script', label: 'Analyze', icon: <TerminalIcon color="secondary" /> },
-  { value: 'bi', label: 'BI', icon: <DashboardIcon color="info" /> },
+  { value: 'bi', label: 'Dashboard', icon: <DashboardIcon color="info" /> },
 ]
 
 /** Grouped behind a single menu button to keep the bar uncluttered. */
@@ -1371,7 +1371,7 @@ function AppShell() {
           <ScriptPage ref={scriptRef} onOpenAi={openAi} onDrillThrough={drillThroughGrid} />
         </Box>
         <Box sx={{ width: '100%', display: view === 'bi' ? 'block' : 'none' }}>
-          <BiPage ref={biRef} onOpenAi={openAi} onLoadToGrid={loadSnapshotToGrid} />
+          <BiPage ref={biRef} onLoadToGrid={loadSnapshotToGrid} />
         </Box>
         <Box sx={{ width: '100%', display: view === 'flowdiagram' ? 'block' : 'none' }}>
           <FlowDiagramPage active={view === 'flowdiagram'} />

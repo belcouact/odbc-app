@@ -66,11 +66,11 @@ export default function DashboardPanel({
         <DashboardCustomizeIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
         <Typography variant="h6">This dashboard is empty</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420 }}>
-          Build a chart in the Chart tab, then press “Add to dashboard” to pin it here. Add as many
-          visuals as you like — they all read this snapshot’s data.
+          Describe the dashboard you want and the AI designs several charts for it. Preview them,
+          then pin the ones you like here — they all read this snapshot’s data.
         </Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd} sx={{ minHeight: 48, mt: 0.5 }}>
-          Build a chart
+          Build with AI
         </Button>
       </Paper>
     )

@@ -1,5 +1,5 @@
 import type { EChartsOption } from 'echarts'
-import type { ChartDataResponse, ChartOperation, ChartType } from '../api/client'
+import type { AiDashboardChart, ChartDataResponse, ChartOperation, ChartType } from '../api/client'
 import {
   buildChartData,
   computeKpiCards,
@@ -219,4 +219,24 @@ export function visualTitle(config: VisualConfig): string {
 /** A short, collision-resistant id for a new tile (no crypto dependency). */
 export function newVisualId(): string {
   return `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+}
+
+/**
+ * Map an AI-designed chart spec onto a full {@link VisualConfig} for the shared
+ * {@link buildVisualChart} pipeline. Only the fields the AI returns are set;
+ * every appearance option keeps its builder default.
+ */
+export function aiChartToVisual(spec: AiDashboardChart): VisualConfig {
+  return {
+    chartType: spec.chartType,
+    x: spec.x,
+    y: spec.y,
+    operation: spec.operation,
+    series: spec.series,
+    title: spec.title,
+    subtitle: spec.subtitle,
+    // AI-designed dashboard charts always put the legend at the bottom; the
+    // spec itself carries no appearance options, so it is forced here.
+    legendPosition: 'bottom',
+  }
 }

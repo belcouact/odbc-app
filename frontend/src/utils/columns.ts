@@ -118,6 +118,158 @@ export function detectColumnKind(
   return 'text'
 }
 
+/** The two AI dialogs that show a data-aware example placeholder. */
+export type AiExampleKind = 'dashboard' | 'summary'
+
+/**
+ * Split result columns into the pieces both AI example helpers need: the
+ * numeric metrics, the first date column and the categorical groups. Falls
+ * back to value sampling via detectColumnKind for untyped results.
+ */
+function classifyColumns(
+  columns: { name: string; type: string }[],
+  rows: QueryResult['rows'],
+): { metrics: string[]; date?: string; groups: string[] } {
+  const columnKind = (column: { name: string; type: string }) =>
+    detectColumnKind(column.name, column.type, rows)
+  return {
+    metrics: columns.filter((column) => columnKind(column) === 'number').map((column) => column.name),
+    date: columns.find((column) => columnKind(column) === 'date')?.name,
+    groups: columns
+      .filter((column) => {
+        const k = columnKind(column)
+        return k === 'text' || k === 'boolean'
+      })
+      .map((column) => column.name),
+  }
+}
+
+/** Join a list into "a, b and c" for readable example sentences. */
+function joinPhrases(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? ''
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+}
+
+/**
+ * A data-aware example prompt shown as the placeholder in the AI dialogs, so
+ * the example names columns the user's current data actually has (a metric,
+ * a grouping column and a date column where available). Falls back to a
+ * generic phrasing when the result has no usable columns.
+ */
+export function aiExamplePlaceholder(
+  columns: { name: string; type: string }[],
+  rows: QueryResult['rows'],
+  kind: AiExampleKind,
+): string {
+  const { metrics, date, groups } = classifyColumns(columns, rows)
+  const metric = metrics[0]
+  const [groupA, groupB] = groups
+
+  if (kind === 'summary') {
+    if (metric && groupA) return `e.g. compare ${metric} by ${groupA} and flag outliers`
+    if (metric && date) return `e.g. show the trend of ${metric} over ${date} and flag outliers`
+    if (metric) return `e.g. summarise ${metric} and flag outliers`
+    if (groupA) return `e.g. count rows per ${groupA} and flag anything unusual`
+    if (date) return `e.g. summarise activity over ${date} and flag anything unusual`
+    return 'e.g. describe the key patterns and flag anything unusual'
+  }
+
+  if (metric && date && groupA)
+    return `e.g. ${metric} trend over ${date}, top 10 ${groupA} by ${metric}, and the split by ${groupB ?? groupA}`
+  if (metric && groupA)
+    return `e.g. ${metric} by ${groupA}, and the split by ${groupB ?? groupA}`
+  if (metric && date) return `e.g. ${metric} trend over ${date}, and its distribution`
+  if (metric) return `e.g. the distribution of ${metric}`
+  if (date && groupA) return `e.g. row count over ${date} by ${groupA}`
+  if (date) return `e.g. row count over ${date}`
+  return 'e.g. the distribution of each column and how they relate'
+}
+
+/** A one-click example prompt shown as a button in the AI dashboard builder. */
+export interface DashboardExample {
+  /** Short button label, e.g. "Overview". */
+  label: string
+  /** Full multi-chart prompt inserted into the text area when clicked. */
+  prompt: string
+}
+
+/**
+ * A few data-aware example dashboard prompts. Each one asks for several
+ * complementary charts (never a single chart), because the dashboard builder
+ * is meant to design a whole dashboard. Column names come from the user's
+ * current data; only the examples the data can support are returned.
+ */
+export function aiDashboardExamples(
+  columns: { name: string; type: string }[],
+  rows: QueryResult['rows'],
+): DashboardExample[] {
+  const { metrics, date, groups } = classifyColumns(columns, rows)
+  const [metricA, metricB] = metrics
+  const [groupA, groupB] = groups
+  const metric = metricA ?? 'the key metric'
+  const examples: DashboardExample[] = []
+
+  // 1) Overview — headline numbers plus a trend and a breakdown.
+  const overview = [
+    `KPI cards for the total and average ${metric}`,
+    date ? `a line chart of ${metric} over ${date}` : null,
+    groupA ? `a bar chart of ${metric} by ${groupA}` : null,
+  ].filter((part): part is string => part !== null)
+  if (overview.length >= 2) {
+    examples.push({
+      label: 'Overview',
+      prompt: `Build an overview dashboard with ${joinPhrases(overview)}.`,
+    })
+  }
+
+  // 2) Trends over time — needs a date column.
+  if (date) {
+    const trendCharts = metricB
+      ? `two line charts (one for ${metric} and one for ${metricB}) plus a bar chart of the row count over ${date}`
+      : `a line chart of ${metric} over ${date}, an area chart of the running total and a bar chart of the row count over ${date}`
+    examples.push({
+      label: 'Trends',
+      prompt: `Show how the data changes over ${date} with ${trendCharts}.`,
+    })
+  }
+
+  // 3) Comparison / breakdown — needs a category column.
+  if (groupA) {
+    const breakdown = [
+      `a bar chart of ${metric} by ${groupA}`,
+      groupB ? `a pie chart of ${metric} by ${groupB}` : null,
+      `a table of the top 10 ${groupA} by ${metric}`,
+    ].filter((part): part is string => part !== null)
+    examples.push({
+      label: 'Breakdown',
+      prompt: `Compare ${metric} across the data with ${joinPhrases(breakdown)}.`,
+    })
+  }
+
+  // 4) Distribution / correlation — needs at least one metric.
+  if (metricA) {
+    const spread = [
+      `a histogram of ${metricA}`,
+      metricB ? `a histogram of ${metricB}` : null,
+      metricB ? `a scatter of ${metricA} against ${metricB}` : `a box plot of ${metricA}`,
+    ].filter((part): part is string => part !== null)
+    examples.push({
+      label: 'Distribution',
+      prompt: `Explore the spread of the metrics with ${joinPhrases(spread)}.`,
+    })
+  }
+
+  if (examples.length === 0) {
+    examples.push({
+      label: 'Overview',
+      prompt:
+        'Build an overview dashboard with a few KPI cards, a trend line over time, a bar chart breaking the totals down by category and a pie chart of the shares.',
+    })
+  }
+
+  return examples.slice(0, 4)
+}
+
 // ---------------------------------------------------------------------------
 // Date grouping (Year / Quarter / Month / Day)
 // ---------------------------------------------------------------------------

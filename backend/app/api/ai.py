@@ -204,8 +204,14 @@ def _chat_completion(settings: dict, messages: list, max_tokens: int = 600) -> s
     url = _endpoint_url(settings)
     api_key = settings.get("api_key") or ""
 
-    def _call(msgs: list, tokens: int) -> str:
-        """POST once and return the reply text ('' when the model said nothing)."""
+    def _call(msgs: list, tokens: int) -> tuple[str, bool]:
+        """POST once and return ``(reply_text, truncated)``.
+
+        ``reply_text`` is '' when the model said nothing. ``truncated`` is True
+        when the endpoint stopped because it hit the token ceiling
+        (finish_reason ``length`` / Anthropic ``max_tokens``), meaning the text
+        is cut off mid-answer and a larger budget should be tried.
+        """
         if _is_anthropic(settings):
             headers = {"Content-Type": "application/json", "anthropic-version": "2023-06-01"}
             if api_key:
@@ -238,7 +244,8 @@ def _chat_completion(settings: dict, messages: list, max_tokens: int = 600) -> s
                 raise HTTPException(
                     status_code=400, detail=f"AI response parse error: {exc}"
                 ) from exc
-            return _strip_think(text)
+            # Anthropic reports a token-limit stop as ``stop_reason='max_tokens'``.
+            return _strip_think(text), payload.get("stop_reason") == "max_tokens"
 
         headers = {"Content-Type": "application/json"}
         if api_key:
@@ -289,14 +296,14 @@ def _chat_completion(settings: dict, messages: list, max_tokens: int = 600) -> s
                     f"completion_tokens={usage.get('completion_tokens')}"
                 ),
             )
-        return _strip_think(text)
+        return _strip_think(text), finish == "length"
 
     # The upstream endpoint occasionally returns an empty completion (empty or
-    # null ``content``). Retry twice, doubling the token budget each time —
-    # reasoning-style models can spend the entire budget on hidden thinking
-    # and answer with a null `content` (finish_reason "length") — and append a
-    # nudge on the last attempt that explicitly instructs the model to produce
-    # output.
+    # null ``content``) or one cut off by the token ceiling. Retry twice,
+    # doubling the token budget each time — reasoning-style models can spend the
+    # entire budget on hidden thinking and answer with a null `content`
+    # (finish_reason "length") — and append a nudge on the last attempt that
+    # explicitly instructs the model to produce output.
     nudge = {
         "role": "user",
         "content": (
@@ -306,13 +313,25 @@ def _chat_completion(settings: dict, messages: list, max_tokens: int = 600) -> s
         ),
     }
     tokens = int(max_tokens)
+    last_reply = ""
     for attempt in range(3):
         if attempt > 0:
             time.sleep(2)
             tokens = min(tokens * 2, 16384)
-        reply = _call(messages + [nudge] if attempt == 2 else messages, tokens)
+        reply, truncated = _call(messages + [nudge] if attempt == 2 else messages, tokens)
         if reply:
-            return reply
+            last_reply = reply
+            if not truncated:
+                return reply
+            # A truncated reply is incomplete (e.g. Python code cut off
+            # mid-statement). Keep it as a fallback and retry with more room.
+            logging_utils.log_warning(
+                "ai.chat_completion",
+                "response hit the token limit; retrying with a larger budget",
+                details=f"attempt={attempt + 1}, tokens={tokens}",
+            )
+    if last_reply:
+        return last_reply
     raise HTTPException(
         status_code=502,
         detail="The AI returned an empty response. Please try again.",
@@ -622,6 +641,71 @@ _ECHART_ASSISTANT_SYSTEM_PROMPT = (
     + _CLARIFY_POLICY
 )
 
+# Chart families and aggregations the dashboard assistant may return. Kept in
+# sync with frontend/src/utils/chartCatalog.ts so a spec the model proposes can
+# always be rendered by the shared buildVisualChart pipeline.
+_DASHBOARD_CHART_TYPES = {
+    "trend", "stepline", "area", "stackarea", "bar", "stackbar", "combo",
+    "pie", "doughnut", "rose", "radar", "pareto", "waterfall", "funnel",
+    "treemap", "heatmap", "histogram", "scatter", "bubble", "trendline",
+    "errorbar", "spc", "sankey", "box", "gauge", "kpi",
+}
+_DASHBOARD_OPERATIONS = {
+    "sum", "mean", "count", "distinct", "min", "max", "median", "std", "var",
+    "first", "last", "p25", "p75", "p90", "share", "none",
+}
+_DASHBOARD_MAX_CHARTS = 6
+
+_DASHBOARD_ASSISTANT_SYSTEM_PROMPT = (
+    "You are a data-visualization expert for quality/process engineers. The user "
+    "describes the dashboard they want; you design 3 to 6 charts that answer it.\n"
+    "Respond with ONLY a JSON array (no markdown, no code fences, no commentary) of "
+    "chart specification objects. Each object has these keys:\n"
+    '  "chartType": a supported chart family key (e.g. bar, trend, area, stackbar, pie, doughnut, scatter, bubble, kpi).\n'
+    '  "x": the category/axis column name, exactly as listed in Available columns.\n'
+    '  "y": an array of one or more measure column names from Available columns.\n'
+    '  "operation": aggregation for y (sum, mean, count, min, max, distinct, median, std, none).\n'
+    '  "series": optional breakdown column for a color-by legend.\n'
+    '  "title": optional short chart title.\n'
+    '  "subtitle": optional one-line description.\n'
+    "Rules:\n"
+    "1. ONLY use column names that appear in Available columns — never invent or "
+    "copy values from the sample rows.\n"
+    "2. Pick chart types that suit the data (e.g. trend/area for time series, "
+    "bar/stackbar for comparisons, pie/doughnut for shares, scatter/bubble for "
+    "correlations, kpi for headline numbers). Use several complementary charts so "
+    "the dashboard tells a complete story.\n"
+    "3. Prefer aggregations (sum/mean/count/...) over raw values when a category is "
+    'grouped; use operation "none" only for scatter/bubble/trendline.\n'
+    "4. Give every chart a clear, specific title.\n"
+    "5. Place every chart's legend at the bottom of the chart.\n"
+    "6. Output valid JSON only — double quotes, no trailing commas, no extra text."
+)
+
+_STATS_ASSISTANT_SYSTEM_PROMPT = (
+    "You are a data-analysis expert for quality/process engineers. Write ONE "
+    "self-contained Python script that statistically analyses the provided rows and "
+    "prints a clear, well-structured report.\n"
+    "Rules:\n"
+    "1. The rows are already available in a variable named `data` (a list of dicts "
+    "keyed by the column names). Do NOT read files, access the network, or import "
+    "anything outside the Python standard library (statistics, math, collections, "
+    "json, datetime, itertools, functools are fine).\n"
+    "2. Run the analysis directly — do not wrap it in an unused main guard.\n"
+    "3. Be defensive: values may be None, strings, numbers or dates. Coerce numeric "
+    "columns with float()/int() inside try/except and skip non-numeric entries. Never "
+    "let a single bad value crash the script.\n"
+    "4. Cover what the data supports: row/column inventory, missing-value counts, "
+    "numeric descriptive statistics (count, mean, median, std, min, max, quartiles), "
+    "outliers and distributions, and the most frequent categories for categorical "
+    "columns. If the user states a focus, prioritise that analysis.\n"
+    "5. Print a readable plain-text report with short section headers (e.g. "
+    "'=== Numeric summary ===') and aligned columns. Round numbers sensibly. "
+    "Do NOT print HTML or markdown code fences.\n"
+    "6. Output ONLY the Python script inside a single markdown code block; nothing "
+    "outside it."
+)
+
 
 class SettingsUpdate(BaseModel):
     """Partial update body for PUT /ai/settings."""
@@ -703,6 +787,22 @@ class EChartRequest(BaseModel):
     requirement: str
     columns: Optional[list] = None
     rows: Optional[list] = None
+
+
+class DashboardRequest(BaseModel):
+    """Body for POST /ai/dashboard (AI-designed dashboard chart specs)."""
+
+    requirement: str
+    columns: Optional[list] = None
+    rows: Optional[list] = None
+
+
+class StatsRequest(BaseModel):
+    """Body for POST /ai/stats (AI-written Python statistical report)."""
+
+    columns: Optional[list] = None
+    rows: Optional[list] = None
+    requirement: str = ""
 
 
 @router.get("/ai/settings")
@@ -936,6 +1036,76 @@ def _extract_question_array(text: str) -> list[str]:
         return []
     questions = [str(item).strip() for item in parsed if str(item).strip()]
     return questions[:3]
+
+
+def _extract_chart_array(text: str) -> list:
+    """Extract a JSON array of chart-spec objects from an LLM reply.
+
+    Uses ``raw_decode`` (not a non-greedy regex) because a naive ``\\[[\\s\\S]*?\\]``
+    would stop at the first ``]`` — which is the close of the *inner* ``y`` array,
+    not the outer list. Returns only the dict items; an empty list on failure.
+    """
+    text = _strip_code_fences(text or "")
+    start = text.find("[")
+    if start == -1:
+        return []
+    try:
+        parsed, _ = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [item for item in parsed if isinstance(item, dict)]
+
+
+def _clean_chart_specs(raw: list, columns: list[str]) -> list[dict]:
+    """Validate AI chart specs against the real columns and normalise the shape.
+
+    Drops any spec whose chart type is unknown or whose x/y reference columns
+    that do not exist (they would render an empty chart), so the frontend can
+    feed the survivors straight into the VisualConfig pipeline.
+    """
+    known = set(columns)
+    specs: list[dict] = []
+    for item in raw:
+        chart_type = str(item.get("chartType") or item.get("chart_type") or "").strip()
+        if chart_type not in _DASHBOARD_CHART_TYPES:
+            continue
+        x = str(item.get("x") or "").strip()
+        if not x or (known and x not in known):
+            continue
+        y_raw = item.get("y")
+        if isinstance(y_raw, str):
+            y_raw = [y_raw]
+        if not isinstance(y_raw, list):
+            y_raw = []
+        ys = [str(col).strip() for col in y_raw if str(col).strip()]
+        if known:
+            ys = [col for col in ys if col in known]
+        if not ys:
+            continue
+        operation = str(item.get("operation") or "").strip().lower()
+        if operation not in _DASHBOARD_OPERATIONS:
+            operation = "sum"
+        series = str(item.get("series") or "").strip()
+        if known and series and series not in known:
+            series = ""
+        title = str(item.get("title") or "").strip()
+        subtitle = str(item.get("subtitle") or "").strip()
+        spec = {
+            "chartType": chart_type,
+            "x": x,
+            "y": ys,
+            "operation": operation,
+            "title": title or None,
+            "subtitle": subtitle or None,
+        }
+        if series:
+            spec["series"] = series
+        specs.append(spec)
+        if len(specs) >= _DASHBOARD_MAX_CHARTS:
+            break
+    return specs
 
 
 def _grid_sample_context(columns: Optional[list], rows_sample: Optional[list]) -> tuple[list[str], str]:
@@ -1310,3 +1480,98 @@ def generate_echart(payload: EChartRequest):
         ),
     )
     return {"script": _strip_code_fences(reply)}
+
+
+@router.post("/ai/dashboard")
+def generate_dashboard(payload: DashboardRequest):
+    """Design several dashboard charts from a plain-language requirement.
+
+    Returns a list of chart specs (``chartType``/``x``/``y``/``operation``/...)
+    that the frontend maps onto the shared VisualConfig pipeline and pins to the
+    snapshot's dashboard.
+    """
+    settings = _load_settings()
+    _require_configured(settings)
+    columns = _grid_column_names(payload.columns or [])
+    sample = (payload.rows or [])[:5]
+    user_context = f"Available columns: {', '.join(columns) or '(none)'}"
+    if sample:
+        user_context += (
+            "\n\nSample rows (JSON — value-format reference only, do NOT copy these values):\n"
+            + json.dumps(sample, ensure_ascii=False, default=str)[:4000]
+        )
+    user_context += f"\n\nUser requirement: {payload.requirement}"
+    messages = [
+        {"role": "system", "content": _DASHBOARD_ASSISTANT_SYSTEM_PROMPT},
+        {"role": "user", "content": user_context},
+    ]
+    _start = time.perf_counter()
+    reply = _chat_completion(settings, messages, max_tokens=2500)
+    _elapsed_ms = int((time.perf_counter() - _start) * 1000)
+    specs = _clean_chart_specs(_extract_chart_array(reply), columns)
+    if not specs:
+        raise HTTPException(
+            status_code=502,
+            detail="The AI did not return any usable chart definitions. Please try again.",
+        )
+    logging_utils.log_info(
+        "ai.dashboard",
+        f"generated {len(specs)} charts",
+        details=f"columns={len(columns)}, sample_rows={len(sample)}, elapsed_ms={_elapsed_ms}",
+    )
+    return {"charts": specs}
+
+
+_STATS_ROW_CAP = 1000
+_STATS_TIMEOUT_SECONDS = 120
+
+
+@router.post("/ai/stats")
+def ai_stats(payload: StatsRequest):
+    """Write a Python statistical analysis of the rows and execute it.
+
+    The model authors a stdlib-only script that reads a ``data`` variable (the
+    row dicts) and prints a report; it is then run in-process via the scripts
+    executor and the captured output is returned.
+    """
+    settings = _load_settings()
+    _require_configured(settings)
+    columns = _grid_column_names(payload.columns or [])
+    rows = (payload.rows or [])[:_STATS_ROW_CAP]
+    sample = rows[:20]
+    user_context = (
+        f"Available columns: {', '.join(columns) or '(none)'}\n"
+        f"Row count: {len(rows)}\n"
+        "Sample rows (JSON — value-format reference only, do NOT copy these values):\n"
+        + json.dumps(sample, ensure_ascii=False, default=str)[:6000]
+    )
+    if payload.requirement.strip():
+        user_context += f"\n\nUser focus: {payload.requirement.strip()}"
+    messages = [
+        {"role": "system", "content": _STATS_ASSISTANT_SYSTEM_PROMPT},
+        {"role": "user", "content": user_context},
+    ]
+    script = _strip_code_fences(_chat_completion(settings, messages, max_tokens=8192))
+
+    # Deferred import: scripts.py must not import ai.py (cycle), and ai.py only
+    # needs the executor at call time.
+    from app.api.scripts import _run_python
+
+    _start = time.perf_counter()
+    stdout, stderr, timed_out = _run_python(script, rows, _STATS_TIMEOUT_SECONDS)
+    elapsed_ms = int((time.perf_counter() - _start) * 1000)
+    logging_utils.log_info(
+        "ai.stats",
+        f"ran stats script ({len(stdout)} chars stdout)",
+        details=(
+            f"columns={len(columns)}, rows={len(rows)}, timed_out={timed_out}, "
+            f"elapsed_ms={elapsed_ms}"
+        ),
+    )
+    return {
+        "script": script,
+        "stdout": stdout,
+        "stderr": stderr,
+        "timed_out": timed_out,
+        "elapsed_ms": elapsed_ms,
+    }
