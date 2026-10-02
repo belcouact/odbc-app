@@ -401,7 +401,7 @@ function AboutSection({
                     {entry.label}
                   </Typography>
                   {isVersion ? (
-                    <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5, color: 'primary.main' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.5, color: 'primary.main' }}>
                       <VersionValue version={version} />
                     </Typography>
                   ) : (

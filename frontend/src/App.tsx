@@ -52,6 +52,7 @@ import FeedbackPage from './pages/FeedbackPage'
 import FlowDiagramPage from './pages/FlowDiagramPage'
 import ExternalAppPage from './pages/ExternalAppPage'
 import AiSidebar from './components/AiSidebar'
+import IntroDialog from './components/IntroDialog'
 import GuidedTour, { TOUR_STORAGE_KEY } from './components/GuidedTour'
 import { emit } from './editorBus'
 import type { GridLoadPayload } from './editorBus'
@@ -85,6 +86,14 @@ const SETTINGS_TAB: { value: View; label: string; icon: ReactElement } = {
   label: 'Settings',
   icon: <SettingsIcon color="warning" />,
 }
+
+/** Short mantras shown under the enlarged brand icon in the Alex lightbox. */
+const ALEX_MOTTOS = [
+  'stay hungry, stay foolish',
+  'don’t wait, start now',
+  'start small, learn by doing',
+  'improve over time',
+]
 
 /** Board posts this machine has already looked at — the feedback badge counts the rest. */
 const FEEDBACK_SEEN_KEY = 'odbc-feedback-seen-ids'
@@ -743,6 +752,8 @@ function AppShell() {
   const [toolsAnchor, setToolsAnchor] = useState<HTMLElement | null>(null)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('connections')
   const [helpOpen, setHelpOpen] = useState(false)
+  const [introOpen, setIntroOpen] = useState(false)
+  const [alexOpen, setAlexOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   // Posts made since this machine last opened the board, counted for the badge.
   const [feedbackUnread, setFeedbackUnread] = useState(0)
@@ -938,6 +949,10 @@ function AppShell() {
   }, [])
   const openBi = useCallback(() => setView('bi'), [])
   const closeHelp = useCallback(() => setHelpOpen(false), [])
+  const openIntro = useCallback(() => setIntroOpen(true), [])
+  const closeIntro = useCallback(() => setIntroOpen(false), [])
+  const openAlex = useCallback(() => setAlexOpen(true), [])
+  const closeAlex = useCallback(() => setAlexOpen(false), [])
   // Opening the board reads everything on it; closing re-reads, so a post that
   // arrived while the board was open is not left flagged as unread.
   const openFeedback = useCallback(() => {
@@ -1129,6 +1144,17 @@ function AppShell() {
             component="img"
             src="/alex.ico"
             alt="Alex"
+            onClick={openAlex}
+            role="button"
+            tabIndex={0}
+            aria-label="Enlarge the Alex icon"
+            title="Enlarge the Alex icon"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                openAlex()
+              }
+            }}
             sx={{
               width: 30,
               height: 30,
@@ -1138,6 +1164,10 @@ function AppShell() {
               bgcolor: '#ffffff',
               p: 0.35,
               boxShadow: '0 0 0 1px #e8e6dc, 0 2px 8px rgba(217, 119, 87, 0.18)',
+              cursor: 'pointer',
+              transition: 'box-shadow 0.15s ease',
+              '&:hover': { boxShadow: '0 0 0 2px #d97757, 0 2px 8px rgba(217, 119, 87, 0.28)' },
+              '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
             }}
           />
           <Box
@@ -1150,6 +1180,17 @@ function AppShell() {
           >
             <Typography
               component="span"
+              onClick={openIntro}
+              role="button"
+              tabIndex={0}
+              aria-label="Watch the intro"
+              title="Watch the intro"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  openIntro()
+                }
+              }}
               sx={{
                 fontFamily: BRAND.bodyFont,
                 fontWeight: 700,
@@ -1157,6 +1198,11 @@ function AppShell() {
                 fontSize: '1rem',
                 lineHeight: 1.15,
                 color: 'text.primary',
+                cursor: 'pointer',
+                borderRadius: 0.5,
+                transition: 'color 0.15s ease',
+                '&:hover': { color: 'primary.main' },
+                '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
               }}
             >
               ODBC Query
@@ -1417,6 +1463,85 @@ function AppShell() {
         onClose={closeHelp}
         onReplayTour={replayTour}
       />
+
+      {/* Intro animation — the app title opens the intro page in a full-screen
+          window so it is reachable without leaving the app. */}
+      <IntroDialog open={introOpen} onClose={closeIntro} />
+
+      {/* Alex icon — clicking the brand-mark icon enlarges the little logo in a
+          small lightbox so it can be seen at full size. */}
+      <Dialog
+        open={alexOpen}
+        onClose={closeAlex}
+        maxWidth="xs"
+        fullWidth
+        slotProps={{
+          paper: {
+            sx: {
+              position: 'relative',
+              borderRadius: 3,
+              border: `1px solid ${BRAND.lightGray}`,
+              bgcolor: BRAND.paper,
+              backgroundImage: 'none',
+              p: { xs: 3, sm: 4 },
+              textAlign: 'center',
+            },
+          },
+        }}
+      >
+        <IconButton
+          aria-label="Close enlarged icon"
+          onClick={closeAlex}
+          sx={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            color: BRAND.ink,
+            // 48px touch target on phones, where tapping is the only exit.
+            '&&': { minWidth: 48, minHeight: 48 },
+          }}
+        >
+          <CloseIcon />
+        </IconButton>
+        <Box
+          component="img"
+          src="/alex.ico"
+          alt="Alex"
+          sx={{
+            display: 'block',
+            mx: 'auto',
+            width: { xs: '56vw', sm: 220 },
+            maxWidth: 280,
+            height: 'auto',
+            borderRadius: '50%',
+            bgcolor: '#ffffff',
+            p: 1.5,
+            boxShadow: `0 0 0 3px ${BRAND.clay}33, 0 12px 40px rgba(217, 119, 87, 0.28)`,
+          }}
+        />
+        <Box
+          component="ul"
+          sx={{
+            listStyle: 'none',
+            m: 0,
+            p: 0,
+            mt: { xs: 2.5, sm: 3 },
+            display: 'grid',
+            gap: 0.75,
+          }}
+        >
+          {ALEX_MOTTOS.map((motto) => (
+            <Typography
+              key={motto}
+              component="li"
+              variant="body2"
+              sx={{ color: BRAND.ink, opacity: 0.75, textTransform: 'uppercase' }}
+            >
+              {motto}
+            </Typography>
+          ))}
+        </Box>
+      </Dialog>
 
       {/* Feedback board — full window so the list, the open thread and the
           composer all have room on a phone as well as on a desktop. The window

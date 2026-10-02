@@ -3,5 +3,5 @@
   "min_version": "1.0.0",
   "notes": "1. AI dashboard builder: one-click example-prompt buttons that fill the input with a ready-made dashboard request built from your current data (KPI cards plus trend and breakdown charts), so you get several charts at once instead of a single one.\n2. Chart builder: the \"Edit in chart builder\" action on a dashboard tile loads that tile's settings into the full chart picker, so you can adjust and update it in place.\n3. Dashboard charts: new charts are always added to the dashboard while keeping the charts you already have — nothing is overwritten.\n4. Dashboard AI charts: the legend is now placed at the bottom of every chart for a consistent, more readable layout.\n5. Chart-type icons: the Error bars and Control chart (SPC) tiles now use icons that match what they represent.",
   "exe": "ODBCQueryApp.exe",
-  "sha256": "1e27ca44be88393fac5ac12ddff57f7c4f0f13ebe631997cd0efcd824deb0336"
+  "sha256": "9486d973d4000c603a197f01e0a507e6e9a8aca397d9ab7af86833479b97f701"
 }
