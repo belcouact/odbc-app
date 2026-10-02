@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ODBC Query App: intro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<style>
+:root{--bg:#0A1022;--panel:#111A33;--ink:#EAF0FF;--mute:#98A6C8;--line:#26345C;--blue:#5B8CFF;--amber:#FFB547;--mint:#3DDBA9;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#F3F6FF;--panel:#fff;--ink:#0E1733;--mute:#53628A;--line:#CBD5F0;--blue:#2D5BE0;--amber:#C77700;--mint:#0E9F74}}
+:root[data-theme="light"]{--bg:#F3F6FF;--panel:#fff;--ink:#0E1733;--mute:#53628A;--line:#CBD5F0;--blue:#2D5BE0;--amber:#C77700;--mint:#0E9F74}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:'Bricolage Grotesque',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+#sh{position:fixed;inset:0;width:100%;height:100%;z-index:0}
+.sp{transition:transform 1.7s cubic-bezier(.65,0,.25,1),opacity 1s}
+.fl{animation:fl 6s ease-in-out infinite alternate;transition:translate .45s ease-out}
+@keyframes fl{to{transform:translate(7px,-9px) rotate(12deg)}}
+.deco{position:absolute;right:3vw;top:50%;width:min(40vw,420px);margin-top:calc(min(40vw,420px)/-2);pointer-events:none;fill:none;stroke-width:3}
+@media(max-width:820px){.deco{display:none}}
+.d1{stroke:var(--line);stroke-dasharray:4 14;transform-origin:200px 200px;animation:spin 40s linear infinite}
+.d2{stroke:var(--blue);stroke-dasharray:90 40 10 40;transform-origin:200px 200px;animation:spin 18s linear infinite reverse}
+.d3{stroke:var(--mint);transform-origin:200px 200px;animation:spin 26s linear infinite}
+.d4{stroke:var(--amber);stroke-width:5;stroke-linecap:round;stroke-dasharray:700}
+.on .d4{animation:draw 2.6s 1s ease-out both}
+.cp p.st{color:var(--amber);font-size:15px;margin-top:14px;border-left:3px solid var(--amber);padding-left:10px}
+.flow{width:100%;max-width:860px;margin-top:22px;display:block}
+.wr{fill:none;stroke-width:3;stroke:var(--line);stroke-dasharray:700}
+.on .wr{animation:draw 1.4s .9s ease-out both}
+.nd rect{fill:var(--panel);stroke:var(--line);stroke-width:2}
+.nd text{fill:var(--ink);font:700 17px 'Bricolage Grotesque',sans-serif;text-anchor:middle}
+.day{margin-left:14px;font-size:14px;font-weight:700;color:#0A1022;background:var(--amber);border-radius:999px;padding:2px 12px;display:inline-block}
+.ver{margin-left:auto;font-size:13px;color:var(--mute);border:1px solid var(--line);border-radius:6px;padding:1px 8px}
+.pop{animation:pop .5s}
+.tabs .tb{max-width:0;padding-left:0;padding-right:0;opacity:0;overflow:hidden;transition:max-width .6s,opacity .6s,padding .6s}
+.tabs .tb.un{max-width:150px;padding-left:12px;padding-right:12px;opacity:1}
+.tabs .tb.on{animation:pop .6s}
+@keyframes pop{40%{transform:scale(1.18)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes draw{from{stroke-dashoffset:700}}
+.mark,.stage,.bar{position:relative;z-index:1}
+.mark{padding:18px clamp(20px,6vw,80px) 0;font-weight:700;font-size:17px}
+.mark i{display:inline-block;width:10px;height:10px;background:var(--amber);border-radius:50%;margin-right:8px;box-shadow:0 0 14px var(--amber)}
+.stage{flex:1;min-height:0}
+.s,.w{position:absolute;inset:0;display:flex;padding:0 clamp(20px,6vw,80px);opacity:0;visibility:hidden;transition:opacity .6s,visibility .6s;overflow-y:auto}
+.s{flex-direction:column;justify-content:center}
+.s.on,.w.vis{opacity:1;visibility:visible}
+h1{font-size:clamp(44px,10vw,138px);line-height:.92;letter-spacing:-.04em;margin:0;font-weight:800}
+h1 b{display:inline-block;overflow:hidden;padding:0 .06em .1em 0;vertical-align:top}
+h1 b span{display:block}
+.ol{color:transparent;-webkit-text-stroke:2px var(--ink)}
+.am{color:var(--amber)}
+.bl{color:var(--blue)}
+p.lead{font-size:clamp(17px,2vw,22px);color:var(--mute);max-width:52ch;line-height:1.45;margin:22px 0 0}
+/* window scenes */
+.w{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,8fr);gap:clamp(24px,5vw,64px);align-items:center;align-content:center}
+@media(max-width:820px){.w{grid-template-columns:minmax(0,1fr);align-content:start;padding-top:16px;gap:20px}}
+.caps{position:relative;min-height:215px}
+.cp{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .4s}
+.cp.on{opacity:1;visibility:visible}
+@media(max-width:820px){.caps{min-height:195px}}
+h2{font-size:clamp(28px,4.2vw,56px);line-height:1;letter-spacing:-.03em;margin:0 0 14px;font-weight:800}
+.cp p{font-size:clamp(15px,1.7vw,19px);color:var(--mute);line-height:1.5;margin:0;max-width:40ch}
+.win{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 30px 90px -20px color-mix(in srgb,var(--blue) 45%,transparent);overflow:hidden}
+.tabs{display:flex;align-items:center;gap:4px;padding:0 12px;border-bottom:1px solid var(--line);height:42px}
+.tabs i{width:10px;height:10px;border-radius:50%;background:var(--line);margin-right:4px}
+.tb{font-size:14px;padding:11px 12px 10px;color:var(--mute);border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tb.on{color:var(--ink);border-color:var(--amber)}
+.body{position:relative;height:clamp(350px,54vh,440px)}
+.pn{position:absolute;inset:0;padding:14px 16px;opacity:0;visibility:hidden;transition:opacity .4s;overflow:hidden}
+.pn.on{opacity:1;visibility:visible}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chips span{font-size:13px;border:1px solid var(--blue);color:var(--blue);border-radius:999px;padding:2px 10px;transition:all .3s}
+.chips span.hot{background:var(--blue);color:var(--bg);font-weight:700}
+pre{margin:0;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:clamp(11.5px,1.25vw,14px);line-height:1.6;white-space:pre-wrap}
+.code{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;min-height:6.6em;color:var(--mint)}
+.code::after,.ty::after{content:"";display:inline-block;width:7px;height:1.05em;background:var(--amber);vertical-align:text-bottom;animation:blink 1s steps(1) infinite}
+.ty{display:inline}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:12px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--mute);font-weight:400}
+td:last-child,th:last-child{text-align:right;font-variant-numeric:tabular-nums}
+#ch{position:absolute;left:12px;right:12px;top:52px;bottom:10px}
+.run{display:inline-block;margin:10px 0;font-size:13px;font-weight:700;background:var(--mint);color:var(--bg);border-radius:6px;padding:3px 12px}
+.out,.acts{opacity:0;transition:opacity .5s}
+.ran .out,.ran .acts{opacity:1}
+.ran .run{animation:pulse 1s 2}
+.out{color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.b{max-width:88%;padding:10px 14px;border-radius:14px;font-size:clamp(13.5px,1.5vw,16px);line-height:1.5;margin:0 0 12px}
+.me{margin-left:auto;background:var(--blue);color:var(--bg);border-bottom-right-radius:3px}
+.ai{background:var(--bg);border:1px solid var(--line);border-bottom-left-radius:3px}
+.acts{display:flex;flex-wrap:wrap;gap:6px}
+.acts span{font-size:13px;border:1px solid var(--amber);color:var(--amber);border-radius:999px;padding:3px 12px}
+.go{margin-top:30px;align-self:flex-start;background:var(--amber);color:#0A1022;border:0;border-radius:8px;padding:12px 22px;font:700 18px 'Bricolage Grotesque',sans-serif;cursor:pointer}
+.pills{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.pills span{border:2px solid var(--line);border-radius:999px;padding:6px 16px;font-size:clamp(15px,1.8vw,20px)}
+/* controls */
+.bar{display:flex;gap:10px;align-items:center;padding:12px clamp(20px,6vw,80px) 16px}
+.segs{display:flex;gap:6px;flex:1}
+.seg{flex:1;height:22px;background:none;border:0;padding:0;position:relative;cursor:pointer}
+.seg::before,.seg::after{content:"";position:absolute;left:0;right:0;top:9px;height:4px;border-radius:2px}
+.seg::before{background:var(--line)}
+.seg::after{background:var(--amber);transform:scaleX(0);transform-origin:left}
+.seg.done::after{transform:scaleX(1)}
+.seg.cur::after{animation:fill var(--dur,5s) linear forwards}
+.rp{font:inherit;font-size:15px;color:var(--ink);border:2px solid var(--line);background:none;border-radius:6px;padding:4px 12px;cursor:pointer}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+/* entrances only inside an active scene or panel */
+.on .up{animation:up .7s var(--d,0s) cubic-bezier(.2,.7,.2,1) both}
+.on .fi{animation:fi .5s var(--d,0s) both}
+.on h1 b span{animation:rise 1s var(--d,0s) cubic-bezier(.2,.7,.2,1) both}
+@keyframes up{from{opacity:0;transform:translateY(14px)}}
+@keyframes fi{from{opacity:0}}
+@keyframes rise{from{transform:translateY(110%) rotate(4deg)}}
+@keyframes fill{to{transform:scaleX(1)}}
+@keyframes blink{50%{opacity:0}}
+@keyframes pulse{50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--mint) 30%,transparent)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg id="sh" aria-hidden="true"></svg>
+<div class="mark"><i></i>ODBC Query App<span class="day" id="day">Day 0</span></div>
+<main class="stage">
+
+<section class="s" id="s0">
+  <svg class="deco" viewBox="0 0 400 400" aria-hidden="true"><circle class="d1" cx="200" cy="200" r="170"/><circle class="d2" cx="200" cy="200" r="125"/><polygon class="d3" points="200,95 291,147 291,253 200,305 109,253 109,147"/><path class="d4" d="M20 300C80 120 140 340 200 200S320 80 380 140"/></svg>
+  <h1 style="font-size:clamp(38px,7.4vw,102px)"><b><span style="--d:.1s">What if</span></b> <b><span class="ol" style="--d:.3s">anyone</span></b> <b><span style="--d:.5s">could just</span></b> <b><span class="am" style="--d:.7s">ask</span></b> <b><span style="--d:.9s">the database?</span></b></h1>
+  <p class="lead up" style="--d:1.5s">Day 0. An analyst has a Monday deadline and no SQL. This is how the answer got built, one small step at a time.</p>
+</section>
+
+<section class="w" id="w">
+  <div class="caps">
+    <div class="cp"><h2 class="up">Day 1: just get the rows.</h2><p class="up" style="--d:.15s">Start with the simplest thing that works: pick a connection, a table and a few filters. The SQL writes itself.</p><p class="st up" style="--d:.35s">Maya asks for shipped revenue by region. A plain list is enough for now.</p></div>
+    <div class="cp"><h2 class="up">Day 3: make it visible.</h2><p class="up" style="--d:.15s">Rows are hard to read. Bar, pie, trend, scatter and SPC charts turn them into a picture.</p><p class="st up" style="--d:.35s">Maya: "Can I see it as a picture?" So charts came next.</p></div>
+    <div class="cp"><h2 class="up">Day 5: dig deeper.</h2><p class="up" style="--d:.15s">Charts raised new questions, so Python and JavaScript can now run right on the grid.</p><p class="st up" style="--d:.35s">Maya: "What is each region's share?" So scripts came next.</p></div>
+    <div class="cp"><h2 class="up">Day 8: ask for help.</h2><p class="up" style="--d:.15s">Not everyone writes SQL. The assistant writes it, explains results and drafts whole sets of charts.</p><p class="st up" style="--d:.35s">Maya: "Who is falling behind?" So the assistant came next.</p></div>
+  </div>
+  <div class="win" aria-hidden="true">
+    <div class="tabs"><i></i><i></i><i></i><span class="tb">Query</span><span class="tb">Chart</span><span class="tb">Script</span><span class="tb">AI assistant</span><span class="ver" id="ver">v0.1</span></div>
+    <div class="body">
+      <div class="pn">
+        <div class="chips"><span class="up" style="--d:.1s">Sales DSN</span><span class="up" style="--d:.25s">orders</span><span class="up" style="--d:.4s">region, revenue</span><span class="up" style="--d:.55s">status = Shipped</span><span class="up" style="--d:.7s">Last 30 days</span></div>
+        <pre class="code" id="sql"></pre>
+        <table><tr><th>region</th><th>revenue</th></tr>
+          <tr class="fi" style="--d:3.4s"><td>East</td><td>52,700</td></tr><tr class="fi" style="--d:3.6s"><td>North</td><td>48,200</td></tr>
+          <tr class="fi" style="--d:3.8s"><td>Central</td><td>41,100</td></tr><tr class="fi" style="--d:4s"><td>South</td><td>36,900</td></tr><tr class="fi" style="--d:4.2s"><td>West</td><td>29,400</td></tr></table>
+      </div>
+      <div class="pn">
+        <div class="chips" id="ct"><span>Bar</span><span>Trend</span><span>Pie</span><span>Scatter</span><span>Histogram</span><span>SPC</span></div>
+        <div id="ch"></div>
+      </div>
+      <div class="pn" id="p3">
+        <pre class="code" id="py"></pre>
+        <span class="run">Run</span>
+        <pre class="out">  region   revenue  share
+  East       52700  0.253
+  North      48200  0.231
+  Central    41100  0.197</pre>
+      </div>
+      <div class="pn" id="p4">
+        <div class="b me up" style="--d:.2s">Which regions are falling behind?</div>
+        <div class="b ai up" style="--d:.9s"><span class="ty" id="ai"></span></div>
+        <div class="acts"><span>Build a chart</span><span>Draft the SQL</span><span>Explain results</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="s" id="s5">
+  <h1 style="font-size:clamp(34px,6vw,80px)"><b><span style="--d:.1s">One step</span></b> <b><span class="am" style="--d:.35s">a day.</span></b></h1>
+  <svg class="flow up" style="--d:.7s" viewBox="0 0 860 270" role="img" aria-label="Database to ODBC driver to local server, then to grid, charts, scripts and AI assistant">
+    <path id="m" class="wr" d="M130 135H380"/>
+    <path id="b1" class="wr" style="stroke:var(--blue)" d="M520 135C580 135 580 25 640 25"/>
+    <path id="b2" class="wr" style="stroke:var(--amber)" d="M520 135C580 135 580 95 640 95"/>
+    <path id="b3" class="wr" style="stroke:var(--mint)" d="M520 135C580 135 580 165 640 165"/>
+    <path id="b4" class="wr" style="stroke:#B388FF" d="M520 135C580 135 580 235 640 235"/>
+    <circle r="6" style="fill:var(--ink)"><animateMotion dur="1.6s" repeatCount="indefinite" begin="2s"><mpath href="#m"/></animateMotion></circle>
+    <circle r="6" style="fill:var(--blue)"><animateMotion dur="1.3s" repeatCount="indefinite" begin="2.6s"><mpath href="#b1"/></animateMotion></circle>
+    <circle r="6" style="fill:var(--amber)"><animateMotion dur="1.3s" repeatCount="indefinite" begin="2.9s"><mpath href="#b2"/></animateMotion></circle>
+    <circle r="6" style="fill:var(--mint)"><animateMotion dur="1.3s" repeatCount="indefinite" begin="3.2s"><mpath href="#b3"/></animateMotion></circle>
+    <circle r="6" style="fill:#B388FF"><animateMotion dur="1.3s" repeatCount="indefinite" begin="3.5s"><mpath href="#b4"/></animateMotion></circle>
+    <g class="nd"><rect x="0" y="105" width="130" height="60" rx="10"/><text x="65" y="141">Database</text>
+    <rect x="190" y="105" width="130" height="60" rx="10"/><text x="255" y="141">ODBC driver</text>
+    <rect x="380" y="105" width="140" height="60" rx="10"/><text x="450" y="141">Local server</text>
+    <rect x="640" y="2" width="210" height="46" rx="10"/><text x="745" y="31">Data grid</text>
+    <rect x="640" y="72" width="210" height="46" rx="10"/><text x="745" y="101">ECharts charts</text>
+    <rect x="640" y="142" width="210" height="46" rx="10"/><text x="745" y="171">Python and JS scripts</text>
+    <rect x="640" y="212" width="210" height="46" rx="10"/><text x="745" y="241">AI assistant</text></g>
+  </svg>
+  <p class="lead up" style="--d:1.2s">Maya had her answer before Monday. Since then: exports, saved queries, dashboards and self-update. Everything stays on this PC.</p>
+  <button class="go up" style="--d:1.5s" id="again">Watch again</button>
+</section>
+</main>
+<nav class="bar" aria-label="Intro progress"><div class="segs" id="segs"></div><button class="rp" id="sd" aria-pressed="false">Sound off</button><button class="rp" id="rp">Replay</button></nav>
+<script>
+(function(){
+var $=function(s){return document.querySelector(s)},A=function(s){return [].slice.call(document.querySelectorAll(s))},
+rm=matchMedia('(prefers-reduced-motion: reduce)').matches,
+D=[6800,8000,8200,7800,7600,0],L=['Day 0: the idea','Day 1: query','Day 3: charts','Day 5: scripts','Day 8: assistant','Day 30: today'],
+SQL="SELECT region, revenue\nFROM orders\nWHERE status = 'Shipped'\n  AND order_date >= CURRENT_DATE - 30\nORDER BY revenue DESC;",
+PY='df["share"] = df.revenue / df.revenue.sum()\nprint(df.nlargest(3, "revenue"))',
+AI="West trails the regional average by 29%, and South is next. Want a bar chart of revenue against average?",
+pn=A('.pn'),cp=A('.cp'),tb=A('.tb'),segs=[],cur=-1,timer,tok=0,chart,tm=[];
+D.forEach(function(_,i){var b=document.createElement('button');b.className='seg';b.setAttribute('aria-label',L[i]);b.onclick=function(){go(i)};$('#segs').appendChild(b);segs.push(b)});
+function typeIn(el,t,ms,delay,k,cb){
+  el.textContent='';
+  if(rm){el.textContent=t;cb&&cb();return}
+  var n=0;tm.push(setTimeout(function s(){
+    if(k!==tok)return;el.textContent=t.slice(0,++n);tk();
+    if(n<t.length)tm.push(setTimeout(s,ms));else cb&&cb();
+  },delay));
+}
+function cv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function opt(kind){
+  var c=['East','North','Central','South','West'],v=[52.7,48.2,41.1,36.9,29.4],
+  ax={axisLine:{lineStyle:{color:cv('--line')}},axisLabel:{color:cv('--mute')},splitLine:{lineStyle:{color:cv('--line')}}},
+  o={animationDuration:900,textStyle:{color:cv('--mute')},grid:{left:36,right:10,top:14,bottom:26}};
+  if(kind==='pie'){o.series=[{type:'pie',radius:['38%','68%'],label:{color:cv('--ink')},id:'s',universalTransition:true,dataGroupId:'sales',data:c.map(function(n,i){return{name:n,value:v[i],groupId:n}})}];o.color=[cv('--blue'),cv('--amber'),cv('--mint'),'#B388FF','#FF7A90'];return o}
+  if(kind==='line'){o.xAxis=Object.assign({type:'category',data:['W1','W2','W3','W4','W5','W6']},ax);o.yAxis=Object.assign({type:'value'},ax);
+    o.series=[{id:'s',universalTransition:true,type:'line',smooth:true,symbolSize:8,data:[31,34,33,40,46,52],itemStyle:{color:cv('--amber')},lineStyle:{width:3},areaStyle:{opacity:.18}}];return o}
+  o.xAxis=Object.assign({type:'category',data:c},ax);o.yAxis=Object.assign({type:'value'},ax);
+  o.series=[{id:'s',type:'bar',universalTransition:true,dataGroupId:'sales',data:c.map(function(n,i){return{name:n,value:v[i],groupId:n}}),itemStyle:{color:cv('--blue'),borderRadius:[4,4,0,0]}}];return o;
+}
+function show(kind,k){var m={bar:0,line:1,pie:2}[kind];A('#ct span').forEach(function(s,i){s.classList.toggle('hot',i===m)});if(chart)chart.setOption(opt(kind),true)}
+function runChart(k){
+  if(!window.echarts)return;
+  if(chart)chart.dispose();chart=echarts.init($('#ch'));show('bar');
+  [['pie',2600],['line',5200]].forEach(function(x){tm.push(setTimeout(function(){if(k===tok)show(x[0])},x[1]))});
+}
+var DAYS=[0,1,3,5,8,30],VER=['v0.1','v0.1','v0.2','v0.3','v0.4','v1.0'],shown=0,dt;
+function story(i){
+  tb.forEach(function(t,j){t.classList.toggle('un',j<i)});
+  var d=$('#day'),v=$('#ver'),to=DAYS[i];clearInterval(dt);
+  if(rm||shown===to){shown=to;d.textContent='Day '+to}
+  else dt=setInterval(function(){shown+=shown<to?1:-1;d.textContent='Day '+shown;if(shown===to)clearInterval(dt)},Math.max(30,800/Math.abs(to-shown)));
+  v.textContent=VER[i];[d,v].forEach(function(e){e.classList.remove('pop');void e.offsetWidth;e.classList.add('pop')});
+}
+function go(i){
+  i=Math.max(0,Math.min(5,i));clearTimeout(timer);tm.forEach(clearTimeout);tm=[];tok++;cur=i;var k=tok;story(i);pick();mode=i===0?"s":"f";lay();ping(i);if(i===0)tm.push(setTimeout(function(){if(k===tok){mode="f";lay()}},1800));
+  $('#s0').classList.toggle('on',i===0);$('#s5').classList.toggle('on',i===5);$('#w').classList.toggle('vis',i>0&&i<5);
+  [pn,cp,tb].forEach(function(g){g.forEach(function(e,j){e.classList.toggle('on',j===i-1)})});
+  pn.forEach(function(p){p.classList.remove('ran')});
+  segs.forEach(function(b,j){b.classList.remove('cur');b.classList.toggle('done',j<i||(j===i&&!D[i]));
+    if(j===i&&D[i]){void b.offsetWidth;b.style.setProperty('--dur',D[i]+'ms');b.classList.add('cur')}});
+  if(i===1)typeIn($('#sql'),SQL,22,1000,k);
+  if(i===2)runChart(k);
+  if(i===3)typeIn($('#py'),PY,26,600,k,function(){pn[2].classList.add('ran');chime([523,659,784],.07)});
+  if(i===4)typeIn($('#ai'),AI,24,1500,k,function(){pn[3].classList.add('ran');chime([1047,1319,1568],.09,1.3)});
+  if(D[i])timer=setTimeout(function(){go(i+1)},D[i]);
+}
+$('#rp').onclick=$('#again').onclick=function(){go(0)};
+addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();go(cur+1)}else if(e.key==='ArrowLeft')go(cur-1)});
+addEventListener('resize',function(){if(chart)chart.resize()});
+/* shape choreography: one pool of SVG shapes that regroups for each scene */
+var NS='http://www.w3.org/2000/svg',svg=$('#sh'),SH=[],COL=['var(--blue)','var(--amber)','var(--mint)','#B388FF','#FF7A90'],W,H;
+function R(n){return Math.abs((Math.sin(n*12.9898)*43758.5453)%1)}
+function mk(n,at){var e=document.createElementNS(NS,n);for(var k in at)e.setAttribute(k,at[k]);return e}
+for(var n=0;n<56;n++){
+  var g=mk('g',{'class':'sp'}),f=mk('g',{'class':'fl'}),t=n%5,col=COL[n%COL.length],e;
+  if(t===0)e=mk('circle',{r:8});
+  else if(t===1)e=mk('rect',{x:-8,y:-8,width:16,height:16,rx:3});
+  else if(t===2)e=mk('polygon',{points:'0,-10 9,7 -9,7'});
+  else if(t===3){e=mk('circle',{r:8});e.style.fill='none';e.style.stroke=col;e.style.strokeWidth='3'}
+  else e=mk('polygon',{points:'0,-10 10,0 0,10 -10,0'});
+  if(t!==3)e.style.fill=col;
+  f.style.animationDelay=(-n*.7)+'s';f.style.animationDuration=(5+n%5)+'s';
+  f.appendChild(e);g.appendChild(f);svg.appendChild(g);SH.push(g);
+}
+function poly(v,t){var n=v.length,p=t*n,f=Math.floor(p),a=v[f%n],b=v[(f+1)%n],u=p-f;return[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u]}
+function reg(n,o){var v=[];for(var i=0;i<n;i++){var a=-1.5708+i*6.2832/n,r=(i%2&&o)?o:1;v.push([Math.cos(a)*r,Math.sin(a)*r])}return v}
+var STAR=reg(10,.42),HEX=reg(6),TRI=reg(3),PEN=reg(5),DIA=reg(4),
+SQ=[[-.85,-.85],[.85,-.85],[.85,.85],[-.85,.85]],
+CROSS=[[-.33,-1],[.33,-1],[.33,-.33],[1,-.33],[1,.33],[.33,.33],[.33,1],[-.33,1],[-.33,.33],[-1,.33],[-1,-.33],[-.33,-.33]],
+FN=[function(t){return[Math.cos(t*6.2832),Math.sin(t*6.2832)]},
+ function(t){return poly(SQ,t)},function(t){return poly(TRI,t)},function(t){return poly(STAR,t)},
+ function(t){return poly(HEX,t)},function(t){return poly(DIA,t)},function(t){return poly(PEN,t)},function(t){return poly(CROSS,t)},
+ function(t){var a=t*6.2832;return[.95*Math.pow(Math.sin(a),3),.1-(13*Math.cos(a)-5*Math.cos(2*a)-2*Math.cos(3*a)-Math.cos(4*a))/17]},
+ function(t){var a=t*6.2832,d=1+Math.pow(Math.sin(a),2);return[1.4*Math.cos(a)/d,1.4*Math.sin(a)*Math.cos(a)/d]},
+ function(t){var a=t*12.566;return[t*Math.cos(a),t*Math.sin(a)]}],
+last=-1,fn=FN[0],mode='s';
+function pick(){var j;do{j=Math.floor(Math.random()*FN.length)}while(j===last);last=j;fn=FN[j]}
+function lay(){
+  W=innerWidth;H=innerHeight;var N=SH.length,M=Math.min(W,H),h=N/2;
+  SH.forEach(function(g,k){
+    var x,y,r=0,sx,sy,o=.55;
+    if(mode==='s'){x=W*(.06+.88*R(k));y=H*(.1+.8*R(k+99));r=R(k+7)*360;sx=sy=.6+R(k+3)*1.5}
+    else{var ring=k%2,p=fn(((k>>1)+ring*.5)/h),sc=M*(ring?.26:.46);x=W*.5+p[0]*sc;y=H*.5+p[1]*sc;sx=sy=ring?1:1.3}
+    g.style.transitionDelay=(rm?0:k*16)+'ms';
+    g.style.transform='translate('+x+'px,'+y+'px) rotate('+r+'deg) scale('+sx+','+sy+')';
+    g.style.opacity=o;g.__x=x;g.__y=y;
+  });
+}
+addEventListener('resize',function(){lay(cur)});
+addEventListener('pointermove',function(e){if(rm)return;SH.forEach(function(g){var dx=g.__x-e.clientX,dy=g.__y-e.clientY,d=Math.hypot(dx,dy),f=g.firstChild;
+  if(d<150){var m=(150-d)/150*60/(d||1);f.style.translate=dx*m+'px '+dy*m+'px'}else f.style.translate='0px 0px'})});
+var ac,mg,snd=false;
+function eng(){ac=new(window.AudioContext||window.webkitAudioContext)();mg=ac.createGain();mg.gain.value=.9;var d=ac.createDelay(),f=ac.createGain();d.delayTime.value=.26;f.gain.value=.32;mg.connect(ac.destination);mg.connect(d);d.connect(f);f.connect(d);d.connect(ac.destination)}
+$('#sd').onclick=function(){snd=!snd;this.textContent=snd?'Sound on':'Sound off';this.setAttribute('aria-pressed',snd);if(snd&&!ac)eng();ping(cur)};
+function on(){return snd&&ac}
+function tone(f,at,d,ty,v){if(!on())return;var t=ac.currentTime+at,o=ac.createOscillator(),g=ac.createGain();o.type=ty||'sine';o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(v||.05,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(mg);o.start(t);o.stop(t+d+.05)}
+function chime(a,sp,d){a.forEach(function(f,i){tone(f,i*(sp||.08),d||1.1,'sine',.05);tone(f*2,i*(sp||.08),(d||1.1)*.5,'triangle',.012)})}
+function sweep(f0,f1,d){if(!on())return;var t=ac.currentTime,n=Math.floor(ac.sampleRate*d),b=ac.createBuffer(1,n,ac.sampleRate),c=b.getChannelData(0),s=ac.createBufferSource(),q=ac.createBiquadFilter(),g=ac.createGain();
+  for(var i=0;i<n;i++)c[i]=Math.random()*2-1;s.buffer=b;q.type='bandpass';q.Q.value=4;q.frequency.setValueAtTime(f0,t);q.frequency.exponentialRampToValueAtTime(f1,t+d);
+  g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.12,t+d*.5);g.gain.exponentialRampToValueAtTime(.0001,t+d);s.connect(q);q.connect(g);g.connect(mg);s.start(t)}
+function tk(){if(!on())return;var hi=cur===4;tone(hi?1568+Math.random()*300:1900+Math.random()*500,0,.035,hi?'sine':'square',hi?.02:.012)}
+function later(f,ms,k){tm.push(setTimeout(function(){if(k===tok)f()},ms))}
+function ping(i){var k=tok;if(i>1&&i<5){tone(1319,0,.35,'triangle',.05);tone(1760,.09,.5,'sine',.04)}
+  if(i===0)chime([392,523,659,784,1047],.1,.9);
+  if(i===1){sweep(500,2500,.5);later(function(){chime([659,880],.09)},3400,k)}
+  if(i===2){sweep(300,3000,.9);later(function(){sweep(400,2200,.6);chime([523,659,784],.06)},2600,k);later(function(){sweep(2200,500,.6);chime([587,784],.1)},5200,k)}
+  if(i===3)sweep(2500,500,.5);
+  if(i===4){later(function(){tone(330,0,.15,'sine',.07)},200,k);later(function(){chime([880,1047],.1)},1100,k)}
+  if(i===5){[262,330,392,523].forEach(function(f){tone(f,0,3,'sine',.035)});chime([1047,1319,1568],.18,1.6)}
+}
+go(0);
+})();
+</script>
+</body>
+</html>
