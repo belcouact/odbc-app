@@ -4,6 +4,14 @@
  */
 import type { EChartsOption } from 'echarts'
 import type { GridDrillFilter } from './types'
+import type { ResultColumn } from './api/client'
+
+/** Payload pushed into the Query grid (BI page's "load to grid"). */
+export interface GridLoadPayload {
+  name: string
+  columns: ResultColumn[]
+  rows: Record<string, unknown>[]
+}
 
 export type EditorAction =
   | { type: 'load-builder'; query: Record<string, unknown>; connectionId?: string }
@@ -27,6 +35,8 @@ export type EditorAction =
   | { type: 'show-analyze-tab'; tab: 'chart' | 'script' | 'summary' }
   /** Apply drill-through filters (empty array clears them) to the Query grid. */
   | { type: 'drill-grid'; filters: GridDrillFilter[] }
+  /** Replace the Query grid's rows with warehouse snapshot data. */
+  | { type: 'load-grid'; payload: GridLoadPayload }
 
 type Listener = (action: EditorAction) => void
 

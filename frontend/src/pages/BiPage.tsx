@@ -7,16 +7,17 @@
  * Pantone TCX table lives separately in the app's app/data/ folder.
  */
 
-import { useCallback, useEffect, useImperativeHandle, useMemo, useState, memo } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, memo } from 'react'
 import type { Ref } from 'react'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import BookmarksIcon from '@mui/icons-material/Bookmarks'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined'
+import InputIcon from '@mui/icons-material/Input'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import SaveIcon from '@mui/icons-material/Save'
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'
 import SyncIcon from '@mui/icons-material/Sync'
 import TableChartIcon from '@mui/icons-material/TableChart'
@@ -32,6 +33,7 @@ import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
+import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
@@ -48,11 +50,19 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { api } from '../api/client'
-import type { SnapshotDetail, SnapshotMeta, WarehouseInfo } from '../api/client'
+import type {
+  RelationshipJoinPreview,
+  SnapshotDetail,
+  SnapshotMeta,
+  SnapshotRelationship,
+  WarehouseInfo,
+} from '../api/client'
 import ChartsPanel from '../components/ChartsPanel'
 import type { ChartPreset } from '../components/ChartsPanel'
 import DashboardPanel from '../components/DashboardPanel'
+import RelationshipsPanel from '../components/RelationshipsPanel'
 import { subscribe } from '../editorBus'
+import type { GridLoadPayload } from '../editorBus'
 import type { QueryResult, QuerySource, AiMode } from '../types'
 import type { EChartsOption } from 'echarts'
 import {
@@ -75,10 +85,18 @@ interface BiPageProps {
   ref?: Ref<BiPageHandle>
   /** Open the AI sidebar (used by the chart builder's AI chart button). */
   onOpenAi?: (mode: AiMode) => void
+  /** Load a snapshot's rows back into the Query grid (swaps the view there). */
+  onLoadToGrid?: (payload: GridLoadPayload) => void
 }
 
 /** Rows rendered in the snapshot data preview before the list is truncated. */
 const PREVIEW_ROW_LIMIT = 200
+
+/** Row cap for the joined chart dataset (the backend's own ceiling is 5000). */
+const JOIN_PREVIEW_LIMIT = 5000
+
+/** Fetches warehouse info + snapshot list; callers map the result to state. */
+const fetchList = () => Promise.all([api.getWarehouseInfo(), api.listSnapshots()])
 
 function formatCount(value: number): string {
   return value.toLocaleString()
@@ -95,19 +113,13 @@ function formatWhen(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
 
-/** Default snapshot name — a timestamp is enough to tell runs apart. */
-function defaultSnapshotName(): string {
-  const stamp = new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
-  return `Grid result — ${stamp}`
-}
-
 /** Column names for a snapshot, falling back to the first row's keys. */
 function columnNames(detail: SnapshotDetail): string[] {
   if (detail.columns.length > 0) return detail.columns.map((column) => column.name)
   return Object.keys(detail.rows[0] ?? {})
 }
 
-function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
+function BiPage({ ref, onOpenAi, onLoadToGrid }: BiPageProps = {}) {
   const isCompact = useMediaQuery('(max-width:700px)')
 
   /** How-to pop-up for this page (opened from the help icon). */
@@ -118,10 +130,8 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
   const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState('')
 
-  // The grid the Query tab currently holds — what "Save" would capture.
+  // The grid the Query tab currently holds — what "Update from grid" captures.
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot>(() => getWorkspaceSnapshot())
-  const [draftName, setDraftName] = useState(() => defaultSnapshotName())
-  const [saving, setSaving] = useState(false)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<SnapshotDetail | null>(null)
@@ -149,12 +159,36 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
   const [updateTarget, setUpdateTarget] = useState<SnapshotMeta | null>(null)
   const [updateBusy, setUpdateBusy] = useState(false)
 
+  /** Snapshot row whose "load to grid" is being fetched (spinner in that row). */
+  const [loadBusyId, setLoadBusyId] = useState<string | null>(null)
+
+  // ---- Relationships for joined chart data ----
+  /** Saved relationships; filtered down to those touching the opened snapshot. */
+  const [relationships, setRelationships] = useState<SnapshotRelationship[]>([])
+  /** Bumped by the relationships panel after edits, reloading the list here. */
+  const [relationshipsVersion, setRelationshipsVersion] = useState(0)
+  /** Relationship whose joined preview feeds the chart builder ('' = plain table). */
+  const [chartJoinId, setChartJoinId] = useState('')
+  /** Latest join preview, tagged with its relationship id (derive, don't sync-reset). */
+  const [joinData, setJoinData] = useState<{ id: string; preview: RelationshipJoinPreview } | null>(
+    null,
+  )
+  /** Latest join error, tagged with the id it belongs to. */
+  const [joinError, setJoinError] = useState<{ id: string; message: string } | null>(null)
+  /** Fetched join previews by relationship id, so re-selecting is instant. */
+  const joinCacheRef = useRef<Map<string, RelationshipJoinPreview>>(new Map())
+
+  /** Active tab of the combined warehouse section. */
+  const [warehouseTab, setWarehouseTab] = useState<'snapshots' | 'relationships'>('snapshots')
+  /** Whether the combined warehouse section shows its body. */
+  const [warehouseExpanded, setWarehouseExpanded] = useState(true)
+
   const [notice, setNotice] = useState('')
 
   const loadList = useCallback(async () => {
-    setListLoading(true)
+    // Event-driven refresh (button, tab activation): setstate is fine here.
     try {
-      const [info, list] = await Promise.all([api.getWarehouseInfo(), api.listSnapshots()])
+      const [info, list] = await fetchList()
       setWarehouse(info)
       setSnapshots(list)
       setListError('')
@@ -165,13 +199,33 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
     }
   }, [])
 
+  // Initial load — promise callbacks keep state updates off the effect's
+  // synchronous path (lint: react/set-state-in-effect).
+  useEffect(() => {
+    let cancelled = false
+    fetchList()
+      .then(([info, list]) => {
+        if (!cancelled) {
+          setWarehouse(info)
+          setSnapshots(list)
+          setListError('')
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setListError(err instanceof Error ? err.message : 'Failed to load the warehouse')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setListLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const refresh = useCallback(() => {
     setWorkspace(getWorkspaceSnapshot())
-    setDraftName((current) => current || defaultSnapshotName())
-    void loadList()
-  }, [loadList])
-
-  useEffect(() => {
     void loadList()
   }, [loadList])
 
@@ -189,15 +243,19 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
   // show up without re-rendering this page on every tab switch.
   useImperativeHandle(ref, () => ({ refresh }), [refresh])
 
-  // ---- Save the current grid ----
-  const canSave = workspace.rows.length > 0 && draftName.trim().length > 0 && !saving
-
+  // ---- Open a snapshot ----
   const openSnapshot = useCallback(async (id: string) => {
     setSelectedId(id)
     setDetail(null)
     setVisuals([])
     setEditingVisualId(null)
     setChartPreset(null)
+    // Chart data restarts on the plain table; cached join previews are stale
+    // after a data refresh, so drop them too.
+    setChartJoinId('')
+    setJoinData(null)
+    setJoinError(null)
+    joinCacheRef.current.clear()
     setDetailLoading(true)
     setDashboardLoading(true)
     try {
@@ -215,32 +273,6 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
       setDashboardLoading(false)
     }
   }, [])
-
-  const handleSave = useCallback(async () => {
-    if (!canSave) return
-    setSaving(true)
-    try {
-      const created = await api.createSnapshot({
-        name: draftName.trim(),
-        source: 'grid',
-        connection_id: workspace.connectionId || null,
-        sql_text: workspace.sqlText || null,
-        columns: workspace.columns.map((name) => ({
-          name,
-          type: workspace.columnTypes[name] ?? '',
-        })),
-        rows: workspace.rows,
-      })
-      setNotice(`Saved "${created.name}" (${formatCount(created.row_count)} rows)`)
-      setDraftName('')
-      await loadList()
-      void openSnapshot(created.id)
-    } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Failed to save the snapshot')
-    } finally {
-      setSaving(false)
-    }
-  }, [canSave, draftName, workspace, loadList, openSnapshot])
 
   // ---- Refresh an existing snapshot from the grid ----
   // The snapshot keeps its id, name and dashboard, so its charts survive a
@@ -264,6 +296,9 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
       setSnapshots((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
       if (selectedId === updated.id) {
         setDetail(await api.getSnapshot(updated.id))
+        // The rows changed, so any cached join previews are stale.
+        joinCacheRef.current.clear()
+        setJoinData(null)
       }
       setUpdateTarget(null)
       setNotice(
@@ -276,6 +311,30 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
       setUpdateBusy(false)
     }
   }, [updateTarget, canUpdateFromGrid, workspace, selectedId, loadList])
+
+  // ---- Load a snapshot back into the Query grid ----
+  // The rows travel through the editor bus (App switches to the Query view);
+  // stored column types ride along so the grid keeps its type chips.
+  const handleLoadToGrid = useCallback(
+    async (snapshot: SnapshotMeta) => {
+      if (!onLoadToGrid || loadBusyId) return
+      setLoadBusyId(snapshot.id)
+      try {
+        const detail = await api.getSnapshot(snapshot.id)
+        onLoadToGrid({
+          name: detail.name,
+          columns: detail.columns,
+          rows: detail.rows,
+        })
+        setNotice(`Loaded "${detail.name}" into the grid`)
+      } catch (err) {
+        setNotice(err instanceof Error ? err.message : 'Failed to load the snapshot')
+      } finally {
+        setLoadBusyId(null)
+      }
+    },
+    [onLoadToGrid, loadBusyId],
+  )
 
   // ---- Rename ----
   const openRename = useCallback((snapshot: SnapshotMeta) => {
@@ -345,6 +404,79 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
   }, [detail])
 
   const chartSource: QuerySource = { kind: 'upload' }
+
+  // ---- Joined chart data (relationships touching the opened snapshot) ----
+  // Promise callbacks keep state updates off the effect's synchronous path.
+  useEffect(() => {
+    let cancelled = false
+    api
+      .listRelationships()
+      .then((list) => {
+        if (!cancelled) setRelationships(list)
+      })
+      .catch(() => {
+        // Chart joins are optional sugar; the relationships panel surfaces
+        // load errors, so this silently keeps them hidden.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [relationshipsVersion])
+
+  /** Relationships that touch the opened snapshot in either direction. */
+  const chartJoins = useMemo(
+    () =>
+      selectedId
+        ? relationships.filter(
+            (item) => item.left_snapshot_id === selectedId || item.right_snapshot_id === selectedId,
+          )
+        : [],
+    [relationships, selectedId],
+  )
+
+  // Fetch (or reuse) the flat join preview for the selected relationship.
+  useEffect(() => {
+    if (!chartJoinId) return
+    let cancelled = false
+    const cached = joinCacheRef.current.get(chartJoinId)
+    const pending = cached
+      ? Promise.resolve(cached)
+      : api.previewRelationship(chartJoinId, JOIN_PREVIEW_LIMIT)
+    pending
+      .then((preview) => {
+        joinCacheRef.current.set(chartJoinId, preview)
+        if (!cancelled) setJoinData({ id: chartJoinId, preview })
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setJoinError({
+            id: chartJoinId,
+            message: err instanceof Error ? err.message : 'Failed to build the joined table',
+          })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [chartJoinId])
+
+  /** True once the preview for the current selection has arrived. */
+  const joinActive = Boolean(chartJoinId) && joinData?.id === chartJoinId
+  const joinLoading = Boolean(chartJoinId) && !joinActive
+
+  /** The joined table reshaped into a QueryResult for ChartsPanel. */
+  const joinResult = useMemo<QueryResult | null>(() => {
+    if (!joinActive || !joinData) return null
+    return {
+      rows: joinData.preview.rows,
+      // Join columns are flat names (collisions already prefixed server-side);
+      // kinds are re-detected from the rows by the chart builder.
+      columns: joinData.preview.columns.map((name) => ({ name, type: '' })),
+      row_count: joinData.preview.rows.length,
+      elapsed_ms: 0,
+      sql: '',
+    }
+  }, [joinActive, joinData])
 
   // ---- Dashboard editing ----
   // Every change is written straight through to the warehouse so the dashboard
@@ -514,50 +646,12 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
 
         {listError && <Alert severity="error">{listError}</Alert>}
 
-        {/* ---- Save the current result grid ---- */}
+        {/* ---- Warehouse: snapshots + relationships (tabbed, collapsible) ---- */}
         <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={2}
-            sx={{ alignItems: { xs: 'stretch', sm: 'flex-end' } }}
-          >
-            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                Current result grid
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {workspace.rows.length > 0
-                  ? `${formatCount(workspace.rows.length)} rows · ${formatCount(workspace.columns.length)} columns`
-                  : 'No grid data — run a query or upload a file in the Query tab first.'}
-              </Typography>
-            </Box>
-            <TextField
-              label="Snapshot name"
-              value={draftName}
-              onChange={(event) => setDraftName(event.target.value)}
-              disabled={workspace.rows.length === 0 || saving}
-              size="small"
-              fullWidth={isCompact}
-              sx={{ flexGrow: 1, minWidth: { sm: 240 } }}
-            />
-            <Button
-              variant="contained"
-              startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
-              onClick={() => void handleSave()}
-              disabled={!canSave}
-              sx={{ flexShrink: 0 }}
-            >
-              Save to warehouse
-            </Button>
-          </Stack>
-        </Paper>
-
-        {/* ---- Stored snapshots ---- */}
-        <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <BookmarksIcon fontSize="small" color="primary" />
             <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
-              Snapshots
+              Warehouse
             </Typography>
             <Tooltip title="Reload the snapshot list">
               <span>
@@ -566,13 +660,40 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
                 </IconButton>
               </span>
             </Tooltip>
+            <Tooltip title={warehouseExpanded ? 'Collapse section' : 'Expand section'}>
+              <IconButton
+                aria-expanded={warehouseExpanded}
+                aria-label={warehouseExpanded ? 'Collapse warehouse section' : 'Expand warehouse section'}
+                onClick={() => setWarehouseExpanded((v) => !v)}
+                sx={{
+                  transform: warehouseExpanded ? 'rotate(180deg)' : 'none',
+                  transition: (theme) => theme.transitions.create('transform', { duration: 200 }),
+                }}
+              >
+                <ExpandMoreIcon />
+              </IconButton>
+            </Tooltip>
           </Stack>
 
-          {snapshots.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-              {listLoading ? 'Loading…' : 'Nothing stored yet — save a result grid above.'}
-            </Typography>
-          ) : isCompact ? (
+          {warehouseExpanded && (
+            <>
+              <Tabs
+                value={warehouseTab}
+                onChange={(_, next: 'snapshots' | 'relationships') => setWarehouseTab(next)}
+                sx={{ borderBottom: 1, borderColor: 'divider', mb: 1.5 }}
+              >
+                <Tab value="snapshots" label={`Snapshots (${snapshots.length})`} />
+                <Tab value="relationships" label={`Relationships (${relationships.length})`} />
+              </Tabs>
+
+              {warehouseTab === 'snapshots' &&
+                (snapshots.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                    {listLoading
+                      ? 'Loading…'
+                      : 'Nothing stored yet — save a result grid from the Query tab.'}
+                  </Typography>
+                ) : isCompact ? (
             /* Mobile: one card per snapshot — no horizontal scrolling. */
             <Stack spacing={1.5}>
               {snapshots.map((snapshot) => (
@@ -601,6 +722,32 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
                         {formatWhen(snapshot.created_at)}
                       </Typography>
                     </Box>
+                    <Tooltip
+                      title={
+                        onLoadToGrid
+                          ? 'Load these rows into the Query grid'
+                          : 'Loading into the grid is unavailable'
+                      }
+                    >
+                      <span>
+                        <IconButton
+                          size="small"
+                          aria-label={`Load ${snapshot.name} into the grid`}
+                          disabled={!onLoadToGrid || loadBusyId === snapshot.id}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void handleLoadToGrid(snapshot)
+                          }}
+                          sx={{ minWidth: 48, minHeight: 48 }}
+                        >
+                          {loadBusyId === snapshot.id ? (
+                            <CircularProgress size={20} />
+                          ) : (
+                            <InputIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </span>
+                    </Tooltip>
                     <Tooltip
                       title={
                         canUpdateFromGrid
@@ -679,6 +826,31 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
                       <TableCell align="right">
                         <Tooltip
                           title={
+                            onLoadToGrid
+                              ? 'Load these rows into the Query grid'
+                              : 'Loading into the grid is unavailable'
+                          }
+                        >
+                          <span>
+                            <IconButton
+                              size="small"
+                              aria-label={`Load ${snapshot.name} into the grid`}
+                              disabled={!onLoadToGrid || loadBusyId === snapshot.id}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void handleLoadToGrid(snapshot)
+                              }}
+                            >
+                              {loadBusyId === snapshot.id ? (
+                                <CircularProgress size={20} />
+                              ) : (
+                                <InputIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip
+                          title={
                             canUpdateFromGrid
                               ? 'Replace the stored rows with the current grid data'
                               : 'No grid data to update from'
@@ -710,6 +882,16 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
                 </TableBody>
               </Table>
             </TableContainer>
+                ))}
+
+              {warehouseTab === 'relationships' && (
+                <RelationshipsPanel
+                  snapshots={snapshots}
+                  onNotice={setNotice}
+                  onChanged={() => setRelationshipsVersion((v) => v + 1)}
+                />
+              )}
+            </>
           )}
         </Paper>
 
@@ -777,16 +959,60 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
               />
             ) : tab === 'chart' ? (
               chartResult ? (
-                <ChartsPanel
-                  source={chartSource}
-                  result={chartResult}
-                  preset={chartPreset}
-                  aiOption={aiOption}
-                  onClearAi={() => setAiOption(null)}
-                  onAiChart={() => onOpenAi?.('chart')}
-                  onAddToDashboard={handleAddVisual}
-                  addLabel={editingVisualId ? 'Update visual' : 'Add to dashboard'}
-                />
+                <>
+                  {chartJoins.length > 0 && (
+                    <TextField
+                      select
+                      size="small"
+                      label="Chart data"
+                      value={chartJoinId}
+                      onChange={(event) => setChartJoinId(event.target.value)}
+                      helperText={
+                        chartJoinId
+                          ? 'Charting the joined table — pinning to the dashboard works from the plain table only.'
+                          : 'Pick a relationship to chart across the linked table.'
+                      }
+                      sx={{ mb: 1.5, minWidth: { xs: '100%', sm: 320 }, maxWidth: '100%' }}
+                    >
+                      <MenuItem value="">
+                        This table — {detail.name} ({formatCount(detail.row_count)} rows)
+                      </MenuItem>
+                      {chartJoins.map((rel) => (
+                        <MenuItem key={rel.id} value={rel.id} sx={{ display: 'block', py: 0.75 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {rel.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            via {rel.left_column} = {rel.right_column} · {rel.join_type} join
+                          </Typography>
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  )}
+                  {joinLoading && (
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                      <CircularProgress size={18} />
+                      <Typography variant="caption" color="text.secondary">
+                        Building the joined table…
+                      </Typography>
+                    </Stack>
+                  )}
+                  {joinError?.id === chartJoinId && chartJoinId && (
+                    <Alert severity="error" sx={{ mb: 1.5 }}>
+                      {joinError.message}
+                    </Alert>
+                  )}
+                  <ChartsPanel
+                    source={chartSource}
+                    result={joinResult ?? chartResult}
+                    preset={chartPreset}
+                    aiOption={aiOption}
+                    onClearAi={() => setAiOption(null)}
+                    onAiChart={() => onOpenAi?.('chart')}
+                    onAddToDashboard={chartJoinId ? undefined : handleAddVisual}
+                    addLabel={editingVisualId ? 'Update visual' : 'Add to dashboard'}
+                  />
+                </>
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                   This snapshot has no rows to chart.
@@ -865,15 +1091,23 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
           <Box component="ol" sx={{ m: 0, p: 0, pl: 2.5, '& li': { mb: 1, typography: 'body2', pl: 0.5 } }}>
             <li>
               <strong>Save the current grid</strong> — run a query (or upload a file) in the Query
-              tab, type a snapshot name, then press <em>Save to warehouse</em>. The rows are copied
-              into the local warehouse, so later re-queries do not change saved data.
+              tab, then press <em>Save</em> in the results toolbar. The rows are copied into the
+              local warehouse, so later re-queries do not change saved data.
             </li>
             <li>
               <strong>Manage snapshots</strong> — click a row in the list to open it. Use{' '}
+              <InputIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to load a
+              snapshot's rows back into the Query grid,{' '}
               <SyncIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to update a
               snapshot from the current result grid (existing visuals are kept),{' '}
               <EditIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to rename, and{' '}
               <DeleteIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to delete.
+            </li>
+            <li>
+              <strong>Relationships</strong> — link two snapshots on a shared column (e.g. NAME =
+              NAME), then use <em>Explore</em> to drill from a row in one table to its related rows
+              in the other, or to preview the flat joined table. Relationships are saved in the
+              warehouse and can be edited or deleted at any time.
             </li>
             <li>
               <strong>Dashboard tab</strong> — persistent visuals saved with the snapshot: add

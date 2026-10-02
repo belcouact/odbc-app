@@ -44,19 +44,19 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import BlockIcon from '@mui/icons-material/Block'
 import ClearAllIcon from '@mui/icons-material/ClearAll'
 import CloseIcon from '@mui/icons-material/Close'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ContentPasteIcon from '@mui/icons-material/ContentPaste'
+import EditIcon from '@mui/icons-material/Edit'
 import FilterAltIcon from '@mui/icons-material/FilterAlt'
 import FilterAltOffIcon from '@mui/icons-material/FilterAltOff'
-import FunctionsIcon from '@mui/icons-material/Functions'
 import HelpOutlinedIcon from '@mui/icons-material/HelpOutlined'
 import LowPriorityIcon from '@mui/icons-material/LowPriority'
 import PushPinIcon from '@mui/icons-material/PushPin'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
+import SaveIcon from '@mui/icons-material/Save'
 import StraightenIcon from '@mui/icons-material/Straighten'
 import SwapVertIcon from '@mui/icons-material/SwapVert'
 import TuneIcon from '@mui/icons-material/Tune'
@@ -67,8 +67,7 @@ import type { GridDrillFilter, QueryResult } from '../types'
 import { formatCellValue } from '../utils/format'
 import { detectColumnKind, groupingKey, type ColumnKind } from '../utils/columns'
 import type { ComputedColumn } from '../utils/formula'
-import AddColumnDialog from './AddColumnDialog'
-import ColumnTypesDialog from './ColumnTypesDialog'
+import GridToolsDialog, { type GridToolsTab } from './GridToolsDialog'
 
 // Register the full community feature set once (filters, pagination, clipboard, ...).
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -441,8 +440,13 @@ interface ResultsGridProps {
   result: QueryResult | null
   /** Called when the user adds a calculated column via the formula helper. */
   onAddComputedColumn: (col: ComputedColumn) => void
-  /** Opens the AI grid-edit dialog (undefined hides the button). */
-  onOpenAiTransform?: () => void
+  /** Runs an AI transform on the current grid rows (undefined hides the
+   *  AI edit tab in the Edit grid window). */
+  onAiTransformApply?: (
+    rows: Record<string, unknown>[],
+    columns: { name: string; type: string }[],
+    log: string,
+  ) => void
   /** Restores the previous grid state; undefined hides the Revert button. */
   onRevertGrid?: () => void
   /** Drill-through conditions pushed from the Summary tab (empty = no filter). */
@@ -461,6 +465,8 @@ interface ResultsGridProps {
    *  writes it into the result so the chart builders and summary tab see the
    *  type change in real time. */
   onColumnTypeChange?: (name: string, kind: ColumnKind) => void
+  /** Opens the page's save-to-warehouse dialog (undefined hides the button). */
+  onSaveToWarehouse?: () => void
 }
 
 /** Commands the page toolbar can invoke on the grid from outside. */
@@ -472,12 +478,13 @@ export interface ResultsGridHandle {
 const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function ResultsGrid({
   result,
   onAddComputedColumn,
-  onOpenAiTransform,
+  onAiTransformApply,
   onRevertGrid,
   drillFilters = [],
   onClearDrill,
   onRowsPasted,
   onColumnTypeChange,
+  onSaveToWarehouse,
 }: ResultsGridProps,
   ref,
 ) {
@@ -502,8 +509,10 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
   const [columnKinds, setColumnKinds] = useState<Record<string, ColumnKind>>({})
   /** Renamed header labels, keyed by the original column name. Display only. */
   const [columnLabels, setColumnLabels] = useState<Record<string, string>>({})
-  const [addColumnOpen, setAddColumnOpen] = useState(false)
-  const [typesOpen, setTypesOpen] = useState(false)
+  /** Combined editing window (AI edit / Data types / Add column tabs). */
+  const [toolsOpen, setToolsOpen] = useState(false)
+  /** Last tool tab used, so re-opening lands where the user left off. */
+  const [toolsTab, setToolsTab] = useState<GridToolsTab>('ai')
   /** The custom right-click menu; null while it is closed. */
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   /** Anchor element for the toolbar's feature-help popover. */
@@ -1273,21 +1282,18 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
               <HelpOutlinedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          {onOpenAiTransform && (
-            <Tooltip title="Describe a change and let AI write a Python script to update the grid">
-              <Button
-                size="small"
-                variant="outlined"
-                color="primary"
-                startIcon={<AutoAwesomeIcon />}
-                onClick={onOpenAiTransform}
-                disabled={empty}
-                sx={{ minHeight: 40 }}
-              >
-                AI edit
-              </Button>
-            </Tooltip>
-          )}
+          <Tooltip title="Edit this grid — AI transform, column data types and calculated columns">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<EditIcon />}
+              onClick={() => setToolsOpen(true)}
+              disabled={empty}
+              sx={{ minHeight: 40 }}
+            >
+              Edit grid
+            </Button>
+          </Tooltip>
           {onRevertGrid && (
             <Tooltip title="Restore the grid to the state before the last AI edit or paste">
               <Button
@@ -1305,26 +1311,6 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           <Button
             size="small"
             variant="outlined"
-            startIcon={<TuneIcon />}
-            onClick={() => setTypesOpen(true)}
-            disabled={empty}
-            sx={{ minHeight: 40 }}
-          >
-            Data types
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<FunctionsIcon />}
-            onClick={() => setAddColumnOpen(true)}
-            disabled={empty}
-            sx={{ minHeight: 40 }}
-          >
-            Add column
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
             startIcon={<ContentCopyIcon />}
             onClick={handleCopy}
             disabled={empty}
@@ -1332,6 +1318,21 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           >
             {copied ? 'Copied!' : 'Copy'}
           </Button>
+          {onSaveToWarehouse && (
+            <Tooltip title="Save this grid as a snapshot in the BI warehouse">
+              <Button
+                size="small"
+                variant="outlined"
+                color="primary"
+                startIcon={<SaveIcon />}
+                onClick={onSaveToWarehouse}
+                disabled={empty}
+                sx={{ minHeight: 40 }}
+              >
+                Save
+              </Button>
+            </Tooltip>
+          )}
         </Stack>
       </Stack>
 
@@ -1403,22 +1404,17 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         </Box>
       )}
 
-      <AddColumnDialog
-        open={addColumnOpen}
-        columns={result.columns}
-        rows={result.rows}
-        existingNames={result.columns.map((c) => c.name)}
-        onClose={() => setAddColumnOpen(false)}
-        onAdd={onAddComputedColumn}
-      />
-
-      <ColumnTypesDialog
-        open={typesOpen}
-        columns={result.columns}
-        rows={result.rows}
+      {/* One window, three tabs: AI edit / Data types / Add column. */}
+      <GridToolsDialog
+        open={toolsOpen}
+        initialTab={toolsTab}
+        result={result}
         kinds={columnKinds}
-        onClose={() => setTypesOpen(false)}
         onKindChange={handleKindChange}
+        onAddComputedColumn={onAddComputedColumn}
+        onAiApply={onAiTransformApply}
+        onTabChange={setToolsTab}
+        onClose={() => setToolsOpen(false)}
       />
 
       {/* Paste fallback for touch screens and restricted clipboards: the
@@ -1614,20 +1610,15 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
             detail="Double-click any column header."
           />
           <HelpRow
-            icon={<StraightenIcon fontSize="small" />}
-            title="Data types"
-            detail="The Data types button switches a column between text, number and date so sorting and filters behave correctly."
+            icon={<EditIcon fontSize="small" />}
+            title="Edit grid"
+            detail="One window, three tabs: AI edit (describe a change and AI writes a Python script for the table), Data types (switch a column between text, number and date) and Add column (build a calculated column with a formula)."
           />
-          <HelpRow
-            icon={<FunctionsIcon fontSize="small" />}
-            title="Add column"
-            detail="Build a calculated column with a formula over the existing columns."
-          />
-          {onOpenAiTransform && (
+          {onSaveToWarehouse && (
             <HelpRow
-              icon={<AutoAwesomeIcon fontSize="small" />}
-              title="AI edit"
-              detail="Describe a change in plain English and AI writes the Python script that updates this table."
+              icon={<SaveIcon fontSize="small" />}
+              title="Save"
+              detail="Store the grid as a snapshot in the BI warehouse (the BI tab) so you can chart or inspect it later without re-running the query."
             />
           )}
           {onRevertGrid && (

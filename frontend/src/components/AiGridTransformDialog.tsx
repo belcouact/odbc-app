@@ -4,10 +4,6 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import List from '@mui/material/List'
@@ -29,7 +25,8 @@ const SAMPLE_ROWS = 20
 
 type Step = 'requirement' | 'clarify' | 'script'
 
-interface AiGridTransformDialogProps {
+interface AiTransformPanelProps {
+  /** Whether the hosting window is open — resets the flow and loads history. */
   open: boolean
   result: QueryResult
   onClose: () => void
@@ -41,14 +38,14 @@ interface AiGridTransformDialogProps {
  * AI-assisted grid editing: the user describes the modification in plain
  * language, the AI first asks clarifying questions (when the request is
  * ambiguous), then writes a Python script which is previewed and run against
- * the current grid rows.
+ * the current grid rows. Rendered as the "AI edit" tab of GridToolsDialog.
  */
-export default function AiGridTransformDialog({
+export default function AiTransformPanel({
   open,
   result,
   onClose,
   onApply,
-}: AiGridTransformDialogProps) {
+}: AiTransformPanelProps) {
   const [step, setStep] = useState<Step>('requirement')
   const [requirement, setRequirement] = useState('')
   const [questions, setQuestions] = useState<string[]>([])
@@ -177,20 +174,9 @@ export default function AiGridTransformDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onClose={working ? undefined : onClose}
-      fullWidth
-      maxWidth="md"
-      fullScreen={typeof window !== 'undefined' && window.innerWidth < 600}
-    >
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <AutoAwesomeIcon color="primary" fontSize="small" />
-        Edit grid with AI
-      </DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2} sx={{ mt: 0.5 }}>
-          {error && <Alert severity="error">{error}</Alert>}
+    <Box sx={{ p: 2 }}>
+      <Stack spacing={2}>
+        {error && <Alert severity="error">{error}</Alert>}
 
           {/* Column reference: click a chip to insert its name */}
           {result.columns.length > 0 && (
@@ -333,9 +319,8 @@ export default function AiGridTransformDialog({
               </Box>
             </Box>
           )}
-        </Stack>
-      </DialogContent>
-      <DialogActions sx={{ px: 2, py: 1.5, flexWrap: 'wrap', gap: 1 }}>
+      </Stack>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 1, pt: 2 }}>
         {step === 'requirement' && (
           <>
             <Button onClick={onClose} disabled={working} sx={{ minHeight: 44 }}>
@@ -399,7 +384,7 @@ export default function AiGridTransformDialog({
             </Button>
           </>
         )}
-      </DialogActions>
-    </Dialog>
+      </Box>
+    </Box>
   )
 }

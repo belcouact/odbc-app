@@ -54,6 +54,7 @@ import ExternalAppPage from './pages/ExternalAppPage'
 import AiSidebar from './components/AiSidebar'
 import GuidedTour, { TOUR_STORAGE_KEY } from './components/GuidedTour'
 import { emit } from './editorBus'
+import type { GridLoadPayload } from './editorBus'
 import type { AiMode, GridDrillFilter } from './types'
 
 type View =
@@ -929,6 +930,12 @@ function AppShell() {
     emit({ type: 'drill-grid', filters })
     if (filters.length > 0) setView('editor')
   }, [])
+  // BI → "Load to grid": swap the Query grid's rows for a stored snapshot's
+  // data, then reveal the Query page where the grid lives.
+  const loadSnapshotToGrid = useCallback((payload: GridLoadPayload) => {
+    emit({ type: 'load-grid', payload })
+    setView('editor')
+  }, [])
   const openBi = useCallback(() => setView('bi'), [])
   const closeHelp = useCallback(() => setHelpOpen(false), [])
   // Opening the board reads everything on it; closing re-reads, so a post that
@@ -1364,7 +1371,7 @@ function AppShell() {
           <ScriptPage ref={scriptRef} onOpenAi={openAi} onDrillThrough={drillThroughGrid} />
         </Box>
         <Box sx={{ width: '100%', display: view === 'bi' ? 'block' : 'none' }}>
-          <BiPage ref={biRef} onOpenAi={openAi} />
+          <BiPage ref={biRef} onOpenAi={openAi} onLoadToGrid={loadSnapshotToGrid} />
         </Box>
         <Box sx={{ width: '100%', display: view === 'flowdiagram' ? 'block' : 'none' }}>
           <FlowDiagramPage active={view === 'flowdiagram'} />

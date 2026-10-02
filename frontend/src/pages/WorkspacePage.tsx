@@ -96,7 +96,6 @@ import type {
   TableInfo,
 } from '../types'
 import ResultsGrid, { type ResultsGridHandle } from '../components/ResultsGrid'
-import AiGridTransformDialog from '../components/AiGridTransformDialog'
 import { evaluateFormula, type ComputedColumn } from '../utils/formula'
 import type { ColumnKind } from '../utils/columns'
 import PredefinedSqlPage from './PredefinedSqlPage'
@@ -1291,6 +1290,46 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
 
   const [notice, setNotice] = useState<string | null>(null)
 
+  // ---- Save the current grid to the BI warehouse ----
+  const [warehouseSaveOpen, setWarehouseSaveOpen] = useState(false)
+  const [warehouseSaveName, setWarehouseSaveName] = useState('')
+  const [warehouseSaving, setWarehouseSaving] = useState(false)
+  const [warehouseSaveError, setWarehouseSaveError] = useState<string | null>(null)
+
+  const openWarehouseSave = useCallback(() => {
+    setWarehouseSaveName(
+      `Grid result — ${new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`,
+    )
+    setWarehouseSaveError(null)
+    setWarehouseSaveOpen(true)
+  }, [])
+
+  const handleWarehouseSave = useCallback(async () => {
+    if (!effectiveResult || effectiveResult.rows.length === 0) return
+    const name = warehouseSaveName.trim()
+    if (!name || warehouseSaving) return
+    setWarehouseSaving(true)
+    setWarehouseSaveError(null)
+    try {
+      const created = await api.createSnapshot({
+        name,
+        source: 'grid',
+        connection_id: connectionId || null,
+        sql_text: sqlText || null,
+        columns: effectiveResult.columns.map((col) => ({ name: col.name, type: col.type })),
+        rows: effectiveResult.rows,
+      })
+      setWarehouseSaveOpen(false)
+      setNotice(
+        `Saved "${created.name}" (${created.row_count.toLocaleString()} rows) — manage it in the BI tab`,
+      )
+    } catch (err) {
+      setWarehouseSaveError(err instanceof Error ? err.message : 'Failed to save the snapshot')
+    } finally {
+      setWarehouseSaving(false)
+    }
+  }, [effectiveResult, warehouseSaveName, warehouseSaving, connectionId, sqlText])
+
   // Latest committed state, readable from the editorBus 'request-run' handler.
   const stateRef = useRef<
     BuilderSnapshot & { mode: Mode; sqlText: string; connections: DbConnection[] }
@@ -1775,7 +1814,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const gridAnchorRef = useRef<HTMLDivElement | null>(null)
 
   // ---- AI grid edit (transform the current grid rows via a generated script) ----
-  const [aiTransformOpen, setAiTransformOpen] = useState(false)
   /** Stack of grid states before each AI transform, for Revert (newest last). */
   const [gridHistory, setGridHistory] = useState<{ result: QueryResult; computedColumns: ComputedColumn[] }[]>([])
 
@@ -1785,7 +1823,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     columns: { name: string; type: string }[],
     log: string,
   ) => {
-    setAiTransformOpen(false)
     if (!result) return
     // Snapshot the ORIGINAL result + computed columns (not the memoized
     // effective result, which already has computed columns baked in) so that
@@ -2268,6 +2305,25 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           }, 120)
         }
         break
+      case 'load-grid': {
+        // The BI page loads a stored snapshot back into this grid. Like a file
+        // upload it replaces the whole grid, so the revert history restarts.
+        const { name, columns, rows } = action.payload
+        setGridHistory([])
+        setResult({
+          rows,
+          columns,
+          row_count: rows.length,
+          elapsed_ms: 0,
+          sql: '',
+        })
+        setUploadActive(false)
+        setNotice(`Loaded "${name}" — ${rows.length.toLocaleString()} rows into the grid.`)
+        window.setTimeout(() => {
+          gridAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 120)
+        break
+      }
     }
   }
 
@@ -2608,10 +2664,11 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             ref={gridHandleRef}
             result={effectiveResult}
             onAddComputedColumn={(col) => setComputedColumns((prev) => [...prev, col])}
-            onOpenAiTransform={() => setAiTransformOpen(true)}
+            onAiTransformApply={handleGridTransformApply}
             onRevertGrid={gridHistory.length > 0 ? handleGridRevert : undefined}
             onRowsPasted={handleGridPaste}
             onColumnTypeChange={handleColumnTypeChange}
+            onSaveToWarehouse={openWarehouseSave}
             drillFilters={drillFilters}
             onClearDrill={() => setDrillFilters([])}
           />
@@ -4378,15 +4435,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         onNotice={setNotice}
       />
 
-      {effectiveResult && (
-        <AiGridTransformDialog
-          open={aiTransformOpen}
-          result={effectiveResult}
-          onClose={() => setAiTransformOpen(false)}
-          onApply={handleGridTransformApply}
-        />
-      )}
-
       <OperatorHelpDialog
         open={criteriaHelpOpen}
         onClose={() => setCriteriaHelpOpen(false)}
@@ -4435,6 +4483,58 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             sx={{ minHeight: 40, minWidth: 96 }}
           >
             OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Save the current grid as a snapshot in the BI warehouse */}
+      <Dialog
+        open={warehouseSaveOpen}
+        onClose={warehouseSaving ? undefined : () => setWarehouseSaveOpen(false)}
+        fullWidth
+        maxWidth="xs"
+        fullScreen={fullScreenDialog}
+      >
+        <DialogTitle>Save to warehouse</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Copies the current grid (
+            {effectiveResult
+              ? `${effectiveResult.rows.length.toLocaleString()} rows · ${effectiveResult.columns.length.toLocaleString()} columns`
+              : 'no data'}
+            ) into the local SQLite warehouse shown in the BI tab.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Snapshot name"
+            value={warehouseSaveName}
+            onChange={(event) => setWarehouseSaveName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && warehouseSaveName.trim()) void handleWarehouseSave()
+            }}
+            disabled={warehouseSaving}
+          />
+          {warehouseSaveError && (
+            <Alert severity="error" sx={{ mt: 1.5 }}>
+              {warehouseSaveError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWarehouseSaveOpen(false)} disabled={warehouseSaving} sx={{ minHeight: 40 }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={
+              warehouseSaving ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />
+            }
+            onClick={() => void handleWarehouseSave()}
+            disabled={warehouseSaving || !warehouseSaveName.trim()}
+            sx={{ minHeight: 40 }}
+          >
+            Save
           </Button>
         </DialogActions>
       </Dialog>

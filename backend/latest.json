@@ -1,7 +1,7 @@
 {
-  "version": "2.0.9",
+  "version": "2.1.0",
   "min_version": "1.0.0",
-  "notes": "1. Query grid — smarter copy: with a drill-through filter active, the Copy button now exports only the rows you can see (the drilled-down set) instead of the whole result; row selections still take priority.\n2. Summary tab — sortable table: click any column header (group-by columns, Column name, or a statistic) to sort the table; clicking again flips the direction, a third click returns to the original order. Copy and Download Excel follow the sorted order.\n3. Summary drill-through: clicking a row in the Summary table or pivot now scrolls the Query page smoothly to the results grid, so the drilled rows are in view as soon as you land.\n4. About page: two new info cards show the technology behind the app — the frontend stack (React · MUI · AG Grid · ECharts) and the backend stack (Python · FastAPI · pyodbc · pandas).",
+  "notes": "1. BI page — Relationships: link warehouse tables on a shared column (left or inner join), drill from a row to its related rows in the linked table, or view a flat joined table; relationships are saved, editable and deletable.\n2. Relationship diagram: all relationships in one view — tables as nodes connected by lines labelled with the key pair, colored/solid for left joins and dashed green for inner joins, with arrows showing direction; hover a line for details.\n3. Charts across tables: in the Chart tab, pick a relationship as the chart data source to chart fields from both tables at once (joined dataset, up to 5,000 rows).\n4. Warehouse section: snapshots and relationships combined into one tabbed, collapsible card with live counts.\n5. Edit grid window: AI edit, data types and calculated columns combined into a single dialog with tabs; the data types tab redesigned as responsive cards with a per-column type dropdown.\n6. Snapshots: one-click button to load stored rows back into the Query grid.",
   "exe": "ODBCQueryApp.exe",
-  "sha256": "79aa2a514424c1dd0d9eae80b5d415a68b0856954aa06f15fd3e4b26d3417629"
+  "sha256": "5257207ce71934101c3a8fadf7355e966284e14117494945aa63b4f71551274b"
 }

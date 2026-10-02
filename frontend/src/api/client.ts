@@ -1362,6 +1362,35 @@ export const api = {
         { timeout: 60000 },
       ),
     ),
+
+  // ---- BI warehouse (snapshot relationships) ----
+
+  /** All stored relationships, newest first (both tables' names included). */
+  listRelationships: (): Promise<SnapshotRelationship[]> =>
+    apiFetch(client.get('/analytics/relationships', { timeout: 30000 })),
+
+  /** Store a new relationship between two snapshots. */
+  createRelationship: (payload: RelationshipPayload): Promise<SnapshotRelationship> =>
+    apiFetch(client.post('/analytics/relationships', payload, { timeout: 30000 })),
+
+  /** Replace a relationship's definition. */
+  updateRelationship: (id: string, payload: RelationshipPayload): Promise<SnapshotRelationship> =>
+    apiFetch(
+      client.put(`/analytics/relationships/${encodeURIComponent(id)}`, payload, { timeout: 30000 }),
+    ),
+
+  /** Delete a relationship (the snapshots themselves are untouched). */
+  deleteRelationship: (id: string): Promise<{ ok: boolean }> =>
+    apiFetch(client.delete(`/analytics/relationships/${encodeURIComponent(id)}`, { timeout: 30000 })),
+
+  /** Flat join preview of the two snapshots on the relationship's keys. */
+  previewRelationship: (id: string, limit = 500): Promise<RelationshipJoinPreview> =>
+    apiFetch(
+      client.get(`/analytics/relationships/${encodeURIComponent(id)}/preview`, {
+        params: { limit },
+        timeout: 120000,
+      }),
+    ),
 }
 
 /** Feedback category: bug report, idea, question or anything else. */
@@ -1511,6 +1540,45 @@ export interface DashboardPayload {
   visuals: DashboardVisual[]
   /** Null while the snapshot has never been charted. */
   updated_at: string | null
+}
+
+/** A saved link between two warehouse snapshots (one column pair). */
+export interface SnapshotRelationship {
+  id: string
+  name: string
+  left_snapshot_id: string
+  left_column: string
+  /** 'left' keeps unmatched left rows; 'inner' drops them (join previews). */
+  join_type: string
+  right_snapshot_id: string
+  right_column: string
+  created_at: string
+  /** Display names of both tables (resolved server-side). */
+  left_name: string
+  right_name: string
+}
+
+/** Request body for POST/PUT /api/analytics/relationships. */
+export interface RelationshipPayload {
+  name?: string
+  left_snapshot_id: string
+  left_column: string
+  join_type?: string
+  right_snapshot_id: string
+  right_column: string
+}
+
+/** Flat join preview (GET /api/analytics/relationships/{id}/preview). */
+export interface RelationshipJoinPreview {
+  columns: string[]
+  rows: Record<string, unknown>[]
+  total: number
+  /** True when the row cap cut the join short. */
+  truncated: boolean
+  /** How many left rows found at least one match. */
+  matched_left: number
+  left_row_count: number
+  right_row_count: number
 }
 
 /** A stored AI grid-transform script kept for re-use. */

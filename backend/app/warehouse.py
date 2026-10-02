@@ -69,6 +69,19 @@ CREATE TABLE IF NOT EXISTS dashboards (
     updated_at      TEXT NOT NULL,
     FOREIGN KEY (snapshot_id) REFERENCES query_snapshots (id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS snapshot_relationships (
+    id                TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    left_snapshot_id  TEXT NOT NULL,
+    left_column       TEXT NOT NULL,
+    join_type         TEXT NOT NULL,
+    right_snapshot_id TEXT NOT NULL,
+    right_column      TEXT NOT NULL,
+    created_at        TEXT NOT NULL,
+    FOREIGN KEY (left_snapshot_id) REFERENCES query_snapshots (id) ON DELETE CASCADE,
+    FOREIGN KEY (right_snapshot_id) REFERENCES query_snapshots (id) ON DELETE CASCADE
+);
 """
 
 # Columns of a snapshot row payload must be valid JSON, but ODBC hands back
@@ -329,4 +342,201 @@ def warehouse_info() -> dict[str, Any]:
         "snapshot_count": len(snapshots),
         "row_count": sum(item["row_count"] for item in snapshots),
         "size_bytes": os.path.getsize(WAREHOUSE_DB) if os.path.exists(WAREHOUSE_DB) else 0,
+    }
+
+
+# ---- Relationships between warehouse snapshots ----
+# A relationship links two snapshots on one column pair ("foreign key"), so the
+# BI page can drill from a row in one table to its rows in another. It is pure
+# metadata: matching happens at read time against the JSON row payloads.
+
+
+def _relationship_row(row: sqlite3.Row) -> dict[str, Any]:
+    item = dict(row)
+    # Snapshot names travel along for display; a deleted snapshot would leave
+    # no relationship row (ON DELETE CASCADE), so the join always matches.
+    return item
+
+
+def list_relationships() -> list[dict[str, Any]]:
+    """All relationships, newest first, with display names of both tables."""
+    with connect() as conn:
+        cursor = conn.execute(
+            "SELECT r.id, r.name, r.left_snapshot_id, r.left_column, r.join_type, "
+            "r.right_snapshot_id, r.right_column, r.created_at, "
+            "l.name AS left_name, rt.name AS right_name "
+            "FROM snapshot_relationships r "
+            "JOIN query_snapshots l ON l.id = r.left_snapshot_id "
+            "JOIN query_snapshots rt ON rt.id = r.right_snapshot_id "
+            "ORDER BY r.created_at DESC"
+        )
+        return [_relationship_row(item) for item in cursor.fetchall()]
+
+
+def create_relationship(
+    *,
+    name: str,
+    left_snapshot_id: str,
+    left_column: str,
+    join_type: str,
+    right_snapshot_id: str,
+    right_column: str,
+) -> dict[str, Any]:
+    """Store a new relationship. Returns its full row (with table names)."""
+    relationship_id = uuid.uuid4().hex
+    created_at = _now()
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO snapshot_relationships "
+            "(id, name, left_snapshot_id, left_column, join_type, "
+            "right_snapshot_id, right_column, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                relationship_id,
+                name,
+                left_snapshot_id,
+                left_column,
+                join_type,
+                right_snapshot_id,
+                right_column,
+                created_at,
+            ),
+        )
+    return get_relationship(relationship_id)  # type: ignore[return-value]
+
+
+def get_relationship(relationship_id: str) -> Optional[dict[str, Any]]:
+    """One relationship with display names, or None when unknown."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT r.id, r.name, r.left_snapshot_id, r.left_column, r.join_type, "
+            "r.right_snapshot_id, r.right_column, r.created_at, "
+            "l.name AS left_name, rt.name AS right_name "
+            "FROM snapshot_relationships r "
+            "JOIN query_snapshots l ON l.id = r.left_snapshot_id "
+            "JOIN query_snapshots rt ON rt.id = r.right_snapshot_id "
+            "WHERE r.id = ?",
+            (relationship_id,),
+        ).fetchone()
+    return _relationship_row(row) if row is not None else None
+
+
+def update_relationship(
+    relationship_id: str,
+    *,
+    name: str,
+    left_snapshot_id: str,
+    left_column: str,
+    join_type: str,
+    right_snapshot_id: str,
+    right_column: str,
+) -> Optional[dict[str, Any]]:
+    """Replace a relationship's definition. None when the id is unknown."""
+    with connect() as conn:
+        cursor = conn.execute(
+            "UPDATE snapshot_relationships SET name = ?, left_snapshot_id = ?, "
+            "left_column = ?, join_type = ?, right_snapshot_id = ?, right_column = ? "
+            "WHERE id = ?",
+            (
+                name,
+                left_snapshot_id,
+                left_column,
+                join_type,
+                right_snapshot_id,
+                right_column,
+                relationship_id,
+            ),
+        )
+        if cursor.rowcount == 0:
+            return None
+    return get_relationship(relationship_id)
+
+
+def delete_relationship(relationship_id: str) -> bool:
+    """Delete a relationship. False when the id is unknown."""
+    with connect() as conn:
+        cursor = conn.execute(
+            "DELETE FROM snapshot_relationships WHERE id = ?", (relationship_id,)
+        )
+        return cursor.rowcount > 0
+
+
+def preview_relationship_join(relationship_id: str, limit: int = 500) -> Optional[dict[str, Any]]:
+    """Flat left/inner join of the two snapshots on the relationship's keys.
+
+    Rows are JSON payloads, so the join runs in Python: index the right rows by
+    the stringified key, then emit one row per match. Left rows without a match
+    are kept (with nulls) for ``left`` joins and dropped for ``inner`` joins.
+    Column name collisions are resolved by prefixing the right table's name.
+    """
+    relationship = get_relationship(relationship_id)
+    if relationship is None:
+        return None
+
+    left = get_snapshot(relationship["left_snapshot_id"])
+    right = get_snapshot(relationship["right_snapshot_id"])
+    if left is None or right is None:
+        return None
+
+    left_column = relationship["left_column"]
+    right_column = relationship["right_column"]
+    right_name = relationship["right_name"]
+
+    # Prefix right columns only when they would otherwise collide with a left
+    # column, so typical key names (NAME, Batch, ...) stay readable.
+    left_columns = [column["name"] for column in left["columns"]] or list(left["rows"][0].keys())
+    right_columns = [column["name"] for column in right["columns"]] or list(right["rows"][0].keys())
+    collisions = set(left_columns) & set(right_columns)
+    right_label = {name: f"{right_name}.{name}" if name in collisions else name for name in right_columns}
+
+    index: dict[str, list[dict[str, Any]]] = {}
+    for row in right["rows"]:
+        key = row.get(right_column)
+        if key is None:
+            continue
+        index.setdefault(str(key), []).append(row)
+
+    columns = list(left_columns)
+    for name in right_columns:
+        labelled = right_label[name]
+        if labelled not in columns:
+            columns.append(labelled)
+
+    joined: list[dict[str, Any]] = []
+    matched_left = 0
+    truncated = False
+    for row in left["rows"]:
+        key = row.get(left_column)
+        matches = index.get(str(key), []) if key is not None else []
+        if matches:
+            matched_left += 1
+        elif relationship["join_type"] == "inner":
+            continue
+        if not matches:
+            if len(joined) >= limit:
+                truncated = True
+                break
+            merged = dict(row)
+            for name in right_columns:
+                merged[right_label[name]] = None
+            joined.append(merged)
+            continue
+        for match in matches:
+            if len(joined) >= limit:
+                truncated = True
+                break
+            merged = dict(row)
+            for name in right_columns:
+                merged[right_label[name]] = match.get(name)
+            joined.append(merged)
+        if truncated:
+            break
+
+    return {
+        "columns": columns,
+        "rows": joined,
+        "total": len(joined),
+        "truncated": truncated,
+        "matched_left": matched_left,
+        "left_row_count": left["row_count"],
+        "right_row_count": right["row_count"],
     }

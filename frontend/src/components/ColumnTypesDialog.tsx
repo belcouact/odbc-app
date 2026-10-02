@@ -1,11 +1,6 @@
-import Button from '@mui/material/Button'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
+import Box from '@mui/material/Box'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
-import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import type { QueryResult } from '../types'
 import {
@@ -14,77 +9,116 @@ import {
   type ColumnKind,
 } from '../utils/columns'
 
-interface ColumnTypesDialogProps {
-  open: boolean
+interface ColumnTypesPanelProps {
   columns: QueryResult['columns']
   rows: QueryResult['rows']
   /** User-chosen kinds keyed by column name (overrides auto-detection). */
   kinds: Record<string, ColumnKind>
-  onClose: () => void
   onKindChange: (name: string, kind: ColumnKind) => void
 }
 
+/** Compact per-column kind select (small font, square corners). */
+const kindSelectSx = {
+  width: 104,
+  fontSize: '0.8125rem',
+  borderRadius: 1,
+  bgcolor: 'background.paper',
+  flexShrink: 0,
+  '& .MuiSelect-select': { py: 0.625 },
+  '& .MuiSvgIcon-root': { fontSize: '1rem' },
+} as const
+
 /**
- * Popup that lets the user review / override how each result column is treated
- * (Number / Text / Boolean / Date) — affecting numeric sorting, filters and
- * cell formatting. Replaces the old per-column type chip in the header.
+ * Review / override how each result column is treated (Number / Text /
+ * Boolean / Date) — affecting numeric sorting, filters and cell formatting.
+ * Rendered as the "Data types" tab of GridToolsDialog.
  */
-export default function ColumnTypesDialog({
-  open,
+export default function ColumnTypesPanel({
   columns,
   rows,
   kinds,
-  onClose,
   onKindChange,
-}: ColumnTypesDialogProps) {
+}: ColumnTypesPanelProps) {
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Column data types</DialogTitle>
-      <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 1 }}>
-          Choose how each column is treated in the grid (sorting, filters, formatting). Kinds are
-          auto-detected from the database type; override any column here.
-        </Typography>
+    <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+      <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
+        Choose how each column is treated in the grid (sorting, filters, formatting). Kinds are
+        auto-detected from the database type; override any column here.
+      </Typography>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+          gap: 0.75,
+        }}
+      >
         {columns.map((column) => {
           const inferred = detectColumnKind(column.name, column.type, rows)
+          const overridden = kinds[column.name] !== undefined
           const current = kinds[column.name] ?? inferred
           return (
-            <Stack
+            <Box
               key={column.name}
-              direction="row"
-              spacing={1}
-              useFlexGap
-              sx={{ py: 0.5, alignItems: 'center' }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                minWidth: 0,
+                pl: 1.25,
+                pr: 0.75,
+                py: 0.5,
+                minHeight: 48,
+                bgcolor: 'action.hover',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+              }}
             >
-              <Typography variant="body2" noWrap sx={{ flexGrow: 1, fontFamily: 'monospace' }}>
-                {column.name}
-              </Typography>
+              <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                <Typography
+                  noWrap
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.8125rem',
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {column.name}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  noWrap
+                  sx={{ display: 'block', lineHeight: 1.2 }}
+                >
+                  {column.type || 'unknown type'} · {overridden ? 'custom' : 'auto'}
+                </Typography>
+              </Box>
               <Select
                 size="small"
                 value={current}
                 onChange={(event) => onKindChange(column.name, event.target.value as ColumnKind)}
-                sx={{ minWidth: 120 }}
+                sx={kindSelectSx}
               >
                 {COLUMN_KIND_OPTIONS.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
+                  <MenuItem
+                    key={option.value}
+                    value={option.value}
+                    sx={{ fontSize: '0.8125rem' }}
+                  >
                     {option.label}
                   </MenuItem>
                 ))}
               </Select>
-            </Stack>
+            </Box>
           )
         })}
-        {columns.length === 0 && (
-          <Typography variant="body2" color="text.secondary">
-            No columns to show.
-          </Typography>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} sx={{ minHeight: 40 }}>
-          Close
-        </Button>
-      </DialogActions>
-    </Dialog>
+      </Box>
+      {columns.length === 0 && (
+        <Typography variant="body2" color="text.secondary">
+          No columns to show.
+        </Typography>
+      )}
+    </Box>
   )
 }

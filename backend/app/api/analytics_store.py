@@ -53,6 +53,22 @@ class DashboardSave(BaseModel):
     visuals: list[dict[str, Any]] = []
 
 
+class RelationshipSave(BaseModel):
+    """Body for POST /analytics/relationships and PUT .../relationships/{id}.
+
+    Links two warehouse snapshots on one column pair so the BI page can drill
+    across tables. ``join_type`` is 'left' (keep unmatched left rows) or
+    'inner' (drop them); the preview endpoint honors it.
+    """
+
+    name: str = Field(default="")
+    left_snapshot_id: str = Field(min_length=1)
+    left_column: str = Field(min_length=1)
+    join_type: str = Field(default="left", pattern="^(left|inner)$")
+    right_snapshot_id: str = Field(min_length=1)
+    right_column: str = Field(min_length=1)
+
+
 @router.get("/analytics/warehouse")
 def get_warehouse_info():
     """Location and size of the local warehouse database."""
@@ -140,3 +156,60 @@ def save_dashboard(snapshot_id: str, payload: DashboardSave):
     if dashboard is None:
         raise HTTPException(status_code=404, detail=f"Snapshot '{snapshot_id}' not found")
     return dashboard
+
+
+# ---- Relationships between warehouse snapshots ----
+
+
+@router.get("/analytics/relationships")
+def list_relationships():
+    """All stored relationships (with both tables' display names)."""
+    return warehouse.list_relationships()
+
+
+@router.post("/analytics/relationships", status_code=201)
+def create_relationship(payload: RelationshipSave):
+    """Store a new relationship between two snapshots."""
+    return warehouse.create_relationship(
+        name=payload.name,
+        left_snapshot_id=payload.left_snapshot_id,
+        left_column=payload.left_column,
+        join_type=payload.join_type,
+        right_snapshot_id=payload.right_snapshot_id,
+        right_column=payload.right_column,
+    )
+
+
+@router.put("/analytics/relationships/{relationship_id}")
+def update_relationship(relationship_id: str, payload: RelationshipSave):
+    """Replace a relationship's definition."""
+    updated = warehouse.update_relationship(
+        relationship_id,
+        name=payload.name,
+        left_snapshot_id=payload.left_snapshot_id,
+        left_column=payload.left_column,
+        join_type=payload.join_type,
+        right_snapshot_id=payload.right_snapshot_id,
+        right_column=payload.right_column,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"Relationship '{relationship_id}' not found")
+    return updated
+
+
+@router.delete("/analytics/relationships/{relationship_id}")
+def delete_relationship(relationship_id: str):
+    """Delete a relationship (the snapshots themselves are untouched)."""
+    if not warehouse.delete_relationship(relationship_id):
+        raise HTTPException(status_code=404, detail=f"Relationship '{relationship_id}' not found")
+    return {"ok": True}
+
+
+@router.get("/analytics/relationships/{relationship_id}/preview")
+def preview_relationship(relationship_id: str, limit: int = 500):
+    """Flat join preview of the two snapshots (client-side drill uses get_snapshot)."""
+    limit = max(1, min(limit, 5000))
+    preview = warehouse.preview_relationship_join(relationship_id, limit=limit)
+    if preview is None:
+        raise HTTPException(status_code=404, detail=f"Relationship '{relationship_id}' not found")
+    return preview

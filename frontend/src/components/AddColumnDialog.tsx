@@ -3,10 +3,6 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
@@ -22,29 +18,28 @@ import {
 const OPERATOR_BUTTONS = ['+', '-', '*', '/', '%', '^', '(', ')', '&', ',', '=', '!=']
 const FUNCTION_BUTTONS = ['IF', 'ROUND', 'ABS', 'CEIL', 'FLOOR', 'SQRT', 'LEN', 'UPPER', 'LOWER', 'TRIM', 'COALESCE']
 
-interface AddColumnDialogProps {
-  open: boolean
+interface AddColumnPanelProps {
   columns: QueryResult['columns']
   rows: QueryResult['rows']
   /** Names already used (source + computed); the new name must be unique. */
   existingNames: string[]
-  onClose: () => void
   onAdd: (col: ComputedColumn) => void
+  onClose: () => void
 }
 
 /**
  * Builder for a calculated grid column. Users pick columns / operators from the
  * helper palette (which inserts at the cursor) and see a live preview on the
- * first rows before committing.
+ * first rows before committing. Rendered as the "Add column" tab of
+ * GridToolsDialog; stays open after an add so several columns can be built.
  */
-export default function AddColumnDialog({
-  open,
+export default function AddColumnPanel({
   columns,
   rows,
   existingNames,
-  onClose,
   onAdd,
-}: AddColumnDialogProps) {
+  onClose,
+}: AddColumnPanelProps) {
   const [name, setName] = useState('')
   const [expression, setExpression] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -138,121 +133,118 @@ export default function AddColumnDialog({
       : ''
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-      <DialogTitle>Add calculated column</DialogTitle>
-      <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-        <Typography variant="caption" color="text.secondary">
-          Build a formula for a new column. Reference source columns with{' '}
-          <Box component="span" sx={{ fontFamily: 'monospace', bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
-            {'{ColumnName}'}
-          </Box>{' '}
-          — e.g. <Box component="span" sx={{ fontFamily: 'monospace' }}>{'{Price} * {Qty}'}</Box>.
+    <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <Typography variant="caption" color="text.secondary">
+        Build a formula for a new column. Reference source columns with{' '}
+        <Box component="span" sx={{ fontFamily: 'monospace', bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
+          {'{ColumnName}'}
+        </Box>{' '}
+        — e.g. <Box component="span" sx={{ fontFamily: 'monospace' }}>{'{Price} * {Qty}'}</Box>.
+      </Typography>
+
+      <TextField
+        label="Column name"
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value)
+          setError(null)
+        }}
+        fullWidth
+        size="small"
+      />
+
+      <TextField
+        label="Formula"
+        value={expression}
+        onChange={(e) => {
+          setExpression(e.target.value)
+          setError(null)
+        }}
+        fullWidth
+        size="small"
+        multiline
+        minRows={2}
+        inputRef={exprRef}
+        sx={{ '& textarea': { fontFamily: 'monospace', fontSize: 13 } }}
+      />
+
+      {/* Operator helper */}
+      <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+        {OPERATOR_BUTTONS.map((op) => (
+          <Button
+            key={op}
+            size="small"
+            variant="outlined"
+            onClick={() => insert(op === '=' ? ' = ' : op)}
+            sx={{ minWidth: 36, minHeight: 40, px: 1, fontFamily: 'monospace' }}
+          >
+            {op}
+          </Button>
+        ))}
+      </Stack>
+
+      {/* Function helper */}
+      <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+        {FUNCTION_BUTTONS.map((fn) => (
+          <Button
+            key={fn}
+            size="small"
+            variant="outlined"
+            onClick={() => insertFunction(fn)}
+            sx={{ minHeight: 40, fontFamily: 'monospace' }}
+          >
+            {fn}(
+          </Button>
+        ))}
+      </Stack>
+
+      {/* Column palette */}
+      <Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+          Columns
         </Typography>
-
-        <TextField
-          label="Column name"
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value)
-            setError(null)
-          }}
-          fullWidth
-          size="small"
-          autoFocus
-        />
-
-        <TextField
-          label="Formula"
-          value={expression}
-          onChange={(e) => {
-            setExpression(e.target.value)
-            setError(null)
-          }}
-          fullWidth
-          size="small"
-          multiline
-          minRows={2}
-          inputRef={exprRef}
-          sx={{ '& textarea': { fontFamily: 'monospace', fontSize: 13 } }}
-        />
-
-        {/* Operator helper */}
         <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
-          {OPERATOR_BUTTONS.map((op) => (
-            <Button
-              key={op}
+          {columns.map((col) => (
+            <Chip
+              key={col.name}
               size="small"
-              variant="outlined"
-              onClick={() => insert(op === '=' ? ' = ' : op)}
-              sx={{ minWidth: 36, minHeight: 40, px: 1, fontFamily: 'monospace' }}
-            >
-              {op}
-            </Button>
+              label={col.name}
+              onClick={() => insertColumn(col.name)}
+              sx={{ cursor: 'pointer' }}
+            />
           ))}
         </Stack>
+      </Box>
 
-        {/* Function helper */}
-        <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
-          {FUNCTION_BUTTONS.map((fn) => (
-            <Button
-              key={fn}
-              size="small"
-              variant="outlined"
-              onClick={() => insertFunction(fn)}
-              sx={{ minHeight: 40, fontFamily: 'monospace' }}
-            >
-              {fn}(
-            </Button>
-          ))}
-        </Stack>
+      {(formulaError || missingColumns.length > 0 || error) && (
+        <Alert severity="error">
+          {error || formulaError || `Unknown column(s): ${missingColumns.join(', ')}`}
+        </Alert>
+      )}
 
-        {/* Column palette */}
+      {hintText && (
         <Box>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Columns
+            Preview · {hintText}
           </Typography>
-          <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
-            {columns.map((col) => (
-              <Chip
-                key={col.name}
-                size="small"
-                label={col.name}
-                onClick={() => insertColumn(col.name)}
-                sx={{ cursor: 'pointer' }}
-              />
+          <Stack spacing={0.25}>
+            {preview.slice(0, 8).map((value, index) => (
+              <Typography key={index} variant="body2" noWrap sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                {formatCellValue(value)}
+              </Typography>
             ))}
           </Stack>
         </Box>
+      )}
 
-        {(formulaError || missingColumns.length > 0 || error) && (
-          <Alert severity="error">
-            {error || formulaError || `Unknown column(s): ${missingColumns.join(', ')}`}
-          </Alert>
-        )}
-
-        {hintText && (
-          <Box>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-              Preview · {hintText}
-            </Typography>
-            <Stack spacing={0.25}>
-              {preview.slice(0, 8).map((value, index) => (
-                <Typography key={index} variant="body2" noWrap sx={{ fontFamily: 'monospace', fontSize: 12 }}>
-                  {formatCellValue(value)}
-                </Typography>
-              ))}
-            </Stack>
-          </Box>
-        )}
-      </DialogContent>
-      <DialogActions>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, pt: 0.5 }}>
         <Button onClick={handleClose} sx={{ minHeight: 40 }}>
           Cancel
         </Button>
         <Button onClick={handleAdd} variant="contained" disabled={!canAdd} sx={{ minHeight: 40 }}>
           Add column
         </Button>
-      </DialogActions>
-    </Dialog>
+      </Box>
+    </Box>
   )
 }
