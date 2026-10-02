@@ -16,6 +16,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FileOpenIcon from '@mui/icons-material/FileOpen'
 import GridOnIcon from '@mui/icons-material/GridOn'
+import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SaveIcon from '@mui/icons-material/Save'
@@ -40,6 +41,7 @@ import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
+import Divider from '@mui/material/Divider'
 import FormControl from '@mui/material/FormControl'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
@@ -210,6 +212,24 @@ print(f'Saved \${len(df)} rows to \${path} (in your Downloads folder)')
   },
 ]
 
+/**
+ * Ready-to-paste prompt for an external LLM (Copilot, ChatGPT, ...) that
+ * generates a script matching this page's execution contract. Shown inside
+ * the how-to pop-up with a one-click copy button.
+ */
+const COPILOT_PROMPT = `Write a Python 3 script for the ODBC Query App "Script" tab.
+
+Contract:
+- My query result is already loaded in a variable called data — a list of dicts, one dict per row, e.g. [{'LOT_ID': 'A123', 'QTY': 10}, ...].
+- pandas is available (import pandas as pd). Built-ins like math/json are fine.
+- Show every result with print() — that output is exactly what the app displays.
+- Use plain Python/pandas only; do not install packages, open dialogs, or touch the database.
+
+Task: <describe what you want, e.g. "count rows per HOLD_CODE, sort by count, show the top 10">
+
+My data (columns plus a few sample rows, copied from the grid):
+<paste a handful of rows here>`
+
 const FILE_URI_RE = /file:\/\/[^\s"'<>)]+/g
 
 /** Decode a base64-encoded string into a Blob (used for script output files). */
@@ -304,6 +324,11 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
   const [templateOpen, setTemplateOpen] = useState(false)
   /** Phones show the library full screen, matching the Custom scripts pop-up. */
   const templateFullScreen = useMediaQuery('(max-width:600px)')
+  /** How-to pop-up for this page (opened from the help icon). */
+  const [helpOpen, setHelpOpen] = useState(false)
+  const helpFullScreen = useMediaQuery('(max-width:600px)')
+  /** True briefly after the Copilot prompt is copied, to flip the button label. */
+  const [promptCopied, setPromptCopied] = useState(false)
   /** Stem whose source is being fetched, so only that row shows a spinner. */
   const [templateBusy, setTemplateBusy] = useState('')
   /** Stem of the row whose detail panel is open (one at a time). */
@@ -883,6 +908,25 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
     window.setTimeout(() => setCopiedOutput(false), 1500)
   }, [scriptResult])
 
+  // ---- Copy the Copilot prompt from the how-to pop-up ----
+  const copyPrompt = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(COPILOT_PROMPT)
+    } catch {
+      // Fallback for restricted contexts (same as copyScriptOutput).
+      const textarea = document.createElement('textarea')
+      textarea.value = COPILOT_PROMPT
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    setPromptCopied(true)
+    window.setTimeout(() => setPromptCopied(false), 1500)
+  }, [])
+
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', width: '100%' }}>
       <Stack spacing={2}>
@@ -913,28 +957,50 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
               {/* Stacked at every width: each control gets its own full-width
                   row, matching the reference layout on wide screens too. */}
               <Stack spacing={1} useFlexGap>
-                <ToggleButtonGroup
-                  value={dataSource}
-                  exclusive
-                  size="small"
-                  onChange={(_event, value: 'grid' | 'snapshot' | null) => {
-                    if (value) handleDataSourceChange(value)
-                  }}
-                  aria-label="Script data source"
+                {/* The data-source switch shares its row with the page help
+                    icon (pushed to the far right). */}
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  useFlexGap
                   sx={{
-                    flexShrink: 0,
-                    '& .MuiToggleButton-root': { minHeight: 48, px: 1.5, textTransform: 'none' },
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
                   }}
                 >
-                  <ToggleButton value="grid" aria-label="Use grid data">
-                    <GridOnIcon fontSize="small" sx={{ mr: 0.5 }} />
-                    Grid data
-                  </ToggleButton>
-                  <ToggleButton value="snapshot" aria-label="Use snapshot data">
-                    <StorageIcon fontSize="small" sx={{ mr: 0.5 }} />
-                    Snapshot data
-                  </ToggleButton>
-                </ToggleButtonGroup>
+                  <ToggleButtonGroup
+                    value={dataSource}
+                    exclusive
+                    size="small"
+                    onChange={(_event, value: 'grid' | 'snapshot' | null) => {
+                      if (value) handleDataSourceChange(value)
+                    }}
+                    aria-label="Script data source"
+                    sx={{
+                      flexShrink: 0,
+                      '& .MuiToggleButton-root': { minHeight: 48, px: 1.5, textTransform: 'none' },
+                    }}
+                  >
+                    <ToggleButton value="grid" aria-label="Use grid data">
+                      <GridOnIcon fontSize="small" sx={{ mr: 0.5 }} />
+                      Grid data
+                    </ToggleButton>
+                    <ToggleButton value="snapshot" aria-label="Use snapshot data">
+                      <StorageIcon fontSize="small" sx={{ mr: 0.5 }} />
+                      Snapshot data
+                    </ToggleButton>
+                  </ToggleButtonGroup>
+                  <Tooltip title="How to use this page">
+                    <IconButton
+                      aria-label="How to use this page"
+                      onClick={() => setHelpOpen(true)}
+                      sx={{ flexShrink: 0, minWidth: 48, minHeight: 48 }}
+                    >
+                      <HelpOutlineOutlinedIcon />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
 
                 {dataSource === 'snapshot' && (
                   <FormControl size="small" sx={{ minWidth: '100%' }}>
@@ -1872,6 +1938,120 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
       </Dialog>
 
       {/* Save script as pre-defined dialog */}
+      {/* How-to pop-up: opened from the help icon on the data-source row */}
+      <Dialog
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        fullScreen={helpFullScreen}
+        slotProps={{ paper: { sx: { height: { xs: '100%', sm: 'auto' }, maxHeight: '92vh' } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
+          <HelpOutlineOutlinedIcon color="primary" />
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>How to use this page</Box>
+          <IconButton
+            onClick={() => setHelpOpen(false)}
+            aria-label="Close help"
+            sx={{ width: 48, height: 48 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Typography variant="body2">
+              Run a <b>Python</b> snippet against your data and see whatever it <code>print()</code>
+              s — quick stats, grouping, exports, anything pandas can do.
+            </Typography>
+            <Box component="ol" sx={{ m: 0, pl: 3, '& li': { mb: 1, typography: 'body2', pl: 0.5 } }}>
+              <li>
+                <b>Pick the data</b> — <b>Grid data</b> uses every row currently in the Query tab's
+                table (query result or uploaded file); <b>Snapshot data</b> runs against a stored
+                snapshot instead.
+              </li>
+              <li>
+                <b>Write Python</b> — your rows arrive in a variable named <code>data</code> (a list
+                of dicts, one per row). pandas is pre-installed: <code>import pandas as pd</code>.
+              </li>
+              <li>
+                <b>Run script</b> — the output panel shows what the script printed (errors
+                included). Files the script saves land in your Downloads folder — see the Excel
+                example.
+              </li>
+              <li>
+                <b>Reuse</b> — <b>Insert example</b> loads ready-made snippets,{' '}
+                <b>Use template / View</b> opens the shared template library, and <b>Save</b> +{' '}
+                <b>Custom</b> keep your own scripts one click away.
+              </li>
+            </Box>
+            <Divider />
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">
+                Tip — let Copilot (or any AI) write the script for you
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Ask an external LLM such as <b>GitHub Copilot Chat</b> or <b>ChatGPT</b>, and give
+                it three things:
+              </Typography>
+              <Box component="ol" sx={{ m: 0, pl: 3, '& li': { typography: 'body2', pl: 0.5 } }}>
+                <li>
+                  the <b>task</b> you want done — e.g. “top 10 HOLD_CODEs by row count”,
+                </li>
+                <li>
+                  the <b>contract</b> — rows come in <code>data</code> (a list of dicts), pandas is
+                  available, results are shown via <code>print()</code>,
+                </li>
+                <li>
+                  a <b>sample of your data</b> — copy a few rows from the grid and paste them in.
+                </li>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                The prompt below already covers the contract — fill in the task and paste your
+                sample rows:
+              </Typography>
+            </Stack>
+            <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'action.hover' }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                useFlexGap
+                sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    color: 'text.secondary',
+                  }}
+                >
+                  Prompt for Copilot
+                </Typography>
+                <Button size="small" startIcon={<ContentCopyIcon />} onClick={() => void copyPrompt()}>
+                  {promptCopied ? 'Copied' : 'Copy'}
+                </Button>
+              </Stack>
+              <Box
+                component="pre"
+                sx={{
+                  m: 0,
+                  fontFamily: 'Consolas, monospace',
+                  fontSize: '0.78rem',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  userSelect: 'text',
+                }}
+              >
+                {COPILOT_PROMPT}
+              </Box>
+            </Paper>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save script as pre-defined */}
       <Dialog open={saveScriptDialogOpen} onClose={() => setSaveScriptDialogOpen(false)}>
         <DialogTitle>Save script as pre-defined</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>

@@ -226,10 +226,10 @@ const theme = createTheme({
     },
     // Transient message bars (the Alert inside a Snackbar) share one toast
     // silhouette, but the colour follows the severity: success toasts wear
-    // the bright brand green with ink text (reconnection, upload, connection
-    // test, AI test confirmations), everything else keeps the dark sage bar
-    // with white text. Inline alerts inside forms / dialogs keep their
-    // severity colours.
+    // the bright brand green with white text (reconnection, upload,
+    // connection test, AI test confirmations), everything else keeps the dark
+    // sage bar with white text. Inline alerts inside forms / dialogs keep
+    // their severity colours.
     MuiSnackbar: {
       styleOverrides: {
         root: {
@@ -262,20 +262,20 @@ const theme = createTheme({
                 '& .MuiSvgIcon-root': { fontSize: 20 },
               },
             },
-            // Success toasts: the bright green swatch with dark ink text —
-            // white on this green would be nearly unreadable.
+            // Success toasts: the bright green swatch with white text and
+            // icon — the close button's hover glows white instead of dark.
             '&.MuiAlert-success': {
               backgroundColor: SUCCESS_GREEN,
               borderColor: SUCCESS_GREEN,
-              color: INK,
-              '& .MuiAlert-icon': { color: INK, opacity: 0.9 },
+              color: '#ffffff',
+              '& .MuiAlert-icon': { color: '#ffffff', opacity: 0.95 },
               '& .MuiAlert-action': {
-                color: INK,
+                color: '#ffffff',
                 '& .MuiIconButton-root': {
-                  color: INK,
-                  opacity: 0.85,
-                  '&:hover': { backgroundColor: 'rgba(20, 20, 19, 0.10)', opacity: 1 },
-                  '&:active': { backgroundColor: 'rgba(20, 20, 19, 0.22)' },
+                  color: '#ffffff',
+                  opacity: 0.9,
+                  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.18)', opacity: 1 },
+                  '&:active': { backgroundColor: 'rgba(255, 255, 255, 0.30)' },
                 },
               },
             },
@@ -290,13 +290,13 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           backgroundColor: SUCCESS_GREEN,
-          color: INK,
+          color: '#ffffff',
           borderRadius: 12,
           fontFamily: BODY_FONT,
           fontWeight: 600,
           boxShadow: '0 10px 26px rgba(20, 20, 19, 0.28)',
           '& .MuiSnackbarContent-action': {
-            color: INK,
+            color: '#ffffff',
             paddingLeft: 8,
             marginRight: 0,
             '& .MuiIconButton-root': {
@@ -304,11 +304,11 @@ const theme = createTheme({
               height: 36,
               padding: 0,
               borderRadius: '50%',
-              color: INK,
-              opacity: 0.85,
+              color: '#ffffff',
+              opacity: 0.9,
               transition: 'background-color 160ms ease, opacity 160ms ease',
-              '&:hover': { backgroundColor: 'rgba(20, 20, 19, 0.10)', opacity: 1 },
-              '&:active': { backgroundColor: 'rgba(20, 20, 19, 0.22)' },
+              '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.18)', opacity: 1 },
+              '&:active': { backgroundColor: 'rgba(255, 255, 255, 0.30)' },
               '& .MuiSvgIcon-root': { fontSize: 20 },
             },
           },

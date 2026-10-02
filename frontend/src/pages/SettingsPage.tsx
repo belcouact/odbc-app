@@ -59,8 +59,10 @@ const SECTIONS: { value: SettingsSection; label: string; icon: ReactElement }[] 
 ]
 
 const APP_INFO: { label: string; value: string }[] = [
-  { label: 'Designer', value: 'Alex Luo' },
-  { label: 'Development Platform', value: 'Trae CN + Deepseek-v4-flash' },
+  { label: 'Copyright / License', value: '© 2026 Alex Luo · Gore internal use' },
+  { label: 'Development Platform', value: 'Trae CN · Deepseek/GLM flash model' },
+  { label: 'Frontend Stack', value: 'React 19 · MUI · AG Grid · ECharts' },
+  { label: 'Backend Stack', value: 'Python · FastAPI · pyodbc · pandas' },
   { label: 'Build Version', value: '1.0' },
 ]
 

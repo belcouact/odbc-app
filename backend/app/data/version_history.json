@@ -1,5 +1,10 @@
 [
   {
+    "version": "2.0.9",
+    "date": "2026-10-01",
+    "notes": "1. Query grid — smarter copy: with a drill-through filter active, the Copy button now exports only the rows you can see (the drilled-down set) instead of the whole result; row selections still take priority.\n2. Summary tab — sortable table: click any column header (group-by columns, Column name, or a statistic) to sort the table; clicking again flips the direction, a third click returns to the original order. Copy and Download Excel follow the sorted order.\n3. Summary drill-through: clicking a row in the Summary table or pivot now scrolls the Query page smoothly to the results grid, so the drilled rows are in view as soon as you land.\n4. About page: two new info cards show the technology behind the app — the frontend stack (React · MUI · AG Grid · ECharts) and the backend stack (Python · FastAPI · pyodbc · pandas)."
+  },
+  {
     "version": "2.0.8",
     "date": "2026-10-01",
     "notes": "1. Workspace — live feedback: query results now fade in with a soft staggered animation while a skeleton placeholder shows during the run; the Run button flips to a green Done tick on success and a shaking red Failed on error; KPI numbers count up to their value and the cards lift slightly on hover.\n2. Message pop-ups — success colour: success toasts (reconnect, upload, connection test, AI test) now use a bright green background with dark text for a clearer \"all good\" signal; errors keep their own distinct style.\n3. Feedback window: the Discussion window now has the same rounded corners as the reply box (an oversized-corner glitch is fixed), shows a progress bar at the top while a post's content is being fetched, and adds Previous / Next buttons above the message — with a position counter — so you can step through the board's feedback in order.\n4. Script tab: the data-source card stacks its controls in full-width rows on wide screens too (matching the narrow layout), and the View button now sits on the same row as the Template dropdown."
@@ -18,10 +23,5 @@
     "version": "2.0.5",
     "date": "2026-09-30",
     "notes": "1. BI page — save queried data locally: the BI tab stores the grid currently held by the Query tab into a local SQLite warehouse (\"Save to warehouse\"). The warehouse is a per-machine file under %APPDATA%\\ODBCQueryApp\\data\\, so installing an app update never touches your saved data. Open any snapshot to build a dashboard by pinning visuals, chart it, or inspect its rows; refresh a snapshot from its source query, rename it or delete it from the same list.\n2. More SQL templates: new built-in templates are available — FAB_MESA10 \"Scrap Summary\", and FabLIMS \"Hold Trace\", \"LIMS Scrap\" and \"Reject Pending\" — each with its own field criteria. FAB_MESA10 \"Machine uptime\" is renamed \"Machine_Uptime\" so template names stay consistent.\n3. Filter-required guard: templates that would otherwise scan a whole table (for example FAB_MESA10 \"Lot_Genealogy\") now refuse to run with no criteria and show a \"Filter required\" reminder, so a query can no longer hit the entire table by accident.\n4. Colour Explorer (analyze-color-data): a new LD Redundancy check tab flags duplicate colour specs across Overall, Groups, Matrix and Colour views with CSV export; reference charts now show the CMC(2:1) tolerance boundary instead of fixed QC rings; plus Pantone TCX nearest-match and Δa*/Δb* comparison charts."
-  },
-  {
-    "version": "2.0.4",
-    "date": "2026-09-29",
-    "notes": "1. BI → Chart: a new \"AI Chart\" button sits above \"Add to dashboard\". Describe the chart you want in the AI sidebar and it renders straight onto the BI chart builder — where it can be tweaked and added to the dashboard like any other visual. Charts generated from the Analyze tab keep landing there as before.\n2. Colour Explorer template (analyze-color-data): both ΔE reference dropdowns now show the LD sample NAME instead of the item code, so picking a reference no longer requires knowing the LD_item."
   }
 ]

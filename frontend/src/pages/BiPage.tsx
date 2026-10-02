@@ -11,8 +11,10 @@ import { useCallback, useEffect, useImperativeHandle, useMemo, useState, memo } 
 import type { Ref } from 'react'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import BookmarksIcon from '@mui/icons-material/Bookmarks'
+import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
+import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import SaveIcon from '@mui/icons-material/Save'
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard'
@@ -28,6 +30,7 @@ import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogTitle from '@mui/material/DialogTitle'
+import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import Paper from '@mui/material/Paper'
 import Snackbar from '@mui/material/Snackbar'
@@ -106,6 +109,9 @@ function columnNames(detail: SnapshotDetail): string[] {
 
 function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
   const isCompact = useMediaQuery('(max-width:700px)')
+
+  /** How-to pop-up for this page (opened from the help icon). */
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const [warehouse, setWarehouse] = useState<WarehouseInfo | null>(null)
   const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([])
@@ -469,9 +475,26 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
       <Stack spacing={{ xs: 2, md: 2.5 }}>
         {/* ---- Header ---- */}
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 600 }}>
-            BI
-          </Typography>
+          {/* Page title shares its row with the help icon (pushed to the far right). */}
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            sx={{ alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <Typography variant="h5" sx={{ fontWeight: 600 }}>
+              BI
+            </Typography>
+            <Tooltip title="How to use this page">
+              <IconButton
+                aria-label="How to use this page"
+                onClick={() => setHelpOpen(true)}
+                sx={{ flexShrink: 0, minWidth: 48, minHeight: 48 }}
+              >
+                <HelpOutlineOutlinedIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
           <Typography variant="body2" color="text.secondary">
             Save queried data to a local SQLite warehouse, then build a dashboard from it or
             inspect the rows.
@@ -813,6 +836,67 @@ function BiPage({ ref, onOpenAi }: BiPageProps = {}) {
           </Paper>
         )}
       </Stack>
+
+      {/* ---- How-to dialog ---- */}
+      <Dialog
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        fullScreen={isCompact}
+        fullWidth
+        maxWidth="sm"
+        slotProps={{ paper: { sx: { height: { xs: '100%', sm: 'auto' }, maxHeight: '92vh' } } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <HelpOutlineOutlinedIcon fontSize="small" />
+          How to use this page
+          <IconButton
+            aria-label="Close help"
+            onClick={() => setHelpOpen(false)}
+            sx={{ ml: 'auto', minWidth: 48, minHeight: 48 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            This page keeps your query results as <strong>snapshots</strong> in a local SQLite
+            warehouse on this machine, so you can chart them later without re-running the query.
+          </Typography>
+          <Box component="ol" sx={{ m: 0, p: 0, pl: 2.5, '& li': { mb: 1, typography: 'body2', pl: 0.5 } }}>
+            <li>
+              <strong>Save the current grid</strong> — run a query (or upload a file) in the Query
+              tab, type a snapshot name, then press <em>Save to warehouse</em>. The rows are copied
+              into the local warehouse, so later re-queries do not change saved data.
+            </li>
+            <li>
+              <strong>Manage snapshots</strong> — click a row in the list to open it. Use{' '}
+              <SyncIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to update a
+              snapshot from the current result grid (existing visuals are kept),{' '}
+              <EditIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to rename, and{' '}
+              <DeleteIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to delete.
+            </li>
+            <li>
+              <strong>Dashboard tab</strong> — persistent visuals saved with the snapshot: add
+              charts/tables, then edit, duplicate, move, resize or remove each tile.
+            </li>
+            <li>
+              <strong>Chart tab</strong> — a one-off chart builder for quick exploration, including
+              an AI chart option; press <em>Add to dashboard</em> to keep a chart permanently.
+            </li>
+            <li>
+              <strong>Data tab</strong> — inspect the stored rows (first 200 shown).
+            </li>
+          </Box>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="body2" color="text.secondary">
+            All snapshots are stored per-machine under{' '}
+            <Box component="code" sx={{ wordBreak: 'break-all' }}>
+              %APPDATA%\ODBCQueryApp\data\
+            </Box>{' '}
+            — nothing is uploaded to a server.
+          </Typography>
+        </DialogContent>
+      </Dialog>
 
       {/* ---- Rename dialog ---- */}
       <Dialog open={Boolean(renameTarget)} onClose={() => setRenameTarget(null)} fullWidth maxWidth="xs">

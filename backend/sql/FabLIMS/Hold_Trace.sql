@@ -18,7 +18,7 @@ FROM
   LEFT JOIN G_MAIN_GROUPS gmp ON gmp.NAME = s.G_MAIN_GROUP
 WHERE
   g_lsn.HOLD_CODE IS NOT NULL
-  AND right(s.G_MAIN_GROUP, 4) <> 'FXXX'
+  AND left(s.G_MAIN_GROUP, 4) <> 'FXXX'
   AND left(g_lsn.G_WO, 2) <> 'RM'
   
   {}
