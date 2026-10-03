@@ -488,11 +488,17 @@ def _spawn_update_helper(target: str, backup: str, staged: str, version: str) ->
     env = dict(os.environ)
     for name in _PYI_PRIVATE_VARS:
         env.pop(name, None)  # keep the relaunched build's environment clean
-    flags = 0
-    if os.name == "nt":
-        DETACHED_PROCESS = 0x00000008
-        CREATE_NEW_PROCESS_GROUP = 0x00000200
-        flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    # CREATE_NO_WINDOW (0x08000000) rather than DETACHED_PROCESS: a detached
+    # process gets no console and invalid std handles, and Windows PowerShell
+    # 5.1 then exits silently before running a single line of the script.  It
+    # is also handed DEVNULL stdio so the helper is never attached to a closed
+    # pipe when this process exits.
+    flags = 0x08000000 if os.name == "nt" else 0
+    log_path = os.path.join(_state_dir(), "update_helper.log")
+    try:
+        os.remove(log_path)  # so the poll below only sees this run's output
+    except OSError:
+        pass
     subprocess.Popen(
         [
             powershell,
@@ -508,9 +514,21 @@ def _spawn_update_helper(target: str, backup: str, staged: str, version: str) ->
         cwd=tempfile.gettempdir(),
         creationflags=flags,
         close_fds=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         env=env,
     )
-    return os.path.join(_state_dir(), "update_helper.log")
+    # The helper's first act is to log that it is waiting for us to exit.  If
+    # that line never lands, the helper did not start and letting this process
+    # exit would leave the update half-applied with the app gone -- so fail
+    # loudly instead and keep running.
+    deadline = time.monotonic() + 8.0
+    while time.monotonic() < deadline:
+        if os.path.exists(log_path):
+            return log_path
+        time.sleep(0.2)
+    raise OSError(f"the update helper did not start (log: {log_path})")
 
 
 def _apply_pending_update() -> bool:

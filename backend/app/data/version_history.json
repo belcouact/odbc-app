@@ -1,5 +1,15 @@
 [
   {
+    "version": "2.2.6",
+    "date": "2026-10-03",
+    "notes": "1. Fixed the in-app updater hanging on \"Verifying the download…\" — the helper that swaps in a new build was launched in a way Windows PowerShell refused to run, so the update silently stopped and the app closed. Updates now complete and restart into the new version.\n2. This build also carries the fixes published as 2.2.5: the packaged app now bundles pandas and numpy so CSV / Excel uploads (and the charts, exports and summaries built on them) work; the SQL editor suggests functions for the selected connection's server type (Oracle, PostgreSQL, MySQL, SQL Server); and the AI statistical summary window no longer shows a duplicate Close button."
+  },
+  {
+    "version": "2.2.5",
+    "date": "2026-10-03",
+    "notes": "1. Fixed uploading CSV / Excel files failing with \"Could not parse the file: No module named 'pandas'\" — the packaged app now bundles pandas and numpy, so file uploads (and the charts, exports and summaries built on them) work in the installed build.\n2. The SQL editor now suggests functions for the selected connection's server type: Oracle (TO_DATE, NVL, DECODE, SYSDATE, LISTAGG, …), PostgreSQL, MySQL and SQL Server. Connections with no recognised type keep the standard SQL list.\n3. The AI statistical summary window no longer shows a duplicate Close button at the bottom — the close icon in the top-right corner is the single way to dismiss it."
+  },
+  {
     "version": "2.2.4",
     "date": "2026-10-03",
     "notes": "1. Fixed updates failing to install on some machines with \"[WinError 5] Access is denied\" — the app now hands the folder swap to a helper that runs after it closes, so the install folder is never locked while it is being replaced.\n2. Updates are automatic: when a new version is published, the app installs it by itself in the background — no button to click. Running queries finish first, then the app restarts and reloads on its own; a short toast confirms it.\n3. If an update ever fails to install, the banner stays visible with an \"Update now\" button so it can be retried manually.\n4. A stable download link, ODBCQueryApp-Setup-latest.exe, always points at the newest installer — share it once and it stays current for future releases."
@@ -13,15 +23,5 @@
     "version": "2.2.2",
     "date": "2026-10-03",
     "notes": "1. New installer: the app is now installed with ODBCQueryApp-Setup-2.2.2.exe instead of being run as a single portable exe. It adds a Start Menu shortcut and an \"Apps & features\" entry, so it can be uninstalled from Windows Settings at any time.\n2. Faster loading: the old single-file exe unpacked itself to a temp folder on every start; the installed layout starts instantly. Heavy libraries (pandas/numpy) now load only when first needed, so the window appears even quicker.\n3. Less antivirus trouble: the previous UPX-packed single exe was frequently flagged by antivirus software; the new build is not packed and ships with proper version information.\n4. Smoother updates: the in-app updater now swaps the whole install folder, and the app no longer flickers \"offline\" while an update is being applied. Installers for every release stay available in the update bucket."
-  },
-  {
-    "version": "2.2.1",
-    "date": "2026-10-03",
-    "notes": "1. Fixed: the Test button on saved connections now works for DSNs that require a password (e.g. FAB_MESA10, SZMFGACTIVE). Tests previously ran without a password because saved passwords are never sent back to the app; the backend now falls back to the stored keyring password when testing a saved connection.\n2. Settings → About: the build version now renders at the same size as the other info values.\n3. About profile popup: shows four motivational mottos below the avatar."
-  },
-  {
-    "version": "2.2.0",
-    "date": "2026-10-03",
-    "notes": "1. AI dashboard builder: one-click example-prompt buttons that fill the input with a ready-made dashboard request built from your current data (KPI cards plus trend and breakdown charts), so you get several charts at once instead of a single one.\n2. Chart builder: the \"Edit in chart builder\" action on a dashboard tile loads that tile's settings into the full chart picker, so you can adjust and update it in place.\n3. Dashboard charts: new charts are always added to the dashboard while keeping the charts you already have — nothing is overwritten.\n4. Dashboard AI charts: the legend is now placed at the bottom of every chart for a consistent, more readable layout.\n5. Chart-type icons: the Error bars and Control chart (SPC) tiles now use icons that match what they represent."
   }
 ]

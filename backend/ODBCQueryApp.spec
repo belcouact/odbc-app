@@ -200,7 +200,12 @@ a = Analysis(
         # Imported at runtime by custom scripts (not at app startup).
         "app.resources.echarts",
         # Imported lazily: xlsx export (pandas), fast xlsx upload parsing
-        # (python-calamine) and multipart form uploads.
+        # (python-calamine) and multipart form uploads.  pandas/numpy are only
+        # reached through app.lazy.lazy_module (a runtime importlib call), which
+        # PyInstaller cannot see — without this entry the frozen app raises
+        # "No module named 'pandas'" the first time a file is uploaded.
+        "pandas",
+        "numpy",
         "openpyxl",
         "python_calamine",
         "multipart",

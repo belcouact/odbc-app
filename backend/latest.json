@@ -1,8 +1,8 @@
 {
-  "version": "2.2.4",
+  "version": "2.2.6",
   "min_version": "1.0.0",
-  "notes": "1. Fixed updates failing to install on some machines with \"[WinError 5] Access is denied\" — the app now hands the folder swap to a helper that runs after it closes, so the install folder is never locked while it is being replaced.\n2. Updates are automatic: when a new version is published, the app installs it by itself in the background — no button to click. Running queries finish first, then the app restarts and reloads on its own; a short toast confirms it.\n3. If an update ever fails to install, the banner stays visible with an \"Update now\" button so it can be retried manually.\n4. A stable download link, ODBCQueryApp-Setup-latest.exe, always points at the newest installer — share it once and it stays current for future releases.",
+  "notes": "1. Fixed the in-app updater hanging on \"Verifying the download…\" — the helper that swaps in a new build was launched in a way Windows PowerShell refused to run, so the update silently stopped and the app closed. Updates now complete and restart into the new version.\n2. This build also carries the fixes published as 2.2.5: the packaged app now bundles pandas and numpy so CSV / Excel uploads (and the charts, exports and summaries built on them) work; the SQL editor suggests functions for the selected connection's server type (Oracle, PostgreSQL, MySQL, SQL Server); and the AI statistical summary window no longer shows a duplicate Close button.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "54c1540d4f596edc5d816d42e31768c004f700af8c46d41453d294fe603cd69e",
-  "installer": "ODBCQueryApp-Setup-2.2.4.exe"
+  "sha256": "1993bd18f3de42609e38a7a38c2d2d10f43bfe89373e1977b4c615d20651aebd",
+  "installer": "ODBCQueryApp-Setup-2.2.6.exe"
 }
