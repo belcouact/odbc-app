@@ -751,6 +751,9 @@ function AppShell() {
   // Anchor element for the grouped FlowDiagram / Project / ProblemSolving menu.
   const [toolsAnchor, setToolsAnchor] = useState<HTMLElement | null>(null)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('connections')
+  // Bumped when the app-bar version badge is clicked so Settings -> About
+  // opens its Updates disclosure (a counter, so the initial value is inert).
+  const [expandUpdatesTick, setExpandUpdatesTick] = useState(0)
   const [helpOpen, setHelpOpen] = useState(false)
   const [introOpen, setIntroOpen] = useState(false)
   const [alexOpen, setAlexOpen] = useState(false)
@@ -1210,7 +1213,33 @@ function AppShell() {
             {updateStatus?.current_version && (
               <Typography
                 component="span"
-                sx={{ fontSize: '0.7rem', lineHeight: 1.15, color: 'text.secondary' }}
+                role="button"
+                tabIndex={0}
+                aria-label="Open updates in Settings"
+                title="Open updates in Settings"
+                onClick={() => {
+                  setSettingsSection('about')
+                  setView('settings')
+                  setExpandUpdatesTick((t) => t + 1)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setSettingsSection('about')
+                    setView('settings')
+                    setExpandUpdatesTick((t) => t + 1)
+                  }
+                }}
+                sx={{
+                  fontSize: '0.7rem',
+                  lineHeight: 1.15,
+                  color: 'text.secondary',
+                  cursor: 'pointer',
+                  borderRadius: 0.5,
+                  transition: 'color 0.15s ease',
+                  '&:hover': { color: 'primary.main' },
+                  '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+                }}
               >
                 v{updateStatus.current_version}
               </Typography>
@@ -1442,6 +1471,7 @@ function AppShell() {
             section={settingsSection}
             onSectionChange={setSettingsSection}
             onRequestShutdown={openShutdown}
+            expandUpdates={expandUpdatesTick}
           />
         </Box>
       </Box>

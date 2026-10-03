@@ -18,6 +18,7 @@ shown in a message box instead of a console.
 """
 import json
 import os
+import secrets
 import shutil
 import socket
 import subprocess
@@ -80,6 +81,52 @@ def _save_port(port: int) -> None:
             fh.write(str(port))
     except Exception:
         pass
+
+
+# ---- Per-launch API token ----
+#
+# The backend rejects API calls without this token (static assets stay open so
+# the page can tell the user what is wrong). A browser tab receives it via the
+# ``?token=`` URL parameter, keeps it in sessionStorage and echoes it on every
+# request — so other local pages (DNS-rebinding or plain cross-origin) cannot
+# drive the API, which includes arbitrary Python execution. Fresh launches
+# rotate the token; the updater relaunch reuses the saved one so the pre-update
+# tab reconnects, and a bookmark click on a running instance reads the token
+# the running instance saved.
+
+def _token_path() -> str:
+    return os.path.join(_state_dir(), "token.txt")
+
+
+def _load_saved_token() -> str:
+    try:
+        with open(_token_path(), encoding="utf-8") as fh:
+            token = fh.read().strip()
+        if token:
+            return token
+    except Exception:
+        pass
+    return ""
+
+
+def _prepare_token(reuse_saved: bool) -> str:
+    """Return this launch's API token, persisting it for bookmark/reconnect."""
+    saved = _load_saved_token()
+    if reuse_saved and saved:
+        return saved
+    token = secrets.token_urlsafe(32)
+    try:
+        with open(_token_path(), "w", encoding="utf-8") as fh:
+            fh.write(token)
+    except Exception:
+        pass  # non-fatal: this launch still works; the next one regenerates
+    return token
+
+
+def _app_url(port: int, token: str = "") -> str:
+    """Local app URL, carrying the token when one is configured."""
+    suffix = f"/?token={token}" if token else "/"
+    return f"http://127.0.0.1:{port}{suffix}"
 
 
 def _port_is_bindable(port: int) -> bool:
@@ -264,11 +311,11 @@ def _show_error(title: str, message: str) -> None:
         pass
 
 
-def _open_browser_when_ready(server, port: int) -> None:
+def _open_browser_when_ready(server, port: int, token: str) -> None:
     """Wait for the server to finish starting, then open the app URL."""
     for _ in range(60):
         if server.started:  # uvicorn Server.started is a plain bool
-            webbrowser.open(f"http://127.0.0.1:{port}")
+            webbrowser.open(_app_url(port, token))
             return
         time.sleep(0.5)
 
@@ -400,15 +447,21 @@ def main() -> int:
         # already serving, so only show its page and leave the server alone.
         running = _running_port()
         if running is not None:
-            webbrowser.open(f"http://127.0.0.1:{running}")
+            webbrowser.open(_app_url(running, _load_saved_token()))
             return 0
         if not _acquire_single_instance():
             # Another instance is still unpacking/starting: wait for it and
             # show its page instead of starting a rival server on a new port.
             running = _wait_for_running_port()
             if running is not None:
-                webbrowser.open(f"http://127.0.0.1:{running}")
+                webbrowser.open(_app_url(running, _load_saved_token()))
             return 0
+
+    # Fresh launch: rotate the per-launch API token. The updater relaunch
+    # keeps the saved token so the pre-update tab reconnects. Must be set
+    # before app.main is imported (it reads the token from the environment).
+    token = _prepare_token(reuse_saved=from_updater)
+    os.environ["ODBC_APP_TOKEN"] = token
 
     try:
         import uvicorn
@@ -444,7 +497,7 @@ def main() -> int:
             # watchdog stop are meant to be picked up by the already-open page.
             first_run = False
             threading.Thread(
-                target=_open_browser_when_ready, args=(server, port), daemon=True
+                target=_open_browser_when_ready, args=(server, port, token), daemon=True
             ).start()
 
         started_at = time.monotonic()

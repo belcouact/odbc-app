@@ -173,7 +173,9 @@ def _template_key(conn: dict) -> str:
 
 def _require_connection_by_template_key(template_key: str) -> dict:
     """Look up a stored connection by its template key (DSN, else name), 404 otherwise."""
-    connections = storage.load_json("connections.json", [])
+    from app.api.connections import load_stored_connections  # deferred: avoid import cycle
+
+    connections = load_stored_connections()
     conn = next(
         (c for c in connections if (c.get("dsn") or c.get("name") or "") == template_key),
         None,

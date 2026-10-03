@@ -44,6 +44,11 @@ interface SettingsPageProps {
   section?: SettingsSection
   onSectionChange?: (section: SettingsSection) => void
   /**
+   * Incremented by the app shell when the user clicks the app-bar version
+   * badge; AboutSection reacts by expanding the Updates disclosure.
+   */
+  expandUpdates?: number
+  /**
    * Retained for the app shell's shut-down confirmation dialog. About no
    * longer renders a "Shut down server" entry, so Settings accepts but does
    * not currently use it.
@@ -230,9 +235,15 @@ function VersionValue({ version }: { version: string }) {
 
 function AboutSection({
   onStartUpdate,
+  expandUpdates,
 }: {
   /** Started in the shell so the whole app tracks the restart and reloads on it. */
   onStartUpdate: () => Promise<UpdateStatus | null>
+  /**
+   * Shell signal: bumped each time the user clicks the app-bar version badge.
+   * A change (not the initial value) expands the Updates disclosure.
+   */
+  expandUpdates?: number
 }) {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
   const [updateBusy, setUpdateBusy] = useState(false)
@@ -256,6 +267,12 @@ function AboutSection({
       .then((res) => setHistory(res.history))
       .catch(() => setHistory([]))
   }, [])
+
+  // App-bar version badge click: jump here and open the Updates disclosure.
+  // The counter starts at 0, so the mount run is a no-op.
+  useEffect(() => {
+    if (expandUpdates) setDetailsOpen(true)
+  }, [expandUpdates])
 
   const runUpdateCheck = useCallback(async () => {
     setUpdateBusy(true)
@@ -746,6 +763,7 @@ function SettingsPage({
   onStartUpdate,
   section: sectionProp,
   onSectionChange,
+  expandUpdates,
 }: SettingsPageProps) {
   const [internalSection, setInternalSection] = useState<SettingsSection>('connections')
   // Controlled when the app shell drives the section (AppBar badge click).
@@ -795,7 +813,7 @@ function SettingsPage({
             <AiSettingsPage />
           </Box>
           <Box sx={{ display: section === 'about' ? 'block' : 'none' }}>
-            <AboutSection onStartUpdate={onStartUpdate} />
+            <AboutSection onStartUpdate={onStartUpdate} expandUpdates={expandUpdates} />
           </Box>
         </Box>
       </Box>

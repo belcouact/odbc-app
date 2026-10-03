@@ -7,7 +7,8 @@ import time
 import traceback
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import logging_utils, storage, update
@@ -32,6 +33,39 @@ from app.api import (
 
 app = FastAPI(title="ODBCQueryApp")
 logging_utils.setup_logging()
+
+# The server binds to 127.0.0.1, but that alone does not stop a browser on
+# this machine from being tricked into talking to it: with DNS rebinding an
+# evil page resolves its own hostname to 127.0.0.1 and the browser sends the
+# request with the attacker's Host header. Restrict the accepted hosts, then
+# require the per-launch token (set by launcher.py; absent in dev mode, where
+# no token check is applied) on every API call — so other local pages and
+# processes cannot drive the API, which includes arbitrary Python execution.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
+
+_APP_TOKEN = os.environ.get("ODBC_APP_TOKEN", "")
+# The launcher's liveness probe only reads the version banner; keep it open.
+_TOKEN_EXEMPT_PATHS = {"/api/health"}
+
+
+@app.middleware("http")
+async def require_app_token(request: Request, call_next):
+    """Reject API requests that do not carry the per-launch app token.
+
+    The token is accepted as the ``X-App-Token`` header (all frontend calls)
+    or a ``?token=`` query parameter (``navigator.sendBeacon`` cannot set
+    custom headers). When no token is configured (dev server) nothing is
+    enforced.
+    """
+    path = request.url.path
+    if _APP_TOKEN and path.startswith("/api/") and path not in _TOKEN_EXEMPT_PATHS:
+        supplied = request.headers.get("x-app-token") or request.query_params.get("token") or ""
+        if supplied != _APP_TOKEN:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Invalid or missing app token"},
+            )
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -323,10 +357,12 @@ def get_stored_connection(connection_id: str) -> dict:
     """Read a stored connection by id; raise HTTP 404 when it is missing.
 
     Reused by the schema, queries, sql-queries, ai and connection-template
-    routers.
+    routers. Passwords come from the OS keyring via the central loader, so the
+    returned dict is ready for :func:`app.db.odbc.open_connection`.
     """
-    connections_list = storage.load_json("connections.json", [])
-    for conn in connections_list:
+    from app.api.connections import load_stored_connections  # deferred: avoid import cycle
+
+    for conn in load_stored_connections():
         if conn.get("id") == connection_id:
             return conn
     raise HTTPException(status_code=404, detail=f"Connection '{connection_id}' not found")

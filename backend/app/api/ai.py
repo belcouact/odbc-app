@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app import logging_utils, storage
+from app import keystore, logging_utils, storage
 from app.db import odbc
 from app.db.sql_builder import detect_dbms, resolve_dbms
 
@@ -45,6 +45,19 @@ _KEYRING_FIELD = "saved_keys"
 _SAVED_PROFILES_FIELD = "saved_profiles"
 _SAVED_PROFILES_CAP = 20
 
+# API keys live in the OS keyring (Windows Credential Manager), never in
+# ai_settings.json. One account per scope: the key in effect, one per saved
+# "brand · model" key label, and one per saved configuration snapshot.
+_AI_KEY_ACCOUNT = "ai:api_key"
+
+
+def _key_account(label: str) -> str:
+    return f"ai:key:{label}"
+
+
+def _profile_account(label: str) -> str:
+    return f"ai:profile:{label}"
+
 _NOT_CONFIGURED_MSG = "AI is not configured. Set up AI in the AI Setting page."
 
 # Some LLM gateways sit behind Cloudflare and reject the default Python
@@ -67,21 +80,97 @@ _SCHEMA_CACHE_TTL_S = 300.0
 
 
 def _load_settings() -> dict:
-    """Load AI settings, merged over the defaults (missing keys stay default)."""
+    """Load AI settings, merged over the defaults (missing keys stay default).
+
+    API keys are stored in the OS keyring; plaintext keys found in
+    ``ai_settings.json`` (written by older builds) are migrated there on first
+    load and scrubbed from the file. The returned dict carries the real key
+    values (re-read from the keyring) for the AI calls and the settings page.
+    """
     saved = storage.load_json(_AI_SETTINGS_FILE, {}) or {}
     settings = dict(_DEFAULT_SETTINGS)
     settings.update({k: saved[k] for k in _DEFAULT_SETTINGS if k in saved})
-    keyring = saved.get(_KEYRING_FIELD)
-    settings[_KEYRING_FIELD] = dict(keyring) if isinstance(keyring, dict) else {}
+    saved_keys = saved.get(_KEYRING_FIELD)
+    saved_keys = dict(saved_keys) if isinstance(saved_keys, dict) else {}
     profiles = saved.get(_SAVED_PROFILES_FIELD)
-    settings[_SAVED_PROFILES_FIELD] = (
-        [p for p in profiles if isinstance(p, dict)] if isinstance(profiles, list) else []
-    )
+    profiles = [p for p in profiles if isinstance(p, dict)] if isinstance(profiles, list) else []
+
+    # One-time migration: move any plaintext keys into the OS keyring.
+    migrated = False
+    if settings.get("api_key"):
+        keystore.set_secret(_AI_KEY_ACCOUNT, str(settings["api_key"]))
+        migrated = True
+    for label, key in list(saved_keys.items()):
+        if key:
+            keystore.set_secret(_key_account(str(label)), str(key))
+            migrated = True
+    for profile in profiles:
+        if profile.get("api_key"):
+            keystore.set_secret(
+                _profile_account(str(profile.get("label") or "")), str(profile["api_key"])
+            )
+            migrated = True
+
+    # Swap on-disk secrets for keyring lookups.
+    settings["api_key"] = keystore.get_secret(_AI_KEY_ACCOUNT) or ""
+    settings[_KEYRING_FIELD] = {
+        str(label): keystore.get_secret(_key_account(str(label))) or ""
+        for label in saved_keys
+    }
+    for profile in profiles:
+        profile["api_key"] = keystore.get_secret(
+            _profile_account(str(profile.get("label") or ""))
+        ) or ""
+    settings[_SAVED_PROFILES_FIELD] = profiles
+
+    if migrated:
+        _save_settings(settings)
+        logging_utils.log_info("ai.settings", "migrated stored API keys into the OS keyring")
     return settings
 
 
 def _save_settings(settings: dict) -> None:
-    storage.save_json(_AI_SETTINGS_FILE, settings)
+    """Persist settings; API keys go to the OS keyring, never to the JSON file.
+
+    The JSON keeps the label structure (saved key labels, saved profiles) with
+    empty key values so ordering and listing still work; an emptied key deletes
+    the keyring entry. ``settings`` is not modified — the caller keeps its real
+    key values.
+    """
+    current = str(settings.get("api_key") or "")
+    if current:
+        keystore.set_secret(_AI_KEY_ACCOUNT, current)
+    else:
+        keystore.delete_secret(_AI_KEY_ACCOUNT)
+    clean_keys = {}
+    for label, key in (settings.get(_KEYRING_FIELD) or {}).items():
+        label = str(label)
+        if key:
+            keystore.set_secret(_key_account(label), str(key))
+        else:
+            keystore.delete_secret(_key_account(label))
+        clean_keys[label] = ""
+    clean_profiles = []
+    for profile in settings.get(_SAVED_PROFILES_FIELD) or []:
+        if not isinstance(profile, dict):
+            continue
+        entry = dict(profile)
+        key = str(entry.get("api_key") or "")
+        label = str(entry.get("label") or "")
+        if key:
+            keystore.set_secret(_profile_account(label), key)
+        else:
+            keystore.delete_secret(_profile_account(label))
+        entry["api_key"] = ""
+        clean_profiles.append(entry)
+    storage.save_json(
+        _AI_SETTINGS_FILE,
+        {
+            **{k: v for k, v in settings.items() if k != "api_key"},
+            _KEYRING_FIELD: clean_keys,
+            _SAVED_PROFILES_FIELD: clean_profiles[:_SAVED_PROFILES_CAP],
+        },
+    )
 
 
 def _upsert_saved_profile(settings: dict, label: str, fields: dict) -> None:

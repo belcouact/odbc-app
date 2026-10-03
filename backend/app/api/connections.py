@@ -7,7 +7,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app import logging_utils, storage
+from app import keystore, logging_utils, storage
 from app.db import odbc
 from app.db.sql_builder import dbms_from_hints, resolve_dbms
 
@@ -53,12 +53,58 @@ class ConnectionUpdate(BaseModel):
     local_path: Optional[str] = None
 
 
-def _load_connections() -> list:
-    return storage.load_json(_CONNECTIONS_FILE, [])
+def load_stored_connections() -> list:
+    """Load connections from disk with passwords supplied from the OS keyring.
+
+    Passwords are never kept in ``connections.json``: plaintext entries saved
+    by older builds are migrated into the OS credential store on first load and
+    scrubbed from the file. The returned dicts *do* carry the password so the
+    query routers can open ODBC connections — HTTP responses must go through
+    :func:`public_connection`, which strips it again.
+    """
+    connections = storage.load_json(_CONNECTIONS_FILE, [])
+    migrated = False
+    for conn in connections:
+        connection_id = conn.get("id")
+        if not connection_id:
+            continue
+        account = keystore.connection_account(str(connection_id))
+        plaintext = conn.pop("password", None)
+        if plaintext:
+            # One-time migration from builds that stored the password in JSON.
+            keystore.set_secret(account, str(plaintext))
+            migrated = True
+        conn["password"] = keystore.get_secret(account) or ""
+    if migrated:
+        _save_connections(connections)
+        logging_utils.log_info(
+            "connections", "migrated stored passwords into the OS keyring"
+        )
+    return connections
 
 
 def _save_connections(connections: list) -> None:
-    storage.save_json(_CONNECTIONS_FILE, connections)
+    """Write connections to disk, always stripping injected passwords.
+
+    The in-memory dicts produced by :func:`load_stored_connections` carry the
+    password; this is the single choke point that keeps it off disk.
+    """
+    storage.save_json(
+        _CONNECTIONS_FILE,
+        [{k: v for k, v in c.items() if k != "password"} for c in connections],
+    )
+
+
+def public_connection(conn: dict) -> dict:
+    """Return a copy of a connection dict that is safe to send over HTTP.
+
+    Drops the password and reports whether one is stored instead.
+    """
+    public = {k: v for k, v in conn.items() if k != "password"}
+    public["has_password"] = keystore.has_secret(
+        keystore.connection_account(str(conn.get("id") or ""))
+    )
+    return public
 
 
 def _find_connection(connections: list, connection_id: str) -> dict | None:
@@ -156,7 +202,7 @@ def list_connections():
     detected (fast metadata hint first, live probe only as a fallback) and the
     result is cached so page refreshes stay fast.
     """
-    connections = _load_connections()
+    connections = load_stored_connections()
     for conn in connections:
         db_type = (conn.get("database_type") or "auto").lower()
         # Only detect for unset / auto / other connections; explicit types
@@ -164,7 +210,7 @@ def list_connections():
         detected = _resolved_dbms(conn) if db_type in ("", "auto", "other") else None
         dbms = resolve_dbms(conn, detected)
         conn["resolved_dbms"] = str(dbms) if dbms else None
-    return connections
+    return [public_connection(conn) for conn in connections]
 
 
 @router.get("/connections/detect")
@@ -183,7 +229,7 @@ def detect_dsn_connections():
     try:
         saved_names = {
             str(c.get("dsn", "")).lower()
-            for c in _load_connections()
+            for c in load_stored_connections()
             if c.get("type") == "dsn" and c.get("dsn")
         }
         locations = [
@@ -229,7 +275,7 @@ def detect_dsn_connections():
 @router.post("/connections", status_code=201)
 def create_connection(payload: ConnectionCreate):
     """Create a new connection (server assigns id and created_at)."""
-    connections = _load_connections()
+    connections = load_stored_connections()
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="The connection name cannot be empty.")
@@ -251,10 +297,14 @@ def create_connection(payload: ConnectionCreate):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     obj["id"] = uuid.uuid4().hex
     obj["created_at"] = datetime.now(timezone.utc).isoformat()
+    # The password goes to the OS keyring, never to connections.json.
+    password = obj.pop("password", None)
+    if password:
+        keystore.set_secret(keystore.connection_account(obj["id"]), str(password))
     connections.append(obj)
     _save_connections(connections)
     logging_utils.log_info("connections", f"created '{obj.get('name')}'")
-    return obj
+    return public_connection(obj)
 
 
 @router.put("/connections/{connection_id}")
@@ -266,7 +316,7 @@ def update_connection(connection_id: str, payload: ConnectionUpdate):
     that GUI templates, predefined scripts and channel operations are linked
     to — so it cannot change after creation.
     """
-    connections = _load_connections()
+    connections = load_stored_connections()
     obj = _find_connection(connections, connection_id)
     if obj is None:
         raise HTTPException(status_code=404, detail=f"Connection '{connection_id}' not found")
@@ -294,6 +344,11 @@ def update_connection(connection_id: str, payload: ConnectionUpdate):
             status_code=400,
             detail="The connection type can't be changed after creation. Delete and re-add the connection to switch type.",
         )
+    # The password is never written to the JSON file: store it in the OS
+    # keyring (an absent/empty password keeps the previously stored one).
+    password = updates.pop("password", None)
+    if password:
+        keystore.set_secret(keystore.connection_account(connection_id), str(password))
     obj.update(updates)
     try:
         _resolve_access_file(obj)
@@ -301,18 +356,19 @@ def update_connection(connection_id: str, payload: ConnectionUpdate):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _save_connections(connections)
     logging_utils.log_info("connections", f"updated '{obj.get('name')}'")
-    return obj
+    return public_connection(obj)
 
 
 @router.delete("/connections/{connection_id}")
 def delete_connection(connection_id: str):
     """Delete a saved connection."""
-    connections = _load_connections()
+    connections = load_stored_connections()
     obj = _find_connection(connections, connection_id)
     if obj is None:
         raise HTTPException(status_code=404, detail=f"Connection '{connection_id}' not found")
     connections.remove(obj)
     _save_connections(connections)
+    keystore.delete_secret(keystore.connection_account(connection_id))
     logging_utils.log_info("connections", f"deleted '{obj.get('name')}'")
     return {"ok": True}
 

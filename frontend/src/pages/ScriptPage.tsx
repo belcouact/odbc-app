@@ -87,6 +87,7 @@ import type {
 import { emit, subscribe } from '../editorBus'
 import { getWorkspaceSnapshot } from '../workspaceBus'
 import ChartsPanel from '../components/ChartsPanel'
+import CodeEditor from '../components/CodeEditor'
 import SummaryPanel from '../components/SummaryPanel'
 
 type ScriptTab = 'script' | 'chart' | 'summary'
@@ -1126,17 +1127,19 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
               )}
 
               <Box sx={{ position: 'relative' }} aria-busy={templateBusy !== ''}>
-                <TextField
-                  label="Python script"
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', mb: 0.5 }}
+                >
+                  Python script
+                </Typography>
+                <CodeEditor
+                  ariaLabel="Python script"
+                  language="python"
                   value={scriptText}
-                  onChange={(event: ChangeEvent<HTMLInputElement>) => setScriptText(event.target.value)}
-                  fullWidth
-                  multiline
-                  rows={8}
-                  placeholder={
-                    "# data is the queried rows (list of dicts)\n# Use \"Insert example\" below to load ready-to-run code that works on any grid table."
-                  }
-                  sx={{ '& textarea': { fontFamily: 'Consolas, monospace', fontSize: '0.875rem' } }}
+                  onChange={setScriptText}
+                  placeholder="# data is the queried rows (list of dicts) — use 'Insert example' below for ready-to-run code"
                 />
                 {/* Progress indicator while a template's source is fetched —
                     shown for both the template picker and the template library. */}

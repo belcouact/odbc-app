@@ -60,6 +60,11 @@ def is_cancellation(exc: BaseException) -> bool:
 
 
 _READ_ONLY_KEYWORDS = {"SELECT", "WITH"}
+# Statement types that must never appear anywhere in a read-only query —
+# neither as the top-level statement nor nested inside a CTE. ``Into`` covers
+# ``SELECT ... INTO newtable`` (creates/modifies tables); ``Command`` catches
+# driver-specific statements sqlglot cannot model.
+_MUTATING_NODES: tuple = ()
 _COMMENT_RE = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
 _ODBC_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _ODBC_DIAGNOSTIC_RE = re.compile(r"\((\d+)\)\s*\(([^()]+)\)\s*$")
@@ -477,7 +482,22 @@ def iter_query(
 
 
 def assert_read_only(sql: str) -> None:
-    """Raise ValueError unless ``sql`` starts with SELECT or WITH."""
+    """Raise ValueError unless ``sql`` is a single read-only SELECT statement.
+
+    Two layers:
+
+    1. A cheap keyword screen — the first word must be SELECT or WITH. This
+       always runs (also when sqlglot is unavailable).
+    2. A full parse with sqlglot (pure Python, lazy import): rejects statement
+       stacking (``SELECT 1; DROP TABLE x``), data-modifying CTEs
+       (``WITH x AS (DELETE ...) SELECT``), ``SELECT ... INTO`` and any
+       top-level statement that is not a SELECT / UNION of SELECTs (e.g. the
+       ``WITH x AS (...) DELETE ...`` form).
+
+    SQL that sqlglot cannot parse (dialect-specific syntax) falls back to the
+    keyword screen instead of blocking queries the ODBC driver would accept —
+    the definitive read-only guarantee remains a read-only database login.
+    """
     stripped = _COMMENT_RE.sub(" ", sql or "")
     tokens = stripped.split()
     if not tokens:
@@ -485,6 +505,40 @@ def assert_read_only(sql: str) -> None:
     keyword = tokens[0].upper()
     if keyword not in _READ_ONLY_KEYWORDS:
         raise ValueError(f"Only SELECT/WITH statements are allowed (got '{keyword}')")
+
+    # Second layer: structural check via sqlglot.
+    global _MUTATING_NODES
+    try:
+        import sqlglot
+        from sqlglot import exp
+    except ImportError:
+        return
+    if not _MUTATING_NODES:
+        _MUTATING_NODES = (
+            exp.Update,
+            exp.Delete,
+            exp.Insert,
+            exp.Merge,
+            exp.Create,
+            exp.Drop,
+            exp.Alter,
+            exp.TruncateTable,
+            exp.Into,
+            exp.Command,
+        )
+    try:
+        statements = [s for s in sqlglot.parse(sql) if s is not None]
+    except Exception:  # noqa: BLE001 - unparsable dialect SQL: keep keyword check
+        return
+    if len(statements) != 1:
+        raise ValueError("Only a single SELECT statement is allowed")
+    statement = statements[0]
+    # UNION / INTERSECT / EXCEPT chains are read-only SELECTs in sqlglot's
+    # model (a SetOperation whose leaves are Selects).
+    if not isinstance(statement, (exp.Select, exp.SetOperation)):
+        raise ValueError("Only SELECT statements are allowed")
+    if any(isinstance(node, _MUTATING_NODES) for node in statement.walk()):
+        raise ValueError("Only read-only SELECT statements are allowed")
 
 
 # --- value normalization ---------------------------------------------------

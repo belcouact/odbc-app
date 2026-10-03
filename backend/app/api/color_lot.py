@@ -172,7 +172,9 @@ def _sample_type(name: str, wol: str, batch: str) -> str:
 
 def _find_fablims_connection() -> dict:
     """Look up the stored FabLIMS connection (by DSN, else display name)."""
-    connections = storage.load_json("connections.json", [])
+    from app.api.connections import load_stored_connections  # deferred: avoid import cycle
+
+    connections = load_stored_connections()
     for conn in connections:
         key = _text(conn.get("dsn") or conn.get("name")).upper()
         if key == "FABLIMS":

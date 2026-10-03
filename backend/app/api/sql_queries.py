@@ -94,7 +94,9 @@ def _resolve_connection(connection_id: Optional[str]) -> dict:
     """Return the requested connection, or the first available one when omitted."""
     if connection_id:
         return _get_connection(connection_id)
-    connections_list = storage.load_json("connections.json", [])
+    from app.api.connections import load_stored_connections  # deferred: avoid import cycle
+
+    connections_list = load_stored_connections()
     if not connections_list:
         raise HTTPException(
             status_code=400,

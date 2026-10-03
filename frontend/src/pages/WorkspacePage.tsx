@@ -66,12 +66,6 @@ import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -82,6 +76,7 @@ import type { SqlLanguage } from 'sql-formatter'
 import { api, downloadBlob, QueryCanceledError } from '../api/client'
 import type { ChannelSet, ComponentSet, ConnectionTemplateField, ConnectionTemplateOption, ColorEnrichStep, ExportFormat } from '../api/client'
 import ChannelSelectDialog from '../components/ChannelSelectDialog'
+import CodeEditor from '../components/CodeEditor'
 import TestComponentsDialog from '../components/TestComponentsDialog'
 import type {
   AiMode,
@@ -230,48 +225,232 @@ const OPERATOR_GUIDE: { symbol: string; meaning: string; example: string }[] = [
   { symbol: '>  >=  <  <=', meaning: 'Greater than, greater or equal, less than, less or equal.', example: 'value >= 100' },
 ]
 
-/** Popup explaining how to use the criteria operator symbols. */
-function OperatorHelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** Small keyboard-key badge used in the autocomplete shortcuts tab. */
+function KeyCap({ children }: { children: ReactNode }) {
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
-        <Box sx={{ flexGrow: 1, minWidth: 0 }}>How to use operators</Box>
-        <IconButton onClick={onClose} aria-label="Close how to use operators">
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-block',
+        minWidth: 30,
+        textAlign: 'center',
+        px: 0.9,
+        py: 0.35,
+        borderRadius: 1,
+        border: '1px solid',
+        borderColor: 'divider',
+        borderBottomWidth: 2,
+        bgcolor: 'action.hover',
+        fontFamily: 'Consolas, monospace',
+        fontSize: 12,
+        fontWeight: 600,
+        lineHeight: 1.4,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+    </Box>
+  )
+}
+
+const HELP_TABS = ['Operators', 'Autocomplete'] as const
+
+/** Popup explaining how to use the criteria operator symbols and editor autocomplete. */
+function OperatorHelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [tab, setTab] = useState(0)
+
+  // Reopening always lands on the first tab.
+  useEffect(() => {
+    if (open) setTab(0)
+  }, [open])
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="md"
+      slotProps={{ paper: { sx: { borderRadius: 3, overflow: 'hidden' } } }}
+    >
+      {/* Gradient header with a dynamic title per tab. */}
+      <Box
+        sx={{
+          position: 'relative',
+          px: 3,
+          pt: 2.5,
+          pb: 2,
+          background: (t) =>
+            `linear-gradient(120deg, ${t.palette.primary.main}16, ${t.palette.secondary.main}0c 55%, transparent)`,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, pr: 5 }}>
+          {tab === 0 ? (
+            <FunctionsIcon color="primary" fontSize="small" />
+          ) : (
+            <AutoAwesomeIcon color="primary" fontSize="small" />
+          )}
+          <Box>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+              {tab === 0 ? 'How to use operators' : 'Editor autocomplete'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {tab === 0
+                ? 'Reference for the operator dropdowns in the criteria fields'
+                : 'Query faster in the SQL and Python editors'}
+            </Typography>
+          </Box>
+        </Box>
+        <IconButton
+          onClick={onClose}
+          aria-label="Close how to use operators"
+          sx={{ position: 'absolute', top: 10, right: 10 }}
+        >
           <CloseIcon />
         </IconButton>
-      </DialogTitle>
-      <DialogContent dividers>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Reference for the operator dropdowns in the criteria fields:
-        </Typography>
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small" sx={{ minWidth: { xs: 560, sm: 0 } }}>
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Operator</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>How to use</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Example</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {OPERATOR_GUIDE.map((row) => (
-                <TableRow key={row.symbol} hover>
-                  <TableCell
-                    sx={{ fontWeight: 600, fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap' }}
+      </Box>
+
+      <Tabs
+        value={tab}
+        onChange={(_event: SyntheticEvent, value: number) => setTab(value)}
+        sx={{
+          px: 2,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, minHeight: 44 },
+        }}
+      >
+        {HELP_TABS.map((label) => (
+          <Tab key={label} label={label} />
+        ))}
+      </Tabs>
+
+      <DialogContent dividers sx={{ px: 3, py: 2.5, bgcolor: (t) => `${t.palette.text.primary}04` }}>
+        {tab === 0 ? (
+          <Stack spacing={1.25}>
+            {OPERATOR_GUIDE.map((row) => (
+              <Box
+                key={row.symbol}
+                sx={{
+                  display: 'flex',
+                  gap: 2,
+                  alignItems: 'center',
+                  p: 1.5,
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.paper',
+                }}
+              >
+                <Box
+                  sx={{
+                    flexShrink: 0,
+                    width: { xs: 140, sm: 150 },
+                    display: 'flex',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      fontFamily: 'Consolas, monospace',
+                      fontWeight: 700,
+                      fontSize: 13,
+                      px: 1.2,
+                      py: 0.55,
+                      borderRadius: 1.5,
+                      bgcolor: (t) => `${t.palette.primary.main}14`,
+                      color: 'primary.main',
+                      whiteSpace: 'nowrap',
+                    }}
                   >
                     {row.symbol}
-                  </TableCell>
-                  <TableCell>{row.meaning}</TableCell>
-                  <TableCell
-                    sx={{ fontFamily: 'Consolas, monospace', color: 'text.secondary', wordBreak: 'break-word' }}
-                  >
-                    {row.example}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                  </Box>
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2">{row.meaning}</Typography>
+                </Box>
+                <Box
+                  component="code"
+                  sx={{
+                    flexShrink: 0,
+                    width: { xs: 180, sm: 240 },
+                    px: 1.25,
+                    py: 0.6,
+                    borderRadius: 1,
+                    bgcolor: (t) => `${t.palette.text.primary}0a`,
+                    fontFamily: 'Consolas, monospace',
+                    fontSize: 12.5,
+                    color: 'text.secondary',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {row.example}
+                </Box>
+              </Box>
+            ))}
+          </Stack>
+        ) : (
+          <Stack spacing={1}>
+            {[
+              {
+                keys: ['type'],
+                text: 'Suggestions appear automatically while you type.',
+              },
+              {
+                keys: ['↑', '↓'],
+                text: 'Move through the suggestion list.',
+              },
+              {
+                keys: ['Enter', 'Tab'],
+                text: 'Accept the highlighted suggestion.',
+              },
+              {
+                keys: ['Esc'],
+                text: 'Dismiss the suggestion list.',
+              },
+              {
+                keys: ['Ctrl', 'Space'],
+                text: 'Open the suggestion list manually at the cursor.',
+              },
+              {
+                keys: ['Click'],
+                text: 'Accept a suggestion with the mouse.',
+              },
+            ].map((row) => (
+              <Box
+                key={row.keys.join('+')}
+                sx={{
+                  display: 'flex',
+                  gap: 2,
+                  alignItems: 'center',
+                  p: 1.25,
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.paper',
+                }}
+              >
+                <Box
+                  sx={{
+                    flexShrink: 0,
+                    width: { xs: 150, sm: 170 },
+                    display: 'flex',
+                    gap: 0.5,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  {row.keys.map((key) => (
+                    <KeyCap key={key}>{key}</KeyCap>
+                  ))}
+                </Box>
+                <Typography variant="body2">{row.text}</Typography>
+              </Box>
+            ))}
+            <Alert severity="info" variant="outlined" sx={{ mt: 1, borderRadius: 2 }}>
+              While the list is open, Enter or Tab accepts the highlighted suggestion — press Esc
+              first if you want a newline. The SQL editor suggests SQL keywords; the Python editor
+              also suggests builtins and snippets.
+            </Alert>
+          </Stack>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -4100,16 +4279,22 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   {editorExpanded ? 'Hide query editor' : 'Show query editor'}
                 </Link>
                 {editorExpanded ? (
-                  <TextField
-                    label="SQL (SELECT only — read-only enforced)"
-                    value={sqlText}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => setSqlText(event.target.value)}
-                    fullWidth
-                    multiline
-                    rows={8}
-                    placeholder="SELECT TOP 100 * FROM dbo.Sales;"
-                    sx={{ '& textarea': { fontFamily: 'Consolas, monospace', fontSize: '0.9rem' } }}
-                  />
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', mb: 0.5 }}
+                    >
+                      SQL (SELECT only — read-only enforced)
+                    </Typography>
+                    <CodeEditor
+                      ariaLabel="SQL (SELECT only — read-only enforced)"
+                      language="sql"
+                      value={sqlText}
+                      onChange={setSqlText}
+                      placeholder="SELECT TOP 100 * FROM dbo.Sales;"
+                    />
+                  </Box>
                 ) : (
                   <Box
                     role="button"

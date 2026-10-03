@@ -201,6 +201,46 @@ const client = axios.create({
 })
 
 /**
+ * Per-launch API token. The launcher starts the backend with a random token
+ * and opens the browser at ``/?token=...``: we keep it in sessionStorage
+ * (survives reloads, per tab), strip it from the address bar, and echo it on
+ * every API call. The backend rejects tokenless API requests, which blocks
+ * DNS-rebinding and other local pages from driving the API. Empty in dev mode
+ * (no token configured there), where nothing is enforced.
+ */
+const APP_TOKEN = (() => {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const fromUrl = params.get('token')
+    if (fromUrl) {
+      window.sessionStorage.setItem('odbc_app_token', fromUrl)
+      params.delete('token')
+      const query = params.toString()
+      window.history.replaceState(
+        null,
+        '',
+        window.location.pathname + (query ? `?${query}` : '') + window.location.hash,
+      )
+      return fromUrl
+    }
+    return window.sessionStorage.getItem('odbc_app_token') ?? ''
+  } catch {
+    return ''
+  }
+})()
+
+/** Default headers for API requests, including the app token when configured. */
+function apiHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...extra }
+  if (APP_TOKEN) headers['X-App-Token'] = APP_TOKEN
+  return headers
+}
+
+if (APP_TOKEN) {
+  client.defaults.headers.common['X-App-Token'] = APP_TOKEN
+}
+
+/**
  * Stable id for *this browser tab*. sessionStorage survives reloads but is
  * per-tab, so the backend can track each open tab separately (heartbeats vs.
  * goodbye beacons). Used by the connection watchdog / auto-reconnect logic.
@@ -229,7 +269,9 @@ const TAB_ID = (() => {
 export function sendTabLeftBeacon(): void {
   try {
     const blob = new Blob([JSON.stringify({ tab: TAB_ID })], { type: 'application/json' })
-    navigator.sendBeacon('/api/tab-left', blob)
+    // sendBeacon cannot set custom headers, so the token rides in the URL.
+    const url = APP_TOKEN ? `/api/tab-left?token=${encodeURIComponent(APP_TOKEN)}` : '/api/tab-left'
+    navigator.sendBeacon(url, blob)
   } catch {
     // best effort: nothing to do if the browser refuses to send
   }
@@ -318,7 +360,7 @@ async function streamChat(
 ): Promise<string> {
   const response = await fetch(`/api${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   })
   if (!response.ok) {
@@ -415,7 +457,7 @@ async function streamQuery<T>(
 ): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   })
   if (!response.ok) {
@@ -503,7 +545,7 @@ async function streamScript<T>(
 ): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   })
   if (!response.ok) {
@@ -695,7 +737,7 @@ export const api = {
     // the grid rows arrive in batches (same reader pattern as streamQuery).
     const response = await fetch('/api/upload/parse/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ id: spooled.id }),
     })
     if (!response.ok) {

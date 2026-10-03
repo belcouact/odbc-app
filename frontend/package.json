@@ -4,20 +4,24 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node node_modules/vite/bin/vite.js",
-    "build": "node node_modules/typescript/bin/tsc -b; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; node node_modules/vite/bin/vite.js build",
+    "dev": "vite",
+    "build": "node build.mjs",
     "lint": "oxlint",
-    "preview": "node node_modules/vite/bin/vite.js preview"
+    "preview": "vite preview"
   },
   "dependencies": {
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-sql": "^6.10.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fontsource-variable/archivo": "^5.3.0",
     "@fontsource-variable/ibm-plex-sans": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/lora": "^5.3.0",
     "@kanaries/graphic-walker": "^0.5.3",
     "@mui/icons-material": "^9.3.1",
     "@mui/material": "^9.3.1",
+    "@uiw/react-codemirror": "^4.25.12",
     "ag-grid-community": "^36.1.0",
     "ag-grid-react": "^36.1.0",
     "axios": "^1.19.0",

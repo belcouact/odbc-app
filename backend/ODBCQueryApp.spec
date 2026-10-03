@@ -137,6 +137,12 @@ a = Analysis(
         "openpyxl",
         "python_calamine",
         "multipart",
+        # Secret storage (Windows Credential Manager via ctypes; imported
+        # lazily by app.keystore).
+        "keyring",
+        "keyring.backends.Windows",
+        # Lazy SQL parser used by the read-only guard (app.db.odbc).
+        "sqlglot",
     ],
     hookspath=[],
     hooksconfig={},
