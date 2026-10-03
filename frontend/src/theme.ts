@@ -29,6 +29,8 @@ const SAGE_DARK = '#44562e'
  *  toast backgrounds — reconnection / upload / connection-test / AI-test
  *  confirmations. Dark ink text sits on it; white would fail contrast. */
 const SUCCESS_GREEN = '#47d359'
+/** Red for error toasts — matches the palette's error colour. */
+const ERROR_RED = '#c0392b'
 const MID_GRAY = '#b0aea5'
 const LIGHT_GRAY = '#e8e6dc'
 
@@ -46,7 +48,7 @@ const theme = createTheme({
     primary: { main: CLAY, dark: CLAY_DARK, light: '#e59b7f', contrastText: '#ffffff' },
     secondary: { main: BLUE, dark: BLUE_DARK, contrastText: '#ffffff' },
     success: { main: SAGE, contrastText: '#ffffff' },
-    error: { main: '#c0392b', contrastText: '#ffffff' },
+    error: { main: ERROR_RED, contrastText: '#ffffff' },
     warning: { main: '#b7791f', contrastText: '#ffffff' },
     info: { main: BLUE_DARK, contrastText: '#ffffff' },
     background: { default: PAPER, paper: '#ffffff' },
@@ -227,9 +229,9 @@ const theme = createTheme({
     // Transient message bars (the Alert inside a Snackbar) share one toast
     // silhouette, but the colour follows the severity: success toasts wear
     // the bright brand green with white text (reconnection, upload,
-    // connection test, AI test confirmations), everything else keeps the dark
-    // sage bar with white text. Inline alerts inside forms / dialogs keep
-    // their severity colours.
+    // connection-test / AI-test confirmations), error toasts turn red with
+    // white text, everything else keeps the dark sage bar with white text.
+    // Inline alerts inside forms / dialogs keep their severity colours.
     MuiSnackbar: {
       styleOverrides: {
         root: {
@@ -267,6 +269,22 @@ const theme = createTheme({
             '&.MuiAlert-success': {
               backgroundColor: SUCCESS_GREEN,
               borderColor: SUCCESS_GREEN,
+              color: '#ffffff',
+              '& .MuiAlert-icon': { color: '#ffffff', opacity: 0.95 },
+              '& .MuiAlert-action': {
+                color: '#ffffff',
+                '& .MuiIconButton-root': {
+                  color: '#ffffff',
+                  opacity: 0.9,
+                  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.18)', opacity: 1 },
+                  '&:active': { backgroundColor: 'rgba(255, 255, 255, 0.30)' },
+                },
+              },
+            },
+            // Error toasts: red background with white text and icon.
+            '&.MuiAlert-error': {
+              backgroundColor: ERROR_RED,
+              borderColor: ERROR_RED,
               color: '#ffffff',
               '& .MuiAlert-icon': { color: '#ffffff', opacity: 0.95 },
               '& .MuiAlert-action': {

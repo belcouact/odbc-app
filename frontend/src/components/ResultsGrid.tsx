@@ -1211,7 +1211,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           onChange={(event) => handlePasteDraftChange(event.target.value)}
         />
         <FormControlLabel
-          sx={{ mt: 1, alignItems: 'flex-start' }}
+          sx={{ mt: 1, alignItems: 'center' }}
           control={
             <Checkbox
               size="small"
@@ -1227,7 +1227,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
               ? 'First row contains column headers — skip it'
               : 'First row contains column headers — name the new columns'
           }
-          slotProps={{ typography: { variant: 'body2', sx: { mt: 0.5 } } }}
+          slotProps={{ typography: { variant: 'body2' } }}
         />
       </DialogContent>
       <DialogActions>

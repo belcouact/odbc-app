@@ -541,7 +541,7 @@ export default function ConnectionsPage() {
                   : '—'
                 return (
                   <TableRow key={connection.id} hover>
-                    <TableCell sx={{ verticalAlign: 'top' }}>
+                    <TableCell>
                       <Typography
                         variant="body2"
                         sx={{
@@ -581,7 +581,7 @@ export default function ConnectionsPage() {
                         </Typography>
                       </Stack>
                     </TableCell>
-                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, verticalAlign: 'top' }}>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                       <Stack spacing={0.25}>
                         {detailLines.map((line, index) => (
                           <Typography
@@ -595,24 +595,18 @@ export default function ConnectionsPage() {
                         ))}
                       </Stack>
                     </TableCell>
-                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' }, verticalAlign: 'top' }}>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                       {connection.username || '—'}
                     </TableCell>
-                    <TableCell
-                      sx={{ display: { xs: 'none', md: 'table-cell' }, verticalAlign: 'top' }}
-                    >
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                       {serverType || '—'}
                     </TableCell>
                     <TableCell
-                      sx={{
-                        display: { xs: 'none', md: 'table-cell' },
-                        verticalAlign: 'top',
-                        whiteSpace: 'nowrap',
-                      }}
+                      sx={{ display: { xs: 'none', md: 'table-cell' }, whiteSpace: 'nowrap' }}
                     >
                       {added}
                     </TableCell>
-                    <TableCell align="right" sx={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                       <Stack
                         direction="row"
                         spacing={0.25}
