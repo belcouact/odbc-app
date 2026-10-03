@@ -428,8 +428,12 @@ const RETRY_MIN_FEEDBACK_MS = 900
  * keeping all in-app state. `retryNow` lets the user force an instant probe;
  * `retrying` / `retryResult` expose that manual attempt so the banner can show
  * an in-progress state and then a pass/fail verdict.
+ *
+ * `busyRef` lets a caller freeze the hook entirely (self-update install): the
+ * server is deliberately stopped mid-swap, so probes must not report an outage
+ * and the manual retry must stay a no-op until the install finishes.
  */
-function useBackendConnection(): {
+function useBackendConnection(busyRef?: { current: boolean }): {
   online: boolean
   reconnected: boolean
   retrying: boolean
@@ -450,6 +454,7 @@ function useBackendConnection(): {
     // Mirrors `online` inside callbacks without re-running the effect.
     let up = true
     const mark = (isUp: boolean): boolean => {
+      if (busyRef?.current) return up // frozen: keep the last known state
       if (up !== isUp) {
         up = isUp
         setOnline(isUp)
@@ -457,8 +462,14 @@ function useBackendConnection(): {
       }
       return isUp
     }
-    const probe = () => api.health().then(() => mark(true), () => mark(false))
-    const beat = () => api.heartbeat().then(() => mark(true), () => mark(false))
+    const probe = (): Promise<boolean> =>
+      busyRef?.current
+        ? Promise.resolve(false)
+        : api.health().then(() => mark(true), () => mark(false))
+    const beat = (): Promise<boolean> =>
+      busyRef?.current
+        ? Promise.resolve(false)
+        : api.heartbeat().then(() => mark(true), () => mark(false))
     probeRef.current = beat
     const onVisible = () => {
       // Coming back from sleep / a hidden tab: check right away.
@@ -480,10 +491,10 @@ function useBackendConnection(): {
       // No goodbye beacon here: an unmount is not necessarily a page close
       // (e.g. StrictMode re-mounts in dev); `pagehide` covers real unloads.
     }
-  }, [])
+  }, [busyRef])
 
   const retryNow = useCallback(() => {
-    if (retryBusyRef.current) return
+    if (retryBusyRef.current || busyRef?.current) return
     retryBusyRef.current = true
     setRetrying(true)
     setRetryResult(null)
@@ -499,7 +510,7 @@ function useBackendConnection(): {
         setRetryResult(ok ? 'success' : 'fail')
       }, remaining)
     })
-  }, [])
+  }, [busyRef])
   const dismissReconnected = useCallback(() => setReconnected(false), [])
 
   // Clear the pass/fail verdict a few seconds after a manual retry finishes.
@@ -722,6 +733,20 @@ function useAppUpdate(online: boolean) {
     }
   }, [apply])
 
+  // Silent auto-update: the moment a newer build is published (or the running
+  // one falls below the published min_version), start the install without
+  // asking. One attempt per published version — a failure surfaces in the
+  // banner with a manual "Update now" retry, but nothing retries in a loop
+  // behind the user's back.
+  const autoStartedRef = useRef<string | null>(null)
+  const latestVersion = status?.latest_version || ''
+  useEffect(() => {
+    if (!status?.available || !status.supported || busy) return
+    if (!latestVersion || autoStartedRef.current === latestVersion) return
+    autoStartedRef.current = latestVersion
+    void startUpdate()
+  }, [status, busy, latestVersion, startUpdate])
+
   const dismiss = useCallback(() => {
     const version = statusRef.current?.latest_version || ''
     try {
@@ -805,7 +830,11 @@ function AppShell() {
   // watchdog / launcher keep the local server alive: if it dies (laptop
   // sleep, frozen tab) the launcher restarts it on the same port and this
   // hook notices, showing a banner until the connection is back — no reload.
-  const connection = useBackendConnection()
+  // During a self-update install the hook is frozen via this ref: the server
+  // is deliberately stopped for the folder swap, and the UI must neither show
+  // the offline banner nor hammer the dead port with probes/retries.
+  const updateBusyRef = useRef(false)
+  const connection = useBackendConnection(updateBusyRef)
 
   // ---- Unread feedback badge ----
   // The board has no accounts, so "read" is per machine and has to live here.
@@ -901,6 +930,10 @@ function AppShell() {
 
   // ---- Self update (banner / forced dialog / one-click install) ----
   const update = useAppUpdate(connection.online)
+  // Freeze the connection hook while the install runs (see updateBusyRef).
+  useEffect(() => {
+    updateBusyRef.current = update.busy
+  }, [update.busy])
   const updateStatus = update.status
   const optionalUpdateVisible =
     !!updateStatus &&
@@ -910,10 +943,12 @@ function AppShell() {
   const forcedUpdateVisible = !!updateStatus && updateStatus.available && updateStatus.forced
 
   // ---- Connection banner state (offline / manual retry) ----
-  // The banner is hidden during a deliberate in-app shutdown: the dialog
-  // already explains that one.
+  // The banner is hidden during a deliberate in-app shutdown (the dialog
+  // already explains that one) and while the self-update install runs: the
+  // server is stopped for the folder swap and comes right back afterwards.
   const connectionLost =
     !connection.online &&
+    !update.busy &&
     !(shutdownOpen && (shutdownStage === 'stopping' || shutdownStage === 'stopped'))
   const connectionBanner = connection.retrying
     ? 'retrying'
@@ -1048,10 +1083,12 @@ function AppShell() {
         </Alert>
       )}
 
-      {/* Update banner: a newer build is published on Supabase. "Update now"
-          downloads, swaps and restarts the exe while this page stays open;
-          "Later" hides it until the next new version. Sits above the nav bar so
-          it is the first thing seen. */}
+      {/* Update banner: with silent auto-update this is a status strip — it
+          flashes "new version available" for a beat, then shows install
+          progress while the exe downloads, swaps and restarts behind the open
+          page, and only lingers as a manual fallback (with an "Update now"
+          retry) if the install failed. Sits above the nav bar so it is the
+          first thing seen. */}
       {optionalUpdateVisible && updateStatus && (
         <Alert
           variant="filled"

@@ -14,11 +14,16 @@ exactly::
         "frequencies": {col: [{"value", "count", "pct"}, ...], ...},
     }
 """
+from __future__ import annotations
+
 import math
 from datetime import datetime
 
-import numpy as np
-import pandas as pd
+from app.lazy import lazy_module
+
+# numpy/pandas load on first use (deferred so the app window appears faster).
+np = lazy_module("numpy")
+pd = lazy_module("pandas")
 
 MAX_OUTLIERS_PER_COLUMN = 10
 TREND_RELATIVE_THRESHOLD = 0.05

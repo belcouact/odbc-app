@@ -16,13 +16,17 @@ Layout notes (all records are 80 bytes, padded with spaces):
   exponent, 56-bit mantissa); the SAS missing value is ``b'.' + 7 NULs``.
 * Character values are fixed-width, padded with spaces.
 """
+from __future__ import annotations
 
 import math
 import struct
 from datetime import datetime
 from typing import Callable, Optional, Sequence
 
-import pandas as pd
+from app.lazy import lazy_module
+
+# pandas loads on first use (deferred so the app window appears faster).
+pd = lazy_module("pandas")
 
 XPT_MEDIA_TYPE = "application/x-sas-transport"
 

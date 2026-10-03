@@ -12,7 +12,6 @@ import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
@@ -1744,11 +1743,6 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
             ) : null}
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAiOpen(false)} sx={{ minHeight: 44 }}>
-            Close
-          </Button>
-        </DialogActions>
       </Dialog>
     </Stack>
   )

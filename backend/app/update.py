@@ -7,10 +7,11 @@ executable — on a company share drive today, on Supabase Storage later.  The
 app checks that manifest on startup and every 6 hours; when a newer version
 is listed it shows an in-app banner (or a blocking "update required" dialog
 when the running version falls below ``min_version``).  Pressing *Update now*
-downloads the new executable into the local data directory, waits until no
-queries are in flight, asks the server to shut down with reason ``"update"``
-and the launcher swaps the files and restarts the new build on the same port,
-so already-open browser tabs reconnect by themselves.
+downloads the new package — a zip of the app folder — into the local data
+directory, extracts it to a staging folder, waits until no queries are in
+flight, asks the server to shut down with reason ``"update"`` and the launcher
+swaps the install folders and restarts the new build on the same port, so
+already-open browser tabs reconnect by themselves.
 
 Manifest format (``latest.json``)::
 
@@ -18,10 +19,11 @@ Manifest format (``latest.json``)::
       "version": "1.2.0",              # required — latest released version
       "min_version": "1.0.0",          # optional — below this an update is forced
       "notes": "What's new…",          # optional — shown in the update banner
-      "exe": "ODBCQueryApp.exe",       # required for auto-update: file next to
-                                       # the manifest, an absolute/UNC path, or a
-                                       # full http(s) download URL
-      "sha256": "abcd…"                # optional — integrity check of the exe
+      "package": "ODBCQueryApp.zip",   # required for auto-update: zip of the
+                                       # app folder next to the manifest, an
+                                       # absolute/UNC path, or a full http(s)
+                                       # download URL
+      "sha256": "abcd…"                # optional — integrity check of the zip
     }
 
 Where the manifest is looked for (first hit wins):
@@ -43,10 +45,12 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import threading
 import time
 import urllib.request
+import zipfile
 
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
@@ -89,7 +93,7 @@ STATE = {
     "download_percent": None,
     "download_rate": None,
     # private (filtered out of the public snapshot)
-    "_exe_src": None,
+    "_package_src": None,
     "_sha256": None,
 }
 
@@ -272,16 +276,16 @@ def _load_manifest(source: str) -> tuple[dict, str]:
         return json.load(fh), os.path.dirname(os.path.abspath(source))
 
 
-def _resolve_exe_location(exe: str, base: str) -> str:
-    if _IS_URL_RE.match(exe):
-        return exe
-    if _IS_ABS_PATH_RE.match(exe):
-        return exe
+def _resolve_package_location(package: str, base: str) -> str:
+    if _IS_URL_RE.match(package):
+        return package
+    if _IS_ABS_PATH_RE.match(package):
+        return package
     if _IS_URL_RE.match(base):
         from urllib.parse import urljoin
 
-        return urljoin(base, exe)
-    return os.path.normpath(os.path.join(base, exe))
+        return urljoin(base, package)
+    return os.path.normpath(os.path.join(base, package))
 
 
 def _version_key(value) -> tuple:
@@ -325,7 +329,7 @@ def check_now(source_override: str | None = None) -> dict:
         min_version = str(manifest.get("min_version") or "").strip() or None
         notes = str(manifest.get("notes") or "").strip()
         sha256_expected = str(manifest.get("sha256") or "").strip().lower() or None
-        exe_field = str(manifest.get("exe") or "").strip()
+        package_field = str(manifest.get("package") or "").strip()
     except Exception as exc:  # noqa: BLE001 — surface any manifest problem
         _set(state="error", source=source, error=f"Could not read update manifest: {exc}",
              message="", checked_at=time.time())
@@ -335,25 +339,26 @@ def check_now(source_override: str | None = None) -> dict:
     current = APP_VERSION
     available = _version_key(current) < _version_key(latest)
     forced = bool(min_version) and _version_key(current) < _version_key(min_version)
-    exe_src = _resolve_exe_location(exe_field, base) if (exe_field and available) else None
+    package_src = (_resolve_package_location(package_field, base)
+                   if (package_field and available) else None)
 
     if available:
         _set(state="update_available", source=source, latest_version=latest,
              min_version=min_version, available=True, forced=forced, notes=notes,
              message=f"Version {latest} is available (you are on {current}).",
              checked_at=time.time(), download_percent=None, download_rate=None,
-             _exe_src=exe_src,
+             _package_src=package_src,
              _sha256=sha256_expected)
         logging_utils.log_info(
             "update", f"Update available: v{latest} (current v{current}, "
-                      f"forced={forced}, package={'yes' if exe_src else 'no'})"
+                      f"forced={forced}, package={'yes' if package_src else 'no'})"
         )
     else:
         _set(state="up_to_date", source=source, latest_version=latest,
              min_version=min_version, available=False, forced=False, notes=notes,
              message=f"You are on the latest version ({current}).",
              checked_at=time.time(), download_percent=None, download_rate=None,
-             _exe_src=None,
+             _package_src=None,
              _sha256=None)
     return _public_state()
 
@@ -419,38 +424,48 @@ def _download_to(src: str, dst: str) -> tuple[str, int]:
 
 def _install_worker() -> None:
     with _LOCK:
-        exe_src = STATE.get("_exe_src")
+        package_src = STATE.get("_package_src")
         version = STATE.get("latest_version")
         sha_expected = STATE.get("_sha256")
-    staged = None
+    zip_path = None
+    staged_dir = None
     try:
-        if not exe_src:
-            raise RuntimeError("The update manifest does not specify a download file.")
-        # The published exe keeps a fixed name and is overwritten each release,
+        if not package_src:
+            raise RuntimeError(
+                "The update manifest does not specify a downloadable package."
+            )
+        # The published zip keeps a fixed name and is overwritten each release,
         # so bypass any CDN copy with a cache-busting query; local and UNC paths
         # are left untouched.
-        if _IS_URL_RE.match(exe_src):
-            separator = "&" if "?" in exe_src else "?"
-            exe_src = f"{exe_src}{separator}v={int(time.time())}"
+        if _IS_URL_RE.match(package_src):
+            separator = "&" if "?" in package_src else "?"
+            package_src = f"{package_src}{separator}v={int(time.time())}"
         os.makedirs(_staging_dir(), exist_ok=True)
-        target = sys.executable
-        staged = os.path.join(
-            _staging_dir(), os.path.basename(target) + f".{version}.new"
-        )
-        part = staged + ".part"
+        zip_path = os.path.join(_staging_dir(), f"ODBCQueryApp.{version}.zip")
+        part = zip_path + ".part"
         _set(state="downloading", download_percent=0, download_rate=None,
              message=f"Downloading version {version}…")
-        sha_hex, size = _download_to(exe_src, part)
-        os.replace(part, staged)
+        sha_hex, size = _download_to(package_src, part)
+        os.replace(part, zip_path)
 
         _set(state="verifying", download_percent=100, message="Verifying download…")
         if sha_expected and sha_hex.lower() != sha_expected:
             raise RuntimeError(
-                "Checksum mismatch — the downloaded file may be corrupted "
+                "Checksum mismatch — the downloaded package may be corrupted "
                 "(share drive still syncing?)."
             )
 
-        pending = {"exe": staged, "target": target, "version": version}
+        _set(state="verifying", message="Extracting the new build…")
+        staged_dir = os.path.join(_staging_dir(), f"ODBCQueryApp-{version}")
+        if os.path.isdir(staged_dir):
+            shutil.rmtree(staged_dir, ignore_errors=True)
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(staged_dir)
+        if not os.path.isfile(os.path.join(staged_dir, os.path.basename(sys.executable))):
+            raise RuntimeError("The downloaded package does not contain the app.")
+
+        target = os.path.dirname(sys.executable)
+        pending = {"package": staged_dir, "target": target, "version": version}
         with open(_pending_file(), "w", encoding="utf-8") as fh:
             json.dump(pending, fh)
         logging_utils.log_info("update", f"Update v{version} staged ({size} bytes); waiting for idle")
@@ -466,17 +481,19 @@ def _install_worker() -> None:
         _set(state="restarting", message="Installing update and restarting…")
         logging_utils.log_info("update", f"Restarting to install v{version}")
         _main_module._stop_server("update")
-        # The launcher performs the file swap and spawns the new build; this
+        # The launcher swaps the install folders and spawns the new build; this
         # process exits below. Nothing else to do here.
     except Exception as exc:  # noqa: BLE001
         _set(state="error", error=str(exc), download_percent=None, download_rate=None,
              message="Update could not be installed.")
         logging_utils.log_error("update", f"Install failed: {exc}")
         try:
-            if staged:
-                for leftover in (staged, staged + ".part"):
+            if zip_path:
+                for leftover in (zip_path, zip_path + ".part"):
                     if os.path.isfile(leftover):
                         os.remove(leftover)
+            if staged_dir:
+                shutil.rmtree(staged_dir, ignore_errors=True)
         except Exception:  # noqa: BLE001
             pass
 
@@ -491,10 +508,10 @@ def start_install() -> dict:
                 status_code=400,
                 detail="Automatic update is only available in the packaged exe.",
             )
-        if not STATE.get("_exe_src"):
+        if not STATE.get("_package_src"):
             raise HTTPException(
                 status_code=400,
-                detail="The update manifest does not include a downloadable file.",
+                detail="The update manifest does not include a downloadable package.",
             )
         if STATE["state"] in _BUSY_STATES:
             raise HTTPException(status_code=409, detail="An update is already in progress.")

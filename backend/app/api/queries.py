@@ -1,11 +1,12 @@
 """API routes for running queries against ODBC connections and exporting results."""
+from __future__ import annotations
+
 import io
 import json
 import time
 import uuid
 from typing import Any, Literal, Optional
 
-import pandas as pd
 import pyodbc
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import StreamingResponse
@@ -15,7 +16,12 @@ from app import logging_utils, storage
 from app.api import history as history_api
 from app.db import odbc
 from app.db.sql_builder import MAX_LIMIT, build_select, detect_dbms, resolve_dbms
+from app.lazy import lazy_module
 from app.xpt_export import XPT_MEDIA_TYPE, dataframe_to_xpt
+
+# pandas is imported on first use (deferred so the app window appears faster);
+# typed as a module so editors/Pyright still see the real pandas API.
+pd = lazy_module("pandas")
 
 router = APIRouter()
 

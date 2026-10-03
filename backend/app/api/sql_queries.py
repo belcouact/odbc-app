@@ -1,4 +1,6 @@
 """API routes for saved custom SQL queries and running raw SQL."""
+from __future__ import annotations
+
 import io
 import json
 import time
@@ -6,7 +8,6 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
-import pandas as pd
 import pyodbc
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import StreamingResponse
@@ -16,7 +17,11 @@ from app import logging_utils, storage
 from app.api import history as history_api
 from app.db import odbc
 from app.db.sql_builder import MAX_LIMIT
+from app.lazy import lazy_module
 from app.xpt_export import XPT_MEDIA_TYPE, dataframe_to_xpt
+
+# pandas loads on first use (deferred so the app window appears faster).
+pd = lazy_module("pandas")
 
 router = APIRouter()
 

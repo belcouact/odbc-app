@@ -1,9 +1,9 @@
-"""One-command release: frontend -> single-file exe -> latest.json -> Supabase.
+"""One-command release: frontend -> onedir build -> zip -> latest.json -> Supabase.
 
 Usage (from the backend directory):
 
     .venv\\Scripts\\python.exe release.py                 # full release + upload
-    .venv\\Scripts\\python.exe release.py --skip-frontend  # exe only
+    .venv\\Scripts\\python.exe release.py --skip-frontend  # package only
     .venv\\Scripts\\python.exe release.py --no-upload      # build, keep it local
 
 Steps:
@@ -12,31 +12,33 @@ Steps:
      used to ask mid-build — moved here so the version is final before
      packaging, which the bundled version history needs)
   3. record {version, date, notes} in app/data/version_history.json — the
-     release history shown in Settings → About — then repackage the exe with
-     PyInstaller (ODBCQueryApp.spec), so the exe bundles its own entry
-  4. hash dist\ODBCQueryApp.exe and drop any leftover versioned builds, so
-     dist holds only ODBCQueryApp.exe
+     release history shown in Settings → About — then run PyInstaller
+     (ODBCQueryApp.spec), producing dist\ODBCQueryApp\ (exe + _internal)
+  4. zip that folder (contents at the zip root), hash the zip, and drop any
+     leftover single-exe artefacts, then compile the Inno Setup installer
+     (ODBCQueryApp-Setup-<version>.exe) when Inno Setup is installed
   5. write latest.json (backend) for the self-updater
-  6. upload the exe, then latest.json, to the Supabase bucket and read both back
-     through the public URL
+  6. upload the zip, the installer and latest.json to the Supabase bucket and
+     read them back through the public URL
   7. delete leftover ODBCQueryApp-*.exe files from the bucket (from the former
-     version-in-the-name scheme) so the storage quota does not fill up
+     single-exe scheme) so the storage quota does not fill up — versioned
+     installers are kept, so a download link survives future releases
 
 UPLOAD: the service-role key comes from a single line in
 ``%APPDATA%\\ODBCQueryApp\\supabase_key`` (preferred — this project folder is
 synced, so keep secrets out of it) or ``backend\\.supabase_key``.  A shell
 environment variable is deliberately ignored, so a leftover key for a different
 Supabase project can never be picked up by accident.  Without a key the run
-prints the equivalent curl commands instead of uploading.  The exe is
+prints the equivalent curl commands instead of uploading.  The zip is
 uploaded *before* the manifest, so a client can never see a manifest pointing at
 a file that is not there yet.
 
 The release notes shown in the update banner come from release_notes.txt; raise
 MIN_VERSION only when old clients must be forced to update.
 
-The published package keeps a fixed name (``ODBCQueryApp.exe``) so users never
+The published package keeps a fixed name (``ODBCQueryApp.zip``) so users never
 have to reason about version-numbered files — the version lives only in
-latest.json.  Because the object name is reused, the exe is uploaded with a
+latest.json.  Because the object name is reused, the zip is uploaded with a
 short cache TTL and the client appends a cache-buster when it downloads, so a
 fresh release can never be masked by a cached copy of the previous build.
 """
@@ -51,6 +53,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent          # backend/
@@ -58,7 +61,9 @@ APP_ROOT = ROOT.parent                          # project root
 FRONTEND = APP_ROOT / "frontend"
 DIST = ROOT / "dist"
 SPEC = ROOT / "ODBCQueryApp.spec"
-EXE_SOURCE = DIST / "ODBCQueryApp.exe"
+PACKAGE_DIR = DIST / "ODBCQueryApp"             # PyInstaller onedir output
+PACKAGE_NAME = "ODBCQueryApp.zip"               # fixed published name
+PACKAGE_ZIP = DIST / PACKAGE_NAME
 NOTES_FILE = ROOT / "release_notes.txt"
 MANIFEST = ROOT / "latest.json"
 HISTORY_FILE = ROOT / "app" / "data" / "version_history.json"
@@ -218,17 +223,72 @@ def build_python() -> str:
     return sys.executable
 
 
-def find_upx_dir() -> Path | None:
-    """Locate upx.exe; without it the exe is roughly 20% bigger.
+def package_zip() -> Path:
+    """Zip dist\\ODBCQueryApp into dist\\ODBCQueryApp.zip.
 
-    Must be handed to PyInstaller via --upx-dir: setting PATH from inside the
-    spec file is too late, PyInstaller resolves UPX before running it.
+    Contents sit at the zip root (no top-level folder) because the updater
+    extracts the archive straight into a fresh staging folder and then swaps
+    that folder with the install directory.
     """
-    portable = sorted((ROOT / "tools" / "upx").glob("upx-*/upx.exe"))
-    if portable:
-        return portable[-1].parent
-    found = shutil.which("upx")
-    return Path(found).parent if found else None
+    exe = PACKAGE_DIR / "ODBCQueryApp.exe"
+    if not exe.is_file():
+        raise SystemExit(f"Build did not produce {PACKAGE_DIR} (missing {exe.name})")
+    PACKAGE_ZIP.unlink(missing_ok=True)
+    with zipfile.ZipFile(PACKAGE_ZIP, "w", zipfile.ZIP_DEFLATED,
+                         compresslevel=9) as archive:
+        for path in sorted(PACKAGE_DIR.rglob("*")):
+            if path.is_file():
+                archive.write(path, path.relative_to(PACKAGE_DIR))
+    return PACKAGE_ZIP
+
+
+def dir_size(path: Path) -> int:
+    """Total bytes of every file below ``path``."""
+    total = 0
+    for item in path.rglob("*"):
+        if item.is_file():
+            total += item.stat().st_size
+    return total
+
+
+def find_iscc() -> Path | None:
+    """Locate the Inno Setup compiler (ISCC.exe), if installed."""
+    hits: list[Path] = []
+    for base, pattern in (
+        (os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+         "Inno Setup */ISCC.exe"),
+        (os.environ.get("ProgramFiles", r"C:\Program Files"),
+         "Inno Setup */ISCC.exe"),
+        # winget's per-user install lands in %LOCALAPPDATA%\Programs\Inno Setup 6.
+        (os.environ.get("LocalAppData", ""), "Programs/Inno Setup */ISCC.exe"),
+    ):
+        if base:
+            hits += sorted(Path(base).glob(pattern))
+    found = shutil.which("ISCC")
+    if found:
+        hits.append(Path(found))
+    return hits[-1] if hits else None
+
+
+def build_installer() -> Path | None:
+    """Compile dist\\ODBCQueryApp into the shareable per-user setup exe.
+
+    Returns None (with a hint) when Inno Setup is not installed — the plain
+    zip remains fully functional without it.
+    """
+    iscc = find_iscc()
+    if not iscc:
+        print("\nInno Setup not found — skipping the installer build.")
+        print("  Install it once (`winget install JRSoftware.InnoSetup` or")
+        print("  https://jrsoftware.org/isdl.php) and rerun to also get")
+        print("  ODBCQueryApp-Setup-<version>.exe, the file to share.")
+        return None
+    print(f"\nBuilding installer with {iscc}…", flush=True)
+    run([str(iscc), str(ROOT / "ODBCQueryApp.iss")], cwd=ROOT)
+    candidates = sorted(DIST.glob("ODBCQueryApp-Setup-*.exe"))
+    if not candidates:
+        raise SystemExit("Inno Setup did not produce the expected installer")
+    return candidates[0]
 
 
 # ---- Supabase upload -------------------------------------------------------
@@ -321,21 +381,43 @@ def http(url: str, method: str, headers: dict[str, str] | None = None, data: byt
         raise SystemExit(f"HTTP {exc.code} on {method} {url}\n{body}") from None
 
 
-def upload_release(upload_url: str, exe: Path, manifest: Path, version: str, digest: str,
-                   key: str) -> None:
-    """Upload the exe, then the manifest, verify both, then prune old builds."""
+def upload_release(upload_url: str, package: Path, manifest: Path, version: str, digest: str,
+                   key: str, installer: Path | None = None) -> None:
+    """Upload the zip + installer, then the manifest, verify, then prune."""
     auth = {"Authorization": f"Bearer {key}", "x-upsert": "true"}
 
-    payload = exe.read_bytes()
-    print(f"\nUploading {exe.name} ({len(payload) / 1048576:.2f} MB)…", flush=True)
-    # The exe keeps a fixed name and is overwritten every release, so it must
+    payload = package.read_bytes()
+    print(f"\nUploading {package.name} ({len(payload) / 1048576:.2f} MB)…", flush=True)
+    # The zip keeps a fixed name and is overwritten every release, so it must
     # NOT be cached long-lived — a stale copy would fail the client's sha256
     # check.  The client also cache-busts the download URL.
-    http(object_url(upload_url, exe.name), "POST",
+    http(object_url(upload_url, package.name), "POST",
          {**auth, "Content-Type": "application/octet-stream",
           "cache-control": "max-age=60"},
          payload)
     print("  uploaded")
+
+    if installer is not None:
+        print(f"Uploading {installer.name} "
+              f"({installer.stat().st_size / 1048576:.2f} MB)…", flush=True)
+        # The installer name contains the version, so one release never
+        # overwrites another and a long CDN cache is fine.
+        http(object_url(upload_url, installer.name), "POST",
+             {**auth, "Content-Type": "application/octet-stream",
+              "cache-control": "max-age=86400"},
+             installer.read_bytes())
+        link = f"{upload_url.rsplit('/', 1)[0]}/{installer.name}"
+        print(f"  uploaded — shareable download link:\n    {link}")
+        # Same bytes again under a fixed name: a link shared once (pinned in a
+        # chat or a wiki) keeps pointing at the newest release. Short TTL,
+        # because unlike the versioned name this object is overwritten.
+        latest = "ODBCQueryApp-Setup-latest.exe"
+        http(object_url(upload_url, latest), "POST",
+             {**auth, "Content-Type": "application/octet-stream",
+              "cache-control": "max-age=60"},
+             installer.read_bytes())
+        print(f"  uploaded — stable always-newest link:\n    "
+              f"{upload_url.rsplit('/', 1)[0]}/{latest}")
 
     print(f"Uploading {manifest.name}…", flush=True)
     http(object_url(upload_url, manifest.name), "POST",
@@ -356,8 +438,8 @@ def upload_release(upload_url: str, exe: Path, manifest: Path, version: str, dig
               f"{published.get('version')!r} — the CDN may need a minute to catch up; "
               f"check {upload_url} before announcing the release.")
 
-    status, _ = http(object_url(upload_url, exe.name), "HEAD")
-    print(f"Verified: {exe.name} is downloadable (HTTP {status}).")
+    status, _ = http(object_url(upload_url, package.name), "HEAD")
+    print(f"Verified: {package.name} is downloadable (HTTP {status}).")
 
     prune_old_releases(upload_url, key)
 
@@ -387,12 +469,12 @@ def delete_objects(upload_url: str, names: list[str], key: str) -> None:
 def prune_old_releases(upload_url: str, key: str) -> None:
     """Delete leftover ``ODBCQueryApp-*.exe`` builds from the bucket.
 
-    The published package is a fixed ``ODBCQueryApp.exe`` that is overwritten in
+    The published package is a fixed ``ODBCQueryApp.zip`` that is overwritten in
     place each release, so there is normally nothing to prune; this only clears
-    the version-numbered files left behind by the former naming scheme.  It runs
-    only after the new exe and manifest are published, and its pattern never
-    matches the manifest or the current fixed-name exe.  A failure here is a
-    warning: the release itself already succeeded.
+    the version-numbered exes left behind by the former single-exe scheme.  It
+    runs only after the new zip and manifest are published, and its pattern
+    never matches the manifest or the current fixed-name zip.  A failure here is
+    a warning: the release itself already succeeded.
     """
     try:
         names = fetch_bucket_names(upload_url, key)
@@ -403,9 +485,11 @@ def prune_old_releases(upload_url: str, key: str) -> None:
     stale = sorted(
         name for name in names
         if re.fullmatch(r"ODBCQueryApp-.+\.exe", name, re.IGNORECASE)
+        # keep the versioned installers — each release's link stays valid
+        and not re.fullmatch(r"ODBCQueryApp-Setup-.+\.exe", name, re.IGNORECASE)
     )
     if not stale:
-        print("\nNo versioned release exes to remove (the bucket keeps ODBCQueryApp.exe).")
+        print("\nNo stale single-exe builds to remove (installers and ODBCQueryApp.zip kept).")
         return
 
     print(f"\nRemoving {len(stale)} superseded release exe(s): {', '.join(stale)}")
@@ -414,24 +498,26 @@ def prune_old_releases(upload_url: str, key: str) -> None:
     except SystemExit as exc:
         print(f"WARNING: could not delete old releases — the bucket still holds them.\n{exc}")
         return
-    print(f"  removed {len(stale)} file(s); ODBCQueryApp.exe kept.")
+    print(f"  removed {len(stale)} file(s); installers and ODBCQueryApp.zip kept.")
 
 
-def print_manual_upload(upload_url: str, exe_release: Path, manifest: Path) -> None:
+def print_manual_upload(upload_url: str, package: Path, manifest: Path,
+                        installer: Path | None = None) -> None:
     """Fall back to copy-paste curl commands when we have no key."""
-    print("\nUpload these two files to the update bucket:")
-    print(f"  1. {exe_release.name}")
-    print(f"  2. {manifest.name}   (upload LAST, so clients never see a manifest")
-    print("                    pointing at a file that is not there yet)")
+    files = [package] + ([installer] if installer else []) + [manifest]
+    print("\nUpload these files to the update bucket (manifest last):")
+    for index, item in enumerate(files, 1):
+        extra = ("   (upload LAST, so clients never see a manifest"
+                 "\n                    pointing at a file that is not there yet)"
+                 if item is manifest else "")
+        print(f"  {index}. {item.name}{extra}")
     print("\nSame thing from the command line (needs your service_role key):")
-    print(f'  curl.exe -X POST "{object_url(upload_url, exe_release.name)}" \\')
-    print('    -H "Authorization: Bearer <SERVICE_ROLE_KEY>" \\')
-    print('    -H "Content-Type: application/octet-stream" -H "x-upsert: true" \\')
-    print(f'    --data-binary "@{exe_release}"')
-    print(f'  curl.exe -X POST "{object_url(upload_url, manifest.name)}" \\')
-    print('    -H "Authorization: Bearer <SERVICE_ROLE_KEY>" \\')
-    print('    -H "Content-Type: application/json" -H "x-upsert: true" \\')
-    print(f'    --data-binary "@{manifest}"')
+    for item in files:
+        content_type = "application/json" if item.suffix == ".json" else "application/octet-stream"
+        print(f'  curl.exe -X POST "{object_url(upload_url, item.name)}" \\')
+        print('    -H "Authorization: Bearer <SERVICE_ROLE_KEY>" \\')
+        print(f'    -H "Content-Type: {content_type}" -H "x-upsert: true" \\')
+        print(f'    --data-binary "@{item}"')
 
 
 def main() -> None:
@@ -444,20 +530,15 @@ def main() -> None:
     else:
         print("\nSkipping frontend build (--skip-frontend)")
 
-    upx_dir = find_upx_dir()
-    if upx_dir:
-        print(f"Using UPX from {upx_dir}")
-    else:
-        print("WARNING: upx.exe not found — the exe will be larger than usual.")
     # The version is decided up front (ask_version_bump mirrors the spec's old
     # mid-build prompt) and recorded in the version history, both *before*
     # packaging so the exe bundles a history that includes its own release.
+    # UPX is deliberately not used: packed executables are a strong antivirus
+    # false-positive heuristic, and the onedir layout already starts fast.
     ask_version_bump()
     update_version_history(read_app_version())
-    pyinstaller_cmd = [build_python(), "-m", "PyInstaller", str(SPEC), "--noconfirm"]
-    if upx_dir:
-        pyinstaller_cmd += ["--upx-dir", str(upx_dir)]
-    run(pyinstaller_cmd, cwd=ROOT, env=dict(os.environ, ODBC_SKIP_VERSION_PROMPT="1"))
+    run([build_python(), "-m", "PyInstaller", str(SPEC), "--noconfirm"],
+        cwd=ROOT, env=dict(os.environ, ODBC_SKIP_VERSION_PROMPT="1"))
 
     version = read_app_version()
     print(f"\nReleasing version {version}")
@@ -472,24 +553,22 @@ def main() -> None:
         print(f"WARNING: latest.json is already on {version}. Installed clients will never "
               f"see this build — re-run and answer the version prompt next time.")
 
-    if not EXE_SOURCE.is_file():
-        raise SystemExit(f"Build did not produce {EXE_SOURCE}")
-    digest = sha256_of(EXE_SOURCE)
-    size = EXE_SOURCE.stat().st_size
-    if size > 45 * 1024 * 1024:
-        print(f"WARNING: the exe is {size / 1048576:.1f} MB — UPX compression does not "
-              f"look like it was applied.")
+    zip_path = package_zip()
+    digest = sha256_of(zip_path)
+    size = zip_path.stat().st_size
+    folder_size = dir_size(PACKAGE_DIR)
+    if size > 120 * 1024 * 1024:
+        print(f"WARNING: the zip is {size / 1048576:.1f} MB — consider trimming unused "
+              f"dependencies in the spec to keep downloads fast.")
 
-    # Fixed name on purpose: users should never have to reason about
-    # version-numbered exe files (the version lives in latest.json only).
-    exe_name = "ODBCQueryApp.exe"
-    exe_release = EXE_SOURCE
-
-    # PyInstaller already wrote dist\ODBCQueryApp.exe; remove the versioned exe
-    # left over from the former naming scheme so dist holds only this one file.
-    for stale in DIST.glob("ODBCQueryApp-*.exe"):
-        print(f"Removing stale build output: {stale.name}")
-        stale.unlink()
+    # Remove leftover artefacts of the former single-exe scheme so dist holds
+    # only the onedir folder, its zip and the installer.
+    for stale in [DIST / "ODBCQueryApp.exe",
+                  *DIST.glob("ODBCQueryApp-Setup-*.exe")]:
+        if stale.is_file():
+            print(f"Removing stale build output: {stale.name}")
+            stale.unlink()
+    installer = build_installer()
 
     notes = ""
     if NOTES_FILE.is_file():
@@ -501,19 +580,28 @@ def main() -> None:
         "version": version,
         "min_version": MIN_VERSION,
         "notes": notes,
-        "exe": exe_name,
+        "package": PACKAGE_NAME,
         "sha256": digest,
     }
+    if installer:
+        # Purely informational for now — clients ignore unknown fields, and a
+        # future release can offer "download the installer" from this name.
+        manifest["installer"] = installer.name
     payload = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
     MANIFEST.write_text(payload, encoding="utf-8")
     json.loads(MANIFEST.read_text(encoding="utf-8"))  # fail loudly if malformed
 
     upload_url = read_manifest_url()
-    size_mb = size / (1024 * 1024)
     print("\n" + "=" * 70)
     print(f"Release {version} ready")
     print("=" * 70)
-    print(f"  exe      : {exe_release}  ({size_mb:.2f} MB)")
+    print(f"  folder   : {PACKAGE_DIR}  ({folder_size / (1024 * 1024):.2f} MB installed)")
+    print(f"  zip      : {zip_path}  ({size / (1024 * 1024):.2f} MB download)")
+    if installer:
+        print(f"  installer: {installer.name}  "
+              f"({installer.stat().st_size / (1024 * 1024):.2f} MB — the file to share)")
+        if upload_url:
+            print(f"             published at {upload_url.rsplit('/', 1)[0]}/{installer.name}")
     print(f"  sha256   : {digest}")
     print(f"  manifest : {MANIFEST}")
     print(f"  notes    : {len(notes)} chars from {NOTES_FILE.name}")
@@ -525,7 +613,7 @@ def main() -> None:
     print(f"\n  manifest URL: {upload_url}")
     if "--no-upload" in sys.argv:
         print("\nSkipping the upload (--no-upload)")
-        print_manual_upload(upload_url, exe_release, MANIFEST)
+        print_manual_upload(upload_url, zip_path, MANIFEST, installer)
         return
 
     key = upload_key(expected_project_ref(upload_url))
@@ -533,10 +621,10 @@ def main() -> None:
         print("\nNo Supabase key found, so nothing was uploaded.")
         print("  Save the service-role key on a single line in")
         print(f"  {Path(os.environ.get('APPDATA', '~')) / 'ODBCQueryApp' / 'supabase_key'}")
-        print_manual_upload(upload_url, exe_release, MANIFEST)
+        print_manual_upload(upload_url, zip_path, MANIFEST, installer)
         return
 
-    upload_release(upload_url, exe_release, MANIFEST, version, digest, key)
+    upload_release(upload_url, zip_path, MANIFEST, version, digest, key, installer)
 
 
 if __name__ == "__main__":

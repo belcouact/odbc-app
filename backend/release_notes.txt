@@ -1,3 +1,4 @@
-1. Fixed: the Test button on saved connections now works for DSNs that require a password (e.g. FAB_MESA10, SZMFGACTIVE). Tests previously ran without a password because saved passwords are never sent back to the app; the backend now falls back to the stored keyring password when testing a saved connection.
-2. Settings → About: the build version now renders at the same size as the other info values.
-3. About profile popup: shows four motivational mottos below the avatar.
+1. Fixed updates failing to install on some machines with "[WinError 5] Access is denied" — the app now hands the folder swap to a helper that runs after it closes, so the install folder is never locked while it is being replaced.
+2. Updates are automatic: when a new version is published, the app installs it by itself in the background — no button to click. Running queries finish first, then the app restarts and reloads on its own; a short toast confirms it.
+3. If an update ever fails to install, the banner stays visible with an "Update now" button so it can be retried manually.
+4. A stable download link, ODBCQueryApp-Setup-latest.exe, always points at the newest installer — share it once and it stays current for future releases.

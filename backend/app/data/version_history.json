@@ -1,5 +1,20 @@
 [
   {
+    "version": "2.2.4",
+    "date": "2026-10-03",
+    "notes": "1. Fixed updates failing to install on some machines with \"[WinError 5] Access is denied\" — the app now hands the folder swap to a helper that runs after it closes, so the install folder is never locked while it is being replaced.\n2. Updates are automatic: when a new version is published, the app installs it by itself in the background — no button to click. Running queries finish first, then the app restarts and reloads on its own; a short toast confirms it.\n3. If an update ever fails to install, the banner stays visible with an \"Update now\" button so it can be retried manually.\n4. A stable download link, ODBCQueryApp-Setup-latest.exe, always points at the newest installer — share it once and it stays current for future releases."
+  },
+  {
+    "version": "2.2.3",
+    "date": "2026-10-03",
+    "notes": "1. Updates are now automatic: when a new version is published, the app installs it by itself in the background — no button to click. Running queries finish first, then the app restarts and reloads on its own; a short toast confirms it.\n2. If an update ever fails to install, the banner stays visible with an \"Update now\" button so it can be retried manually.\n3. A stable download link, ODBCQueryApp-Setup-latest.exe, always points at the newest installer — share it once and it stays current for future releases."
+  },
+  {
+    "version": "2.2.2",
+    "date": "2026-10-03",
+    "notes": "1. New installer: the app is now installed with ODBCQueryApp-Setup-2.2.2.exe instead of being run as a single portable exe. It adds a Start Menu shortcut and an \"Apps & features\" entry, so it can be uninstalled from Windows Settings at any time.\n2. Faster loading: the old single-file exe unpacked itself to a temp folder on every start; the installed layout starts instantly. Heavy libraries (pandas/numpy) now load only when first needed, so the window appears even quicker.\n3. Less antivirus trouble: the previous UPX-packed single exe was frequently flagged by antivirus software; the new build is not packed and ships with proper version information.\n4. Smoother updates: the in-app updater now swaps the whole install folder, and the app no longer flickers \"offline\" while an update is being applied. Installers for every release stay available in the update bucket."
+  },
+  {
     "version": "2.2.1",
     "date": "2026-10-03",
     "notes": "1. Fixed: the Test button on saved connections now works for DSNs that require a password (e.g. FAB_MESA10, SZMFGACTIVE). Tests previously ran without a password because saved passwords are never sent back to the app; the backend now falls back to the stored keyring password when testing a saved connection.\n2. Settings → About: the build version now renders at the same size as the other info values.\n3. About profile popup: shows four motivational mottos below the avatar."
@@ -8,20 +23,5 @@
     "version": "2.2.0",
     "date": "2026-10-03",
     "notes": "1. AI dashboard builder: one-click example-prompt buttons that fill the input with a ready-made dashboard request built from your current data (KPI cards plus trend and breakdown charts), so you get several charts at once instead of a single one.\n2. Chart builder: the \"Edit in chart builder\" action on a dashboard tile loads that tile's settings into the full chart picker, so you can adjust and update it in place.\n3. Dashboard charts: new charts are always added to the dashboard while keeping the charts you already have — nothing is overwritten.\n4. Dashboard AI charts: the legend is now placed at the bottom of every chart for a consistent, more readable layout.\n5. Chart-type icons: the Error bars and Control chart (SPC) tiles now use icons that match what they represent."
-  },
-  {
-    "version": "2.1.0",
-    "date": "2026-10-02",
-    "notes": "1. BI page — Relationships: link warehouse tables on a shared column (left or inner join), drill from a row to its related rows in the linked table, or view a flat joined table; relationships are saved, editable and deletable.\n2. Relationship diagram: all relationships in one view — tables as nodes connected by lines labelled with the key pair, colored/solid for left joins and dashed green for inner joins, with arrows showing direction; hover a line for details.\n3. Charts across tables: in the Chart tab, pick a relationship as the chart data source to chart fields from both tables at once (joined dataset, up to 5,000 rows).\n4. Warehouse section: snapshots and relationships combined into one tabbed, collapsible card with live counts.\n5. Edit grid window: AI edit, data types and calculated columns combined into a single dialog with tabs; the data types tab redesigned as responsive cards with a per-column type dropdown.\n6. Snapshots: one-click button to load stored rows back into the Query grid."
-  },
-  {
-    "version": "2.0.9",
-    "date": "2026-10-01",
-    "notes": "1. Query grid — smarter copy: with a drill-through filter active, the Copy button now exports only the rows you can see (the drilled-down set) instead of the whole result; row selections still take priority.\n2. Summary tab — sortable table: click any column header (group-by columns, Column name, or a statistic) to sort the table; clicking again flips the direction, a third click returns to the original order. Copy and Download Excel follow the sorted order.\n3. Summary drill-through: clicking a row in the Summary table or pivot now scrolls the Query page smoothly to the results grid, so the drilled rows are in view as soon as you land.\n4. About page: two new info cards show the technology behind the app — the frontend stack (React · MUI · AG Grid · ECharts) and the backend stack (Python · FastAPI · pyodbc · pandas)."
-  },
-  {
-    "version": "2.0.8",
-    "date": "2026-10-01",
-    "notes": "1. Workspace — live feedback: query results now fade in with a soft staggered animation while a skeleton placeholder shows during the run; the Run button flips to a green Done tick on success and a shaking red Failed on error; KPI numbers count up to their value and the cards lift slightly on hover.\n2. Message pop-ups — success colour: success toasts (reconnect, upload, connection test, AI test) now use a bright green background with dark text for a clearer \"all good\" signal; errors keep their own distinct style.\n3. Feedback window: the Discussion window now has the same rounded corners as the reply box (an oversized-corner glitch is fixed), shows a progress bar at the top while a post's content is being fetched, and adds Previous / Next buttons above the message — with a position counter — so you can step through the board's feedback in order.\n4. Script tab: the data-source card stacks its controls in full-width rows on wide screens too (matching the narrow layout), and the View button now sits on the same row as the Template dropdown."
   }
 ]

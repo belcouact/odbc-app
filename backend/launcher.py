@@ -12,9 +12,10 @@ loop:
 * an unexpected crash is retried the same way, with a circuit breaker that
   gives up after a few back-to-back fast failures and shows an error box.
 
-Built as a windowed (no-console) single-file exe, so stdout/stderr are
-redirected to ``%APPDATA%\\ODBCQueryApp\\server.log`` and fatal errors are
-shown in a message box instead of a console.
+Built as a windowed (no-console) onedir bundle (ODBCQueryApp.exe next to an
+_internal\ tree), so stdout/stderr are redirected to
+``%APPDATA%\\ODBCQueryApp\\server.log`` and fatal errors are shown in a
+message box instead of a console.
 """
 import json
 import os
@@ -23,6 +24,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -327,87 +329,217 @@ def _pending_update_path() -> str:
 
 
 def _cleanup_old_backups(exe_path: str) -> None:
-    """Delete '<exe>.<version>.old' backups left behind by successful swaps."""
-    folder = os.path.dirname(exe_path) or "."
-    base = os.path.basename(exe_path)
+    """Delete '<install>.<version>.old' backups left behind by successful swaps.
+
+    The backup is a sibling of the install directory (the onedir swap renames
+    the whole folder aside). Files left by the former onefile scheme —
+    '<exe>.<version>.old' next to the exe — are removed too.
+    """
+    install_dir = os.path.dirname(os.path.abspath(exe_path)) or "."
+    folder = os.path.dirname(install_dir)
+    base = os.path.basename(install_dir)
     try:
         for name in os.listdir(folder):
-            if name.startswith(base + ".") and name.endswith(".old"):
-                try:
-                    os.remove(os.path.join(folder, name))
-                except OSError:
-                    pass
+            if not (name.startswith(base + ".") and name.endswith(".old")):
+                continue
+            victim = os.path.join(folder, name)
+            try:
+                if os.path.isdir(victim):
+                    shutil.rmtree(victim, ignore_errors=True)
+                else:
+                    os.remove(victim)
+            except OSError:
+                pass
     except OSError:
         pass
 
 
-def _spawn_detached(exe_path: str) -> None:
-    """Start the freshly updated build as an independent background process.
+# ---- Onedir folder swap (runs *outside* this process) ----
+#
+# Windows refuses to rename a folder while any process still has a handle
+# inside it that was not opened with FILE_SHARE_DELETE.  A onedir bundle keeps
+# several such handles in the install folder for its whole lifetime — Python's
+# zipimport holds ``_internal\base_library.zip`` open, and the loaded
+# ``python311.dll`` / ``*.pyd`` image files are locked — so the old in-process
+# swap always failed with "[WinError 5] Access is denied" when it tried to
+# rename the install folder.  (The former onefile build worked by accident:
+# everything was unpacked to %TEMP%, leaving only the share-deletable exe.)
+#
+# The fix: hand the swap to a detached helper that waits for this process to
+# exit, so every handle is gone before the folder is renamed.
+_UPDATE_HELPER_SCRIPT = """$ErrorActionPreference = 'Continue'
+$log = '@@LOG@@'
+function Log([string]$m) {
+  try { Add-Content -LiteralPath $log -Value ("[{0}] {1}" -f (Get-Date -Format s), $m) } catch {}
+}
+$parentPid = @@PARENT_PID@@
+$target = '@@TARGET@@'
+$backup = '@@BACKUP@@'
+$staged = '@@STAGED@@'
+$pending = '@@PENDING@@'
+$exeName = '@@EXE_NAME@@'
+$stagingRoot = '@@STAGING_ROOT@@'
+$scriptPath = '@@SCRIPT@@'
 
-    The child must not inherit this process' PyInstaller bootloader state.
-    Since PyInstaller 6.22.1 the onefile bootloader treats a process that
-    inherits ``_PYI_ARCHIVE_FILE`` as a child of the *same* installation and
-    aborts with "Security validation failure: parent process has different
-    executable!" when the parent executable does not match.  That is exactly
-    what happens here: the running exe was just renamed aside by the swap, so
-    the relaunched build would die on startup and leave the open page stuck.
+Log "waiting for the app (pid $parentPid) to exit"
+$deadline = (Get-Date).AddSeconds(60)
+while ((Get-Date) -lt $deadline) {
+  if (-not (Get-Process -Id $parentPid -ErrorAction SilentlyContinue)) { break }
+  Start-Sleep -Milliseconds 250
+}
+if (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) {
+  Log 'the app did not exit in time; stopping it'
+  Stop-Process -Id $parentPid -Force -ErrorAction SilentlyContinue
+}
+Start-Sleep -Milliseconds 500
 
-    ``PYINSTALLER_RESET_ENVIRONMENT=1`` is the documented switch for spawning
-    a subprocess that outlives the current application (application restart):
-    it drops the inherited private bootloader variables so the new build comes
-    up as a fresh top-level process and unpacks itself again.
+try {
+  if (Test-Path -LiteralPath $backup) {
+    Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  $moved = $false
+  for ($i = 0; $i -lt 20; $i++) {
+    try {
+      Move-Item -LiteralPath $target -Destination $backup -Force -ErrorAction Stop
+      $moved = $true
+      break
+    } catch { Start-Sleep -Milliseconds 500 }
+  }
+  if (-not $moved) { throw 'the install folder is still in use and could not be renamed' }
+  Log 'renamed the old install aside'
+  try {
+    Move-Item -LiteralPath $staged -Destination $target -Force -ErrorAction Stop
+  } catch {
+    Copy-Item -LiteralPath $staged -Destination $target -Recurse -Force -ErrorAction Stop
+    Remove-Item -LiteralPath $staged -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  Log 'moved the staged build into place'
+  Get-ChildItem -LiteralPath $backup -Filter 'unins*' -ErrorAction SilentlyContinue | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $target $_.Name) -Force -ErrorAction SilentlyContinue
+  }
+  Remove-Item -LiteralPath $pending -Force -ErrorAction SilentlyContinue
+  Start-Process -FilePath (Join-Path $target $exeName) -ArgumentList '--updated' -WorkingDirectory $target
+  Log 'update installed; the new build is starting'
+  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
+} catch {
+  Log ("update failed: " + $_.Exception.Message)
+  if ((Test-Path -LiteralPath $backup) -and -not (Test-Path -LiteralPath $target)) {
+    Move-Item -LiteralPath $backup -Destination $target -Force -ErrorAction SilentlyContinue
+  }
+  if (Test-Path -LiteralPath (Join-Path $target $exeName)) {
+    Start-Process -FilePath (Join-Path $target $exeName) -WorkingDirectory $target -ErrorAction SilentlyContinue
+  }
+  try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+    [System.Windows.Forms.MessageBox]::Show("The update could not be installed:`r`n" + $_.Exception.Message + "`r`n`r`nThe previous version is starting again. Details in the log:`r`n" + $log, 'ODBCQueryApp') | Out-Null
+  } catch {}
+}
+Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+"""
+
+
+def _ps_quote(value: str) -> str:
+    """Escape a path for a single-quoted PowerShell string literal."""
+    return value.replace("'", "''")
+
+
+def _spawn_update_helper(target: str, backup: str, staged: str, version: str) -> str:
+    """Start the detached helper that swaps the install folder once we exit.
+
+    Writes a small PowerShell script to %TEMP% and launches it detached; the
+    script waits for this process to disappear (all file handles released),
+    then renames the install folder aside, moves the staged folder in, carries
+    the Inno Setup uninstaller over, drops the pending file and relaunches the
+    new build with ``--updated``.  Returns the helper log path.
     """
+    script_path = os.path.join(
+        tempfile.gettempdir(), f"ODBCQueryApp-update-{version}.ps1"
+    )
+    replacements = (
+        ("@@LOG@@", _ps_quote(os.path.join(_state_dir(), "update_helper.log"))),
+        ("@@PARENT_PID@@", str(os.getpid())),
+        ("@@TARGET@@", _ps_quote(target)),
+        ("@@BACKUP@@", _ps_quote(backup)),
+        ("@@STAGED@@", _ps_quote(staged)),
+        ("@@PENDING@@", _ps_quote(_pending_update_path())),
+        ("@@EXE_NAME@@", _ps_quote(os.path.basename(sys.executable))),
+        ("@@STAGING_ROOT@@", _ps_quote(os.path.dirname(staged))),
+        ("@@SCRIPT@@", _ps_quote(script_path)),
+    )
+    script = _UPDATE_HELPER_SCRIPT
+    for token, value in replacements:
+        script = script.replace(token, value)
+    # utf-8-sig so Windows PowerShell (which assumes ANSI without a BOM) reads
+    # a non-ASCII user name in the paths correctly.
+    with open(script_path, "w", encoding="utf-8-sig") as fh:
+        fh.write(script)
+
+    powershell = os.path.join(
+        os.environ.get("SystemRoot", r"C:\Windows"),
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe",
+    )
+    if not os.path.exists(powershell):
+        raise OSError("PowerShell was not found; cannot apply the update")
+
     env = dict(os.environ)
-    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    for name in _PYI_PRIVATE_VARS:
+        env.pop(name, None)  # keep the relaunched build's environment clean
     flags = 0
     if os.name == "nt":
         DETACHED_PROCESS = 0x00000008
         CREATE_NEW_PROCESS_GROUP = 0x00000200
         flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     subprocess.Popen(
-        [exe_path, "--updated"],
-        cwd=os.path.dirname(exe_path) or None,
+        [
+            powershell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            script_path,
+        ],
+        cwd=tempfile.gettempdir(),
         creationflags=flags,
         close_fds=True,
         env=env,
     )
+    return os.path.join(_state_dir(), "update_helper.log")
 
 
 def _apply_pending_update() -> bool:
-    """Swap the staged new exe in for the running one and relaunch it.
+    """Hand the staged update to a detached helper and let this process exit.
 
-    Windows refuses to overwrite a running exe but *does* allow renaming it,
-    so the trick is: rename the current build out of the way, copy the staged
-    update onto the original path, then spawn the new build detached with
-    ``--updated`` (no new browser tab; it reuses the saved port so the
-    already-open page reconnects by itself).
+    The swap cannot run in-process: Windows will not rename the install folder
+    while this process still holds handles inside it (zipimport keeps
+    ``_internal\\base_library.zip`` open, the loaded ``python311.dll``/``*.pyd``
+    images are locked), which is exactly the ``[WinError 5] Access is denied``
+    the previous in-process swap hit.  So we start a helper that waits for this
+    process to exit and only then renames the current install folder aside,
+    moves the staged folder into place, carries the Inno Setup uninstaller over
+    and relaunches the new build with ``--updated`` (no new browser tab; it
+    reuses the saved port so the already-open page reconnects by itself).
+
+    Returns True once the helper is running — the caller must then exit so the
+    handles are released and the helper can do its work.
     """
     path = _pending_update_path()
     try:
         with open(path, encoding="utf-8") as fh:
             pending = json.load(fh)
-        staged = str(pending["exe"])
+        staged = str(pending["package"])
         target = str(pending["target"])
         version = str(pending.get("version") or "new")
-        if not os.path.isfile(staged):
-            raise OSError("the staged update file is missing")
+        if not os.path.isdir(staged):
+            raise OSError("the staged update folder is missing")
         backup = f"{target}.{version}.old"
-        for attempt in range(6):  # give AV/search indexers a moment to release handles
-            try:
-                os.replace(target, backup)
-                break
-            except OSError:
-                if attempt == 5:
-                    raise
-                time.sleep(0.5)
-        try:
-            shutil.copyfile(staged, target)
-        except OSError:
-            os.replace(backup, target)  # roll back so the old build still works
-            raise
-        os.remove(path)  # consumed — never retry the swap after this point
-        print(f"installed update v{version}; relaunching {target}")
-        _spawn_detached(target)
+        helper_log = _spawn_update_helper(target, backup, staged, version)
     except Exception as exc:  # noqa: BLE001 - always leave the user a working app
         _show_error(
             "ODBCQueryApp",
@@ -416,10 +548,8 @@ def _apply_pending_update() -> bool:
             f"Details in the log:\n{_log_path()}",
         )
         return False
-    try:
-        os.remove(staged)
-    except OSError:
-        pass
+    print(f"update v{version} handed to the install helper; exiting so it can swap")
+    print(f"helper log: {helper_log}")
     return True
 
 
@@ -437,6 +567,10 @@ def main() -> int:
         _redirect_streams()
         _cleanup_old_backups(sys.executable)
         _ensure_protocol_registered()
+        # Keep the working directory out of the install folder: the update
+        # helper renames that folder, and a process CWD inside it would keep
+        # it locked (and would be inherited by anything this process launches).
+        os.chdir(_state_dir())
 
     # "--updated" is passed by _apply_pending_update: a browser tab is
     # already open on the saved port, so don't spawn another one.

@@ -1,4 +1,6 @@
 """API routes for manually uploaded data (CSV / Excel) and grid-based exports."""
+from __future__ import annotations
+
 import io
 import json
 import math
@@ -7,15 +9,18 @@ import time
 import uuid
 from typing import Literal, Optional
 
-import numpy as np
-import pandas as pd
 from fastapi import APIRouter, File, HTTPException, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app import logging_utils
+from app.lazy import lazy_module
 from app.xpt_export import XPT_MEDIA_TYPE, dataframe_to_xpt
+
+# numpy/pandas load on first use (deferred so the app window appears faster).
+np = lazy_module("numpy")
+pd = lazy_module("pandas")
 
 router = APIRouter()
 

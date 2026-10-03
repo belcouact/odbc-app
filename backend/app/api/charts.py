@@ -1,14 +1,19 @@
 """API routes for chart data (trend, pareto, histogram, scatter, bar, pie, box)."""
+from __future__ import annotations
+
 import time
 from typing import Literal, Optional, Union
 
-import numpy as np
-import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app import logging_utils
 from app.api.queries import QueryDef, fetch_rows
+from app.lazy import lazy_module
+
+# numpy/pandas load on first use (deferred so the app window appears faster).
+np = lazy_module("numpy")
+pd = lazy_module("pandas")
 
 router = APIRouter()
 

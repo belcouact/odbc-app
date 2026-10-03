@@ -1,12 +1,17 @@
 """API routes for Excel report export (Data / Statistics / Analysis / Profile)."""
+from __future__ import annotations
+
 import io
 
-import pandas as pd
 from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
 from app import analytics
 from app.api.queries import QueryDef, _run_query
+from app.lazy import lazy_module
+
+# pandas loads on first use (deferred so the app window appears faster).
+pd = lazy_module("pandas")
 
 router = APIRouter()
 

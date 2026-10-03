@@ -119,6 +119,22 @@ const sqlDialectFor = (databaseType: DatabaseType | undefined): SqlLanguage => {
   }
 }
 
+/** Server type for SQL completion. DSN connections usually leave
+ *  database_type on 'auto' and only carry the live-detected DBMS product name,
+ *  so that name is checked first (mirrors sqlDateDialect). Falls back to the
+ *  configured type, then 'auto' — which makes the editor use standard SQL. */
+function completionDbType(connection: DbConnection | null | undefined): DatabaseType {
+  const dbms = (connection?.resolved_dbms ?? '').toLowerCase()
+  if (dbms.includes('oracle')) return 'oracle'
+  if (dbms.includes('postgres')) return 'postgresql'
+  if (dbms.includes('mysql') || dbms.includes('maria')) return 'mysql'
+  if (dbms.includes('sql server') || dbms.includes('sqlserver') || dbms.includes('mssql')) {
+    return 'sqlserver'
+  }
+  if (dbms.includes('access') || dbms.includes('jet') || dbms.includes('excel')) return 'jet'
+  return connection?.database_type ?? 'auto'
+}
+
 /** One-line preview of the current SQL, shown on the collapsed editor strip. */
 const sqlPreviewLine = (sql: string): string => {
   const flat = sql.trim().replace(/\s+/g, ' ')
@@ -4290,6 +4306,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                     <CodeEditor
                       ariaLabel="SQL (SELECT only — read-only enforced)"
                       language="sql"
+                      sqlDialect={completionDbType(selectedConnection)}
                       value={sqlText}
                       onChange={setSqlText}
                       placeholder="SELECT TOP 100 * FROM dbo.Sales;"
