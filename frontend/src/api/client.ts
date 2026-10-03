@@ -31,6 +31,11 @@ export type { ChartOperation, ChartType } from '../types'
 export interface ConnectionPayload {
   name: string
   type: 'dsn' | 'string' | 'access'
+  /**
+   * Test-only: id of a saved connection, so POST /connections/test can fall
+   * back to the stored keyring password (passwords never round-trip the API).
+   */
+  id?: string
   dsn?: string
   connection_string?: string
   driver?: string

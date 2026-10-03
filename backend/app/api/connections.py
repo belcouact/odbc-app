@@ -20,6 +20,9 @@ class ConnectionCreate(BaseModel):
     """Body shared by POST /connections and POST /connections/test."""
 
     name: str = Field(min_length=1)
+    # Test-only: when set, the test may fall back to the stored connection's
+    # keyring password (the API never sends passwords back to the client).
+    id: Optional[str] = None
     type: Literal["dsn", "string", "access"]
     dsn: Optional[str] = None
     connection_string: Optional[str] = None
@@ -375,8 +378,19 @@ def delete_connection(connection_id: str):
 
 @router.post("/connections/test")
 def test_connection(payload: ConnectionCreate):
-    """Try to connect with the supplied parameters (nothing is saved)."""
+    """Try to connect with the supplied parameters (nothing is saved).
+
+    The client cannot echo a stored password back (the API strips passwords
+    from every response), so when ``id`` references a saved connection and the
+    payload carries no password, the stored keyring password is used. Any
+    fields the caller did edit in the form still win over the stored ones.
+    """
     obj = payload.model_dump(exclude_unset=True)
+    connection_id = obj.pop("id", None)
+    if connection_id and not obj.get("password"):
+        stored = _find_connection(load_stored_connections(), str(connection_id))
+        if stored and stored.get("password"):
+            obj["password"] = stored["password"]
     try:
         _resolve_access_file(obj)
     except RuntimeError as exc:

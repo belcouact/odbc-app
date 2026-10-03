@@ -304,6 +304,9 @@ export default function ConnectionsPage() {
     setDialogNotice(null)
     try {
       const payload = formToPayload(form)
+      // When editing a saved connection, let the backend fall back to the
+      // stored keyring password if the form leaves the password field empty.
+      if (editing) payload.id = editing.id
       const result = await api.testConnection(payload)
       setDialogNotice({
         severity: result.ok ? 'success' : 'error',
@@ -324,6 +327,9 @@ export default function ConnectionsPage() {
     setTestingId(connection.id)
     try {
       const payload: ConnectionPayload = connectionToForm(connection)
+      // The public connection object never carries the password; pass the id
+      // so the backend tests with the stored keyring password.
+      payload.id = connection.id
       const result = await api.testConnection(payload)
       setNotice({
         severity: result.ok ? 'success' : 'error',

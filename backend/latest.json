@@ -1,7 +1,7 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "min_version": "1.0.0",
-  "notes": "1. AI dashboard builder: one-click example-prompt buttons that fill the input with a ready-made dashboard request built from your current data (KPI cards plus trend and breakdown charts), so you get several charts at once instead of a single one.\n2. Chart builder: the \"Edit in chart builder\" action on a dashboard tile loads that tile's settings into the full chart picker, so you can adjust and update it in place.\n3. Dashboard charts: new charts are always added to the dashboard while keeping the charts you already have — nothing is overwritten.\n4. Dashboard AI charts: the legend is now placed at the bottom of every chart for a consistent, more readable layout.\n5. Chart-type icons: the Error bars and Control chart (SPC) tiles now use icons that match what they represent.",
+  "notes": "1. Fixed: the Test button on saved connections now works for DSNs that require a password (e.g. FAB_MESA10, SZMFGACTIVE). Tests previously ran without a password because saved passwords are never sent back to the app; the backend now falls back to the stored keyring password when testing a saved connection.\n2. Settings → About: the build version now renders at the same size as the other info values.\n3. About profile popup: shows four motivational mottos below the avatar.",
   "exe": "ODBCQueryApp.exe",
-  "sha256": "9486d973d4000c603a197f01e0a507e6e9a8aca397d9ab7af86833479b97f701"
+  "sha256": "9862697dc12e3127945e93906a6beb43a3003c2ca039ba0328a413600aebdc76"
 }

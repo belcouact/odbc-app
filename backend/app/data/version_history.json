@@ -1,7 +1,12 @@
 [
   {
+    "version": "2.2.1",
+    "date": "2026-10-03",
+    "notes": "1. Fixed: the Test button on saved connections now works for DSNs that require a password (e.g. FAB_MESA10, SZMFGACTIVE). Tests previously ran without a password because saved passwords are never sent back to the app; the backend now falls back to the stored keyring password when testing a saved connection.\n2. Settings → About: the build version now renders at the same size as the other info values.\n3. About profile popup: shows four motivational mottos below the avatar."
+  },
+  {
     "version": "2.2.0",
-    "date": "2026-10-02",
+    "date": "2026-10-03",
     "notes": "1. AI dashboard builder: one-click example-prompt buttons that fill the input with a ready-made dashboard request built from your current data (KPI cards plus trend and breakdown charts), so you get several charts at once instead of a single one.\n2. Chart builder: the \"Edit in chart builder\" action on a dashboard tile loads that tile's settings into the full chart picker, so you can adjust and update it in place.\n3. Dashboard charts: new charts are always added to the dashboard while keeping the charts you already have — nothing is overwritten.\n4. Dashboard AI charts: the legend is now placed at the bottom of every chart for a consistent, more readable layout.\n5. Chart-type icons: the Error bars and Control chart (SPC) tiles now use icons that match what they represent."
   },
   {
@@ -18,10 +23,5 @@
     "version": "2.0.8",
     "date": "2026-10-01",
     "notes": "1. Workspace — live feedback: query results now fade in with a soft staggered animation while a skeleton placeholder shows during the run; the Run button flips to a green Done tick on success and a shaking red Failed on error; KPI numbers count up to their value and the cards lift slightly on hover.\n2. Message pop-ups — success colour: success toasts (reconnect, upload, connection test, AI test) now use a bright green background with dark text for a clearer \"all good\" signal; errors keep their own distinct style.\n3. Feedback window: the Discussion window now has the same rounded corners as the reply box (an oversized-corner glitch is fixed), shows a progress bar at the top while a post's content is being fetched, and adds Previous / Next buttons above the message — with a position counter — so you can step through the board's feedback in order.\n4. Script tab: the data-source card stacks its controls in full-width rows on wide screens too (matching the narrow layout), and the View button now sits on the same row as the Template dropdown."
-  },
-  {
-    "version": "2.0.7",
-    "date": "2026-10-01",
-    "notes": "1. Chart area — histogram binning: the bin-count slider is replaced by a Bin size box plus Start and End boxes. Leave them blank to auto-fit the data (10 even buckets), type a bin size to set the bucket width, or set a start/end range to clip the domain — values outside the range are dropped.\n2. Message bar: pop-up messages (upload, save, errors) now sit on a dark green background, with a larger, rounder close button centred against the text so it is easier to hit on both desktop and touch screens."
   }
 ]
