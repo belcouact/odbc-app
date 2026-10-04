@@ -11,7 +11,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import logging_utils, storage, update
+from app import keystore, logging_utils, storage, update
 from app.version import APP_VERSION
 from app.api import (
     ai,
@@ -219,8 +219,11 @@ def inflight_count() -> int:
 #     killed tab, browser crash)                           -> reason "watchdog"
 #
 # 90s of quiet tolerates Chrome background-tab throttling (hidden tabs may be
-# throttled to ~1 timer per minute). The 10s goodbye grace keeps a quick
-# refresh (pagehide beacon + same tab id coming back) from looking like a quit.
+# throttled to ~1 timer per minute). The goodbye grace is long because
+# `pagehide` fires on ANY navigation away — typing another address, clicking a
+# link, going Back — not just on tab close. Users who wander off and return
+# within the window must find the app alive: their first heartbeat on return
+# cancels the pending quit. Only after the window expires is it really a quit.
 _HEARTBEAT_STATE: dict = {
     "tabs": {},                # tab id -> last heartbeat time
     "last_seen": 0.0,          # last heartbeat time from any tab
@@ -229,7 +232,7 @@ _HEARTBEAT_STATE: dict = {
     "reattach_deadline": None, # after a watchdog restart: give up after this
 }
 _HEARTBEAT_QUIET_SECONDS = 90.0
-_TAB_LEFT_GRACE_SECONDS = 10.0
+_TAB_LEFT_GRACE_SECONDS = 120.0
 _REATTACH_GRACE_SECONDS = 150.0
 # Requests currently being served. The watchdog never shuts down while this
 # is > 0, so a long-running request (big upload, export, query) cannot be
@@ -351,6 +354,10 @@ def _browser_watchdog() -> None:
 
 threading.Thread(target=_browser_watchdog, daemon=True, name="browser-watchdog").start()
 update.start_background_checker()
+# Pay the deferred keyring import here instead of on the first /api/connections
+# request: the frontend lists connections on mount, so without this the ~0.6 s
+# would just move from startup to the first page load.
+threading.Thread(target=keystore.warm, daemon=True, name="keyring-warmup").start()
 
 
 def get_stored_connection(connection_id: str) -> dict:

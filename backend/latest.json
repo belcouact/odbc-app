@@ -1,8 +1,8 @@
 {
-  "version": "2.2.6",
+  "version": "2.2.9",
   "min_version": "1.0.0",
-  "notes": "1. Fixed the in-app updater hanging on \"Verifying the download…\" — the helper that swaps in a new build was launched in a way Windows PowerShell refused to run, so the update silently stopped and the app closed. Updates now complete and restart into the new version.\n2. This build also carries the fixes published as 2.2.5: the packaged app now bundles pandas and numpy so CSV / Excel uploads (and the charts, exports and summaries built on them) work; the SQL editor suggests functions for the selected connection's server type (Oracle, PostgreSQL, MySQL, SQL Server); and the AI statistical summary window no longer shows a duplicate Close button.",
+  "notes": "1. Fixed losing the app after briefly visiting another website: navigating away used to be mistaken for closing the app, so the background server shut down after about 10 seconds and coming back showed a \"Lost connection\" banner whose \"Retry now\" button could not help. The server now waits up to 2 minutes before treating a goodbye as a real quit — returning within that window brings the app back instantly with all work intact. If you stay away longer, launching ODBCQueryApp.exe again reconnects the open page without a refresh.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "1993bd18f3de42609e38a7a38c2d2d10f43bfe89373e1977b4c615d20651aebd",
-  "installer": "ODBCQueryApp-Setup-2.2.6.exe"
+  "sha256": "7551e0cc85c7cd32ea432c3b393db12aa4a07fc5f9cb887a2845632ceb108a34",
+  "installer": "ODBCQueryApp-Setup-latest.exe"
 }

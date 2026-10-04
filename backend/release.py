@@ -20,9 +20,12 @@ Steps:
   5. write latest.json (backend) for the self-updater
   6. upload the zip, the installer and latest.json to the Supabase bucket and
      read them back through the public URL
-  7. delete leftover ODBCQueryApp-*.exe files from the bucket (from the former
-     single-exe scheme) so the storage quota does not fill up — versioned
-     installers are kept, so a download link survives future releases
+  7. delete superseded executables from the bucket so the storage quota does
+     not fill up: only the fixed-name ODBCQueryApp-Setup-latest.exe is kept
+     (alongside ODBCQueryApp.zip and latest.json), while every versioned
+     ODBCQueryApp-Setup-<version>.exe and the former single-exe
+     ODBCQueryApp*.exe builds are removed — so the bucket holds one installer,
+     not one per release
 
 UPLOAD: the service-role key comes from a single line in
 ``%APPDATA%\\ODBCQueryApp\\supabase_key`` (preferred — this project folder is
@@ -64,6 +67,10 @@ SPEC = ROOT / "ODBCQueryApp.spec"
 PACKAGE_DIR = DIST / "ODBCQueryApp"             # PyInstaller onedir output
 PACKAGE_NAME = "ODBCQueryApp.zip"               # fixed published name
 PACKAGE_ZIP = DIST / PACKAGE_NAME
+# The installer is published under this fixed name only: a link shared once
+# keeps pointing at the newest release, and the bucket holds a single installer
+# instead of one versioned copy per release (see prune_old_releases).
+INSTALLER_LATEST = "ODBCQueryApp-Setup-latest.exe"
 NOTES_FILE = ROOT / "release_notes.txt"
 MANIFEST = ROOT / "latest.json"
 HISTORY_FILE = ROOT / "app" / "data" / "version_history.json"
@@ -400,24 +407,16 @@ def upload_release(upload_url: str, package: Path, manifest: Path, version: str,
     if installer is not None:
         print(f"Uploading {installer.name} "
               f"({installer.stat().st_size / 1048576:.2f} MB)…", flush=True)
-        # The installer name contains the version, so one release never
-        # overwrites another and a long CDN cache is fine.
-        http(object_url(upload_url, installer.name), "POST",
-             {**auth, "Content-Type": "application/octet-stream",
-              "cache-control": "max-age=86400"},
-             installer.read_bytes())
-        link = f"{upload_url.rsplit('/', 1)[0]}/{installer.name}"
-        print(f"  uploaded — shareable download link:\n    {link}")
-        # Same bytes again under a fixed name: a link shared once (pinned in a
-        # chat or a wiki) keeps pointing at the newest release. Short TTL,
-        # because unlike the versioned name this object is overwritten.
-        latest = "ODBCQueryApp-Setup-latest.exe"
-        http(object_url(upload_url, latest), "POST",
+        # Only the fixed name is published: a link shared once (pinned in a
+        # chat or a wiki) keeps pointing at the newest release, and the bucket
+        # holds one installer instead of one per version. Short TTL, because
+        # the object is overwritten every release.
+        http(object_url(upload_url, INSTALLER_LATEST), "POST",
              {**auth, "Content-Type": "application/octet-stream",
               "cache-control": "max-age=60"},
              installer.read_bytes())
-        print(f"  uploaded — stable always-newest link:\n    "
-              f"{upload_url.rsplit('/', 1)[0]}/{latest}")
+        print(f"  uploaded — shareable download link:\n    "
+              f"{upload_url.rsplit('/', 1)[0]}/{INSTALLER_LATEST}")
 
     print(f"Uploading {manifest.name}…", flush=True)
     http(object_url(upload_url, manifest.name), "POST",
@@ -467,14 +466,16 @@ def delete_objects(upload_url: str, names: list[str], key: str) -> None:
 
 
 def prune_old_releases(upload_url: str, key: str) -> None:
-    """Delete leftover ``ODBCQueryApp-*.exe`` builds from the bucket.
+    """Delete superseded executables so the bucket keeps one installer.
 
-    The published package is a fixed ``ODBCQueryApp.zip`` that is overwritten in
-    place each release, so there is normally nothing to prune; this only clears
-    the version-numbered exes left behind by the former single-exe scheme.  It
-    runs only after the new zip and manifest are published, and its pattern
-    never matches the manifest or the current fixed-name zip.  A failure here is
-    a warning: the release itself already succeeded.
+    Only the fixed names survive: ``ODBCQueryApp-Setup-latest.exe`` (the
+    installer to share) and ``ODBCQueryApp.zip`` (the self-update package).
+    Every versioned ``ODBCQueryApp-Setup-<version>.exe`` and every former
+    single-exe build (``ODBCQueryApp.exe``, ``ODBCQueryApp-<version>.exe``) is
+    removed, so the storage quota does not grow by ~30 MB per release.  Runs
+    only after the new installer and manifest are published; unrelated objects
+    in the bucket are never touched.  A failure here is a warning: the release
+    itself already succeeded.
     """
     try:
         names = fetch_bucket_names(upload_url, key)
@@ -484,37 +485,43 @@ def prune_old_releases(upload_url: str, key: str) -> None:
 
     stale = sorted(
         name for name in names
-        if re.fullmatch(r"ODBCQueryApp-.+\.exe", name, re.IGNORECASE)
-        # keep the versioned installers — each release's link stays valid
-        and not re.fullmatch(r"ODBCQueryApp-Setup-.+\.exe", name, re.IGNORECASE)
+        if re.fullmatch(r"ODBCQueryApp(?:-.+)?\.exe", name, re.IGNORECASE)
+        # keep the fixed-name installer — the one link users share
+        and name.lower() != INSTALLER_LATEST.lower()
     )
     if not stale:
-        print("\nNo stale single-exe builds to remove (installers and ODBCQueryApp.zip kept).")
+        print("\nNo superseded installers to remove (ODBCQueryApp-Setup-latest.exe kept).")
         return
 
-    print(f"\nRemoving {len(stale)} superseded release exe(s): {', '.join(stale)}")
+    print(f"\nRemoving {len(stale)} superseded executable(s): {', '.join(stale)}")
     try:
         delete_objects(upload_url, stale, key)
     except SystemExit as exc:
         print(f"WARNING: could not delete old releases — the bucket still holds them.\n{exc}")
         return
-    print(f"  removed {len(stale)} file(s); installers and ODBCQueryApp.zip kept.")
+    print(f"  removed {len(stale)} file(s); {INSTALLER_LATEST} and ODBCQueryApp.zip kept.")
 
 
 def print_manual_upload(upload_url: str, package: Path, manifest: Path,
                         installer: Path | None = None) -> None:
     """Fall back to copy-paste curl commands when we have no key."""
-    files = [package] + ([installer] if installer else []) + [manifest]
+    # (object name in the bucket, local file).  The installer is published
+    # under its fixed name so the bucket holds one installer, not one per
+    # version.
+    files = [(package.name, package)]
+    if installer is not None:
+        files.append((INSTALLER_LATEST, installer))
+    files.append((manifest.name, manifest))
     print("\nUpload these files to the update bucket (manifest last):")
-    for index, item in enumerate(files, 1):
+    for index, (name, item) in enumerate(files, 1):
         extra = ("   (upload LAST, so clients never see a manifest"
                  "\n                    pointing at a file that is not there yet)"
                  if item is manifest else "")
-        print(f"  {index}. {item.name}{extra}")
+        print(f"  {index}. {name}{extra}")
     print("\nSame thing from the command line (needs your service_role key):")
-    for item in files:
+    for name, item in files:
         content_type = "application/json" if item.suffix == ".json" else "application/octet-stream"
-        print(f'  curl.exe -X POST "{object_url(upload_url, item.name)}" \\')
+        print(f'  curl.exe -X POST "{object_url(upload_url, name)}" \\')
         print('    -H "Authorization: Bearer <SERVICE_ROLE_KEY>" \\')
         print(f'    -H "Content-Type: {content_type}" -H "x-upsert: true" \\')
         print(f'    --data-binary "@{item}"')
@@ -586,7 +593,8 @@ def main() -> None:
     if installer:
         # Purely informational for now — clients ignore unknown fields, and a
         # future release can offer "download the installer" from this name.
-        manifest["installer"] = installer.name
+        # The published object uses the fixed name, so point at that.
+        manifest["installer"] = INSTALLER_LATEST
     payload = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
     MANIFEST.write_text(payload, encoding="utf-8")
     json.loads(MANIFEST.read_text(encoding="utf-8"))  # fail loudly if malformed
@@ -601,7 +609,7 @@ def main() -> None:
         print(f"  installer: {installer.name}  "
               f"({installer.stat().st_size / (1024 * 1024):.2f} MB — the file to share)")
         if upload_url:
-            print(f"             published at {upload_url.rsplit('/', 1)[0]}/{installer.name}")
+            print(f"             published as {upload_url.rsplit('/', 1)[0]}/{INSTALLER_LATEST}")
     print(f"  sha256   : {digest}")
     print(f"  manifest : {MANIFEST}")
     print(f"  notes    : {len(notes)} chars from {NOTES_FILE.name}")

@@ -733,19 +733,10 @@ function useAppUpdate(online: boolean) {
     }
   }, [apply])
 
-  // Silent auto-update: the moment a newer build is published (or the running
-  // one falls below the published min_version), start the install without
-  // asking. One attempt per published version — a failure surfaces in the
-  // banner with a manual "Update now" retry, but nothing retries in a loop
-  // behind the user's back.
-  const autoStartedRef = useRef<string | null>(null)
-  const latestVersion = status?.latest_version || ''
-  useEffect(() => {
-    if (!status?.available || !status.supported || busy) return
-    if (!latestVersion || autoStartedRef.current === latestVersion) return
-    autoStartedRef.current = latestVersion
-    void startUpdate()
-  }, [status, busy, latestVersion, startUpdate])
+  // Updates never start on their own: a check only offers the banner / About
+  // card, and the download+install begins solely when the user presses one of
+  // the "Update now" buttons — an automatic install could otherwise interrupt
+  // work in progress (queries, uploads, unsaved editors) at any moment.
 
   const dismiss = useCallback(() => {
     const version = statusRef.current?.latest_version || ''
@@ -1083,12 +1074,11 @@ function AppShell() {
         </Alert>
       )}
 
-      {/* Update banner: with silent auto-update this is a status strip — it
-          flashes "new version available" for a beat, then shows install
-          progress while the exe downloads, swaps and restarts behind the open
-          page, and only lingers as a manual fallback (with an "Update now"
-          retry) if the install failed. Sits above the nav bar so it is the
-          first thing seen. */}
+      {/* Update banner: shown as soon as a check finds a newer build and it
+          has NOT been dismissed ("Later"). Nothing downloads until the user
+          presses "Update now"; the banner then tracks the install progress
+          while the exe downloads, swaps and restarts behind the open page.
+          Sits above the nav bar so it is the first thing seen. */}
       {optionalUpdateVisible && updateStatus && (
         <Alert
           variant="filled"

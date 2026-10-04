@@ -168,18 +168,81 @@ _SINGLE_INSTANCE_MUTEX = r"Local\ODBCQueryApp.SingleInstance"
 _instance_mutex_handle = None
 
 
-def _health_ok(port: int) -> bool:
-    """True when an ODBCQueryApp backend answers on ``port``."""
+def _health(port: int) -> dict | None:
+    """Health payload of an ODBCQueryApp backend on ``port``, else ``None``."""
     try:
         with urllib.request.urlopen(
             f"http://127.0.0.1:{port}/api/health", timeout=0.3
         ) as response:
             if response.status != 200:
-                return False
+                return None
             payload = json.loads(response.read().decode("utf-8"))
-        return payload.get("status") == "ok"
+        if isinstance(payload, dict) and payload.get("status") == "ok":
+            return payload
     except Exception:
-        return False
+        pass
+    return None
+
+
+def _health_ok(port: int) -> bool:
+    """True when an ODBCQueryApp backend answers on ``port``."""
+    return _health(port) is not None
+
+
+def _health_version(port: int) -> str:
+    """Version reported by the backend on ``port`` ("" when unknown)."""
+    payload = _health(port)
+    return str(payload.get("version") or "") if payload else ""
+
+
+def _build_version() -> str:
+    """Version of *this* build (single source: app/version.py); "" if unknown."""
+    try:
+        from app.version import APP_VERSION
+
+        return str(APP_VERSION or "")
+    except Exception:
+        return ""
+
+
+def _version_key(value: str) -> tuple:
+    """Numeric tuple for comparison: '1.1' == '1.1.0', trailing zeros dropped."""
+    parts: list[int] = []
+    for segment in (
+        str(value or "")
+        .strip()
+        .replace("-", ".")
+        .replace("+", ".")
+        .replace("_", ".")
+        .split(".")
+    ):
+        digits = ""
+        for char in segment:
+            if char.isdigit():
+                digits += char
+            else:
+                break
+        if not digits:
+            break
+        parts.append(int(digits))
+    while parts and parts[-1] == 0:
+        parts.pop()
+    return tuple(parts)
+
+
+def _is_current_or_newer(port: int) -> bool:
+    """Whether the serving instance is this build's version or newer.
+
+    A *newer* running instance is left alone (never downgrade to this build),
+    but an *older* one must not be handed the browser — otherwise a freshly
+    installed build keeps showing the previous version's page.  When either
+    version is unknown, fall back to the old hand-off behaviour.
+    """
+    build = _build_version()
+    running = _health_version(port)
+    if not build or not running:
+        return True
+    return _version_key(running) >= _version_key(build)
 
 
 def _running_port() -> int | None:
@@ -212,6 +275,8 @@ def _acquire_single_instance() -> bool:
     for the winner and opens a tab on it.
     """
     global _instance_mutex_handle
+    if _instance_mutex_handle:
+        return True
     try:
         import ctypes
 
@@ -240,6 +305,34 @@ def _wait_for_running_port(seconds: float = 30.0) -> int | None:
         if time.monotonic() >= deadline:
             return None
         time.sleep(0.5)
+
+
+def _retire_stale_instance(port: int, token: str) -> None:
+    """Stop an older running build so this build can serve the page.
+
+    Called when a *different, older* version answers on ``port`` — typically an
+    instance left running from before this build was installed.  Without this
+    the fresh launcher would hand the browser to the old server and the page
+    would keep showing the previous version.  Asks it to quit, then waits for
+    it to release both the port and the single-instance lock (the lock is
+    claimed here, so the caller can start right away).
+    """
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/shutdown",
+            method="POST",
+            headers={"X-App-Token": token} if token else {},
+        )
+        with urllib.request.urlopen(request, timeout=2.0) as response:
+            response.read()
+    except Exception:  # noqa: BLE001 - fall through to the wait below
+        pass
+
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline:
+        if not _health_ok(port) and _acquire_single_instance():
+            return
+        time.sleep(0.3)
 
 
 # PyInstaller's onefile bootloader exports a set of private launch variables to
@@ -313,13 +406,292 @@ def _show_error(title: str, message: str) -> None:
         pass
 
 
-def _open_browser_when_ready(server, port: int, token: str) -> None:
-    """Wait for the server to finish starting, then open the app URL."""
-    for _ in range(60):
-        if server.started:  # uvicorn Server.started is a plain bool
-            webbrowser.open(_app_url(port, token))
+# ---- Startup splash (native Win32, no Tcl/Tk) ----
+#
+# The packaged build ships without the Tcl/Tk runtime (see _show_error), so
+# PyInstaller's built-in Splash -- which is Tcl/Tk based -- is not an option.
+# This draws a small always-on-top "Starting…" window with raw user32/gdi32
+# calls instead: no extra dependency and no growth in the bundle size.  It
+# gives the user instant feedback during the ~2 s the backend needs to import
+# and bind its port, so a shortcut launch never looks like nothing happened.
+
+_SPLASH_CLASS = "ODBCQueryAppSplash"
+_SPLASH_W, _SPLASH_H = 360, 110
+
+try:
+    import ctypes as _ct
+    from ctypes import wintypes as _wt
+
+    _user32 = _ct.windll.user32
+    _gdi32 = _ct.windll.gdi32
+    _shell32 = _ct.windll.shell32
+    _kernel32 = _ct.windll.kernel32
+
+    # LRESULT is pointer-sized; ctypes.wintypes has no LRESULT on this Python
+    # and the default int restype would truncate 64-bit handles.
+    _LRESULT = _ct.c_ssize_t
+    _UINT_PTR = _ct.c_size_t
+
+    class _PAINTSTRUCT(_ct.Structure):
+        _fields_ = [
+            ("hdc", _wt.HDC),
+            ("fErase", _wt.BOOL),
+            ("rcPaint", _wt.RECT),
+            ("fRestore", _wt.BOOL),
+            ("fIncUpdate", _wt.BOOL),
+            ("rgbReserved", _ct.c_byte * 32),
+        ]
+
+    # The HWND param arrives as an int; WINFUNCTYPE keeps it pointer-sized.
+    _WNDPROC = _ct.WINFUNCTYPE(_LRESULT, _wt.HWND, _wt.UINT, _wt.WPARAM, _wt.LPARAM)
+
+    class _WNDCLASSW(_ct.Structure):
+        _fields_ = [
+            ("style", _wt.UINT),
+            ("lpfnWndProc", _WNDPROC),
+            ("cbClsExtra", _ct.c_int),
+            ("cbWndExtra", _ct.c_int),
+            ("hInstance", _wt.HINSTANCE),
+            ("hIcon", _wt.HICON),
+            ("hCursor", _wt.HANDLE),  # wintypes.HCURSOR is absent here
+            ("hbrBackground", _wt.HBRUSH),
+            ("lpszMenuName", _wt.LPCWSTR),
+            ("lpszClassName", _wt.LPCWSTR),
+        ]
+
+    _user32.CreateWindowExW.restype = _wt.HWND
+    _user32.CreateWindowExW.argtypes = [
+        _wt.DWORD, _wt.LPCWSTR, _wt.LPCWSTR, _wt.DWORD,
+        _ct.c_int, _ct.c_int, _ct.c_int, _ct.c_int,
+        _wt.HWND, _wt.HANDLE, _wt.HINSTANCE, _wt.LPVOID,
+    ]
+    _user32.RegisterClassW.restype = _wt.UINT
+    _user32.RegisterClassW.argtypes = [_ct.POINTER(_WNDCLASSW)]
+    _user32.DefWindowProcW.restype = _LRESULT
+    _user32.DefWindowProcW.argtypes = [_wt.HWND, _wt.UINT, _wt.WPARAM, _wt.LPARAM]
+    _user32.BeginPaint.restype = _wt.HDC
+    _user32.BeginPaint.argtypes = [_wt.HWND, _ct.POINTER(_PAINTSTRUCT)]
+    _user32.EndPaint.restype = _wt.BOOL
+    _user32.EndPaint.argtypes = [_wt.HWND, _ct.POINTER(_PAINTSTRUCT)]
+    _user32.GetClientRect.restype = _wt.BOOL
+    _user32.GetClientRect.argtypes = [_wt.HWND, _ct.POINTER(_wt.RECT)]
+    _user32.DestroyWindow.restype = _wt.BOOL
+    _user32.DestroyWindow.argtypes = [_wt.HWND]
+    _user32.PostMessageW.restype = _wt.BOOL
+    _user32.PostMessageW.argtypes = [_wt.HWND, _wt.UINT, _wt.WPARAM, _wt.LPARAM]
+    _user32.PostQuitMessage.restype = None
+    _user32.PostQuitMessage.argtypes = [_ct.c_int]
+    _user32.SetTimer.restype = _UINT_PTR
+    _user32.SetTimer.argtypes = [_wt.HWND, _UINT_PTR, _wt.UINT, _wt.LPVOID]
+    _user32.GetMessageW.restype = _wt.BOOL
+    _user32.GetMessageW.argtypes = [_ct.POINTER(_wt.MSG), _wt.HWND, _wt.UINT, _wt.UINT]
+    _user32.TranslateMessage.restype = _wt.BOOL
+    _user32.TranslateMessage.argtypes = [_ct.POINTER(_wt.MSG)]
+    _user32.DispatchMessageW.restype = _LRESULT
+    _user32.DispatchMessageW.argtypes = [_ct.POINTER(_wt.MSG)]
+    _user32.ShowWindow.restype = _wt.BOOL
+    _user32.ShowWindow.argtypes = [_wt.HWND, _ct.c_int]
+    _user32.UpdateWindow.restype = _wt.BOOL
+    _user32.UpdateWindow.argtypes = [_wt.HWND]
+    _user32.GetSystemMetrics.restype = _ct.c_int
+    _user32.GetSystemMetrics.argtypes = [_ct.c_int]
+    _user32.LoadCursorW.restype = _wt.HANDLE
+    _user32.LoadCursorW.argtypes = [_wt.HINSTANCE, _ct.c_void_p]
+    _user32.DrawIconEx.restype = _wt.BOOL
+    _user32.DrawIconEx.argtypes = [
+        _wt.HDC, _ct.c_int, _ct.c_int, _wt.HICON,
+        _ct.c_int, _ct.c_int, _wt.UINT, _wt.HBRUSH, _wt.UINT,
+    ]
+    _user32.LoadImageW.restype = _wt.HANDLE
+    _user32.LoadImageW.argtypes = [
+        _wt.HINSTANCE, _wt.LPCWSTR, _wt.UINT, _ct.c_int, _ct.c_int, _wt.UINT,
+    ]
+    _shell32.ExtractIconExW.restype = _wt.UINT
+    _shell32.ExtractIconExW.argtypes = [
+        _wt.LPCWSTR, _ct.c_int, _ct.POINTER(_wt.HICON), _ct.POINTER(_wt.HICON), _wt.UINT,
+    ]
+    _user32.DrawTextW.restype = _ct.c_int
+    _user32.DrawTextW.argtypes = [
+        _wt.HDC, _wt.LPCWSTR, _ct.c_int, _ct.POINTER(_wt.RECT), _wt.UINT,
+    ]
+    _gdi32.CreateFontW.restype = _wt.HFONT
+    # 13 int fields (height, width, escapement, ...) then the face name.
+    _gdi32.CreateFontW.argtypes = [_ct.c_int] * 13 + [_wt.LPCWSTR]
+    _gdi32.SelectObject.restype = _wt.HGDIOBJ
+    _gdi32.SelectObject.argtypes = [_wt.HDC, _wt.HGDIOBJ]
+    _gdi32.SetTextColor.restype = _wt.DWORD
+    _gdi32.SetTextColor.argtypes = [_wt.HDC, _wt.DWORD]
+    _gdi32.SetBkMode.restype = _ct.c_int
+    _gdi32.SetBkMode.argtypes = [_wt.HDC, _ct.c_int]
+    _kernel32.GetModuleHandleW.restype = _wt.HMODULE
+    _kernel32.GetModuleHandleW.argtypes = [_wt.LPCWSTR]
+
+    _SPLASH_AVAILABLE = True
+except Exception:  # noqa: BLE001 - non-Windows or an unexpected ctypes layout
+    _SPLASH_AVAILABLE = False
+
+
+class _Splash:
+    """A small always-on-top 'Starting…' window shown while the app boots.
+
+    Runs on its own daemon thread with its own message loop, because the main
+    thread is about to block inside ``uvicorn``.  ``SW_SHOWNOACTIVATE`` and
+    ``WS_EX_TOOLWINDOW`` keep it out of the way (never steals focus, no
+    taskbar button); it is dismissed by ``close()`` once the browser has been
+    opened, or by a 30-second timer as a last resort so it can never linger.
+    Everything is best-effort: a failure here must not break startup.
+    """
+
+    def __init__(self, title: str, message: str) -> None:
+        self._title = title
+        self._message = message
+        self._ready = threading.Event()
+        self._done = threading.Event()
+        self._hwnd = 0
+        self._font = None
+        self._icon = 0
+        self._wndproc = None  # keep the callback alive for the window's life
+        self._thread = threading.Thread(target=self._run, daemon=True, name="splash")
+        self._thread.start()
+        self._ready.wait(timeout=5.0)
+
+    def close(self) -> None:
+        """Ask the window to close and wait for its message loop to exit."""
+        if self._done.is_set():
             return
-        time.sleep(0.5)
+        try:
+            if self._hwnd:
+                _user32.PostMessageW(self._hwnd, 0x0010, 0, 0)  # WM_CLOSE
+        except Exception:
+            pass
+        self._done.wait(timeout=5.0)
+
+    def _run(self) -> None:
+        try:
+            self._create()
+            self._ready.set()
+            self._pump()
+        except Exception:  # noqa: BLE001 - splash is cosmetic only
+            pass
+        finally:
+            self._ready.set()
+            self._done.set()
+
+    def _load_icon(self) -> int:
+        """32x32 app icon: the exe's embedded icon when frozen, else the .ico."""
+        try:
+            if getattr(sys, "frozen", False):
+                large = _wt.HICON()
+                if _shell32.ExtractIconExW(sys.executable, 0, _ct.byref(large), None, 1) > 0:
+                    return large.value or 0
+                return 0
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_icon.ico")
+            if os.path.exists(path):
+                # IMAGE_ICON, LR_LOADFROMFILE
+                return _user32.LoadImageW(None, path, 1, 32, 32, 0x0010) or 0
+        except Exception:
+            pass
+        return 0
+
+    def _create(self) -> None:
+        hinstance = _kernel32.GetModuleHandleW(None)
+        self._wndproc = _WNDPROC(self._on_message)
+        self._icon = self._load_icon()
+
+        wc = _WNDCLASSW()
+        wc.lpfnWndProc = self._wndproc
+        wc.hInstance = hinstance
+        wc.hIcon = self._icon
+        wc.hCursor = _user32.LoadCursorW(None, 32512)  # IDC_ARROW
+        wc.hbrBackground = 6  # COLOR_WINDOW + 1
+        wc.lpszClassName = _SPLASH_CLASS
+        # Tolerate "class already registered" (e.g. a second splash this run).
+        _user32.RegisterClassW(_ct.byref(wc))
+
+        x = (_user32.GetSystemMetrics(0) - _SPLASH_W) // 2
+        y = (_user32.GetSystemMetrics(1) - _SPLASH_H) // 2
+        # WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE: on top, out of
+        # the taskbar, and never steals focus.
+        ex_style = 0x00000008 | 0x00000080 | 0x08000000
+        # WS_POPUP | WS_BORDER | WS_VISIBLE.  WS_VISIBLE is set here on purpose:
+        # the *first* ShowWindow() call is ignored when the launching process
+        # supplies a STARTUPINFO (our case), so showing it that way is unreliable.
+        style = 0x80000000 | 0x00800000 | 0x10000000
+        self._hwnd = _user32.CreateWindowExW(
+            ex_style, _SPLASH_CLASS, self._title, style,
+            x, y, _SPLASH_W, _SPLASH_H, None, None, hinstance, None,
+        )
+        if not self._hwnd:
+            raise OSError("splash window creation failed")
+
+        self._font = _gdi32.CreateFontW(-15, 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
+        _user32.SetTimer(self._hwnd, 1, 30000, None)  # last-resort auto-dismiss
+        _user32.UpdateWindow(self._hwnd)
+
+    def _pump(self) -> None:
+        msg = _wt.MSG()
+        while _user32.GetMessageW(_ct.byref(msg), None, 0, 0) > 0:
+            _user32.TranslateMessage(_ct.byref(msg))
+            _user32.DispatchMessageW(_ct.byref(msg))
+
+    def _on_message(self, hwnd, msg, wparam, lparam):
+        try:
+            if msg == 0x000F:  # WM_PAINT
+                ps = _PAINTSTRUCT()
+                hdc = _user32.BeginPaint(hwnd, _ct.byref(ps))
+                try:
+                    _gdi32.SetBkMode(hdc, 1)  # TRANSPARENT
+                    old = _gdi32.SelectObject(hdc, self._font) if self._font else None
+                    if self._icon:
+                        # DI_NORMAL
+                        _user32.DrawIconEx(
+                            hdc, 18, (_SPLASH_H - 32) // 2, self._icon, 32, 32, 0, None, 3
+                        )
+                    _gdi32.SetTextColor(hdc, 0x00303030)  # COLORREF
+                    text_rect = _wt.RECT(62, 0, _SPLASH_W - 16, _SPLASH_H)
+                    # DT_SINGLELINE | DT_VCENTER | DT_LEFT
+                    _user32.DrawTextW(hdc, self._message, -1, _ct.byref(text_rect), 0x00000024)
+                    if old:
+                        _gdi32.SelectObject(hdc, old)
+                finally:
+                    _user32.EndPaint(hwnd, _ct.byref(ps))
+                return 0
+            if msg in (0x0010, 0x0113):  # WM_CLOSE / WM_TIMER
+                _user32.DestroyWindow(hwnd)
+                return 0
+            if msg == 0x0002:  # WM_DESTROY
+                _user32.PostQuitMessage(0)
+                return 0
+        except Exception:  # noqa: BLE001 - never let painting kill startup
+            pass
+        return _user32.DefWindowProcW(hwnd, msg, wparam, lparam)
+
+
+def _start_splash(title: str, message: str):
+    """Show the startup splash; returns the window or None when unavailable."""
+    if not _SPLASH_AVAILABLE:
+        return None
+    try:
+        return _Splash(title, message)
+    except Exception:  # noqa: BLE001 - cosmetic only, never block startup
+        return None
+
+
+def _open_browser_when_ready(server, port: int, token: str, splash=None) -> None:
+    """Wait for the server to finish starting, then open the app URL.
+
+    Also dismisses the startup splash: whichever happens first -- the server
+    coming up or the 30 s cap below -- the splash goes away in ``finally``.
+    """
+    try:
+        for _ in range(300):
+            if server.started:  # uvicorn Server.started is a plain bool
+                webbrowser.open(_app_url(port, token))
+                return
+            time.sleep(0.1)
+    finally:
+        if splash is not None:
+            splash.close()
 
 
 # ---- Self-update support (pairs with app/update.py) ----
@@ -596,11 +968,17 @@ def main() -> int:
 
     if not from_updater:
         # Bookmark click (odbcapp://) or a second exe launch: an instance is
-        # already serving, so only show its page and leave the server alone.
+        # already serving, so only show its page and leave the server alone —
+        # unless it is an *older* build (e.g. one left running from before this
+        # version was installed).  Handing the browser to that build would keep
+        # showing the previous version, so retire it and start this build
+        # instead.  A running instance of this version or newer is left alone.
         running = _running_port()
-        if running is not None:
+        if running is not None and _is_current_or_newer(running):
             webbrowser.open(_app_url(running, _load_saved_token()))
             return 0
+        if running is not None:
+            _retire_stale_instance(running, _load_saved_token())
         if not _acquire_single_instance():
             # Another instance is still unpacking/starting: wait for it and
             # show its page instead of starting a rival server on a new port.
@@ -615,11 +993,18 @@ def main() -> int:
     token = _prepare_token(reuse_saved=from_updater)
     os.environ["ODBC_APP_TOKEN"] = token
 
+    # Show a "Starting…" window during the ~2 s of imports/bind that follow.
+    # Skipped on the updater relaunch: the pre-update tab is already open and
+    # a second window would look like a second launch.
+    splash = None if from_updater else _start_splash("ODBCQueryApp", "Starting ODBC Query App…")
+
     try:
         import uvicorn
 
         from app.main import app, arm_reattach_grace
     except Exception as exc:  # noqa: BLE001 - report any startup failure
+        if splash is not None:
+            splash.close()
         _show_error("ODBCQueryApp", f"Failed to start the app:\n{exc}")
         return 1
 
@@ -649,7 +1034,9 @@ def main() -> int:
             # watchdog stop are meant to be picked up by the already-open page.
             first_run = False
             threading.Thread(
-                target=_open_browser_when_ready, args=(server, port, token), daemon=True
+                target=_open_browser_when_ready,
+                args=(server, port, token, splash),
+                daemon=True,
             ).start()
 
         started_at = time.monotonic()
@@ -677,6 +1064,8 @@ def main() -> int:
         if reason == "quit":
             if crashed and ran_for < _FAST_FAILURE_SECONDS:
                 # e.g. the very first bind failed: surface it, don't loop.
+                if splash is not None:
+                    splash.close()
                 _show_error("ODBCQueryApp", f"The server stopped unexpectedly:\n{last_error}")
                 return 1
             return 0
@@ -685,6 +1074,8 @@ def main() -> int:
         if ran_for < _FAST_FAILURE_SECONDS:
             fast_failures += 1
             if fast_failures >= _MAX_FAST_FAILURES:
+                if splash is not None:
+                    splash.close()
                 _show_error(
                     "ODBCQueryApp",
                     "The server kept failing to start. See the log at\n"

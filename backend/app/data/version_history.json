@@ -1,27 +1,27 @@
 [
   {
+    "version": "2.3.0",
+    "date": "2026-10-04",
+    "notes": "1. Updates no longer start by themselves: checking for updates (on startup, via \"Check now\", or the automatic background check) now only shows the update banner and the About card. The download and install begin only when you click \"Update now\" — in the top banner, under Settings → About, or in the \"Update required\" dialog — so an update can never interrupt queries, uploads or other work in progress."
+  },
+  {
+    "version": "2.2.9",
+    "date": "2026-10-04",
+    "notes": "1. Fixed losing the app after briefly visiting another website: navigating away used to be mistaken for closing the app, so the background server shut down after about 10 seconds and coming back showed a \"Lost connection\" banner whose \"Retry now\" button could not help. The server now waits up to 2 minutes before treating a goodbye as a real quit — returning within that window brings the app back instantly with all work intact. If you stay away longer, launching ODBCQueryApp.exe again reconnects the open page without a refresh."
+  },
+  {
+    "version": "2.2.8",
+    "date": "2026-10-04",
+    "notes": "1. Fixed an issue where, right after installing a new version, the app could keep showing the previous version (\"you are on X\"). The launcher now checks the version of an already-running instance: a matching or newer instance is reused as before, but an older one left running from before the install is stopped and replaced by the freshly installed build."
+  },
+  {
+    "version": "2.2.7",
+    "date": "2026-10-03",
+    "notes": "1. Opening the app from the shortcut now shows a small \"Starting ODBC Query App…\" window straight away, so the launch no longer looks frozen for a couple of seconds while it boots. The window closes on its own as soon as the browser opens.\n2. Startup is quicker: the backend now prepares its secure credential store in the background instead of holding up the first screen, and it notices the app is ready sooner."
+  },
+  {
     "version": "2.2.6",
     "date": "2026-10-03",
     "notes": "1. Fixed the in-app updater hanging on \"Verifying the download…\" — the helper that swaps in a new build was launched in a way Windows PowerShell refused to run, so the update silently stopped and the app closed. Updates now complete and restart into the new version.\n2. This build also carries the fixes published as 2.2.5: the packaged app now bundles pandas and numpy so CSV / Excel uploads (and the charts, exports and summaries built on them) work; the SQL editor suggests functions for the selected connection's server type (Oracle, PostgreSQL, MySQL, SQL Server); and the AI statistical summary window no longer shows a duplicate Close button."
-  },
-  {
-    "version": "2.2.5",
-    "date": "2026-10-03",
-    "notes": "1. Fixed uploading CSV / Excel files failing with \"Could not parse the file: No module named 'pandas'\" — the packaged app now bundles pandas and numpy, so file uploads (and the charts, exports and summaries built on them) work in the installed build.\n2. The SQL editor now suggests functions for the selected connection's server type: Oracle (TO_DATE, NVL, DECODE, SYSDATE, LISTAGG, …), PostgreSQL, MySQL and SQL Server. Connections with no recognised type keep the standard SQL list.\n3. The AI statistical summary window no longer shows a duplicate Close button at the bottom — the close icon in the top-right corner is the single way to dismiss it."
-  },
-  {
-    "version": "2.2.4",
-    "date": "2026-10-03",
-    "notes": "1. Fixed updates failing to install on some machines with \"[WinError 5] Access is denied\" — the app now hands the folder swap to a helper that runs after it closes, so the install folder is never locked while it is being replaced.\n2. Updates are automatic: when a new version is published, the app installs it by itself in the background — no button to click. Running queries finish first, then the app restarts and reloads on its own; a short toast confirms it.\n3. If an update ever fails to install, the banner stays visible with an \"Update now\" button so it can be retried manually.\n4. A stable download link, ODBCQueryApp-Setup-latest.exe, always points at the newest installer — share it once and it stays current for future releases."
-  },
-  {
-    "version": "2.2.3",
-    "date": "2026-10-03",
-    "notes": "1. Updates are now automatic: when a new version is published, the app installs it by itself in the background — no button to click. Running queries finish first, then the app restarts and reloads on its own; a short toast confirms it.\n2. If an update ever fails to install, the banner stays visible with an \"Update now\" button so it can be retried manually.\n3. A stable download link, ODBCQueryApp-Setup-latest.exe, always points at the newest installer — share it once and it stays current for future releases."
-  },
-  {
-    "version": "2.2.2",
-    "date": "2026-10-03",
-    "notes": "1. New installer: the app is now installed with ODBCQueryApp-Setup-2.2.2.exe instead of being run as a single portable exe. It adds a Start Menu shortcut and an \"Apps & features\" entry, so it can be uninstalled from Windows Settings at any time.\n2. Faster loading: the old single-file exe unpacked itself to a temp folder on every start; the installed layout starts instantly. Heavy libraries (pandas/numpy) now load only when first needed, so the window appears even quicker.\n3. Less antivirus trouble: the previous UPX-packed single exe was frequently flagged by antivirus software; the new build is not packed and ships with proper version information.\n4. Smoother updates: the in-app updater now swaps the whole install folder, and the app no longer flickers \"offline\" while an update is being applied. Installers for every release stay available in the update bucket."
   }
 ]
