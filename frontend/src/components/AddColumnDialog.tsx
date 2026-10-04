@@ -6,6 +6,7 @@ import Chip from '@mui/material/Chip'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import { useTranslation } from 'react-i18next'
 import type { QueryResult } from '../types'
 import { formatCellValue } from '../utils/format'
 import {
@@ -40,6 +41,7 @@ export default function AddColumnPanel({
   onAdd,
   onClose,
 }: AddColumnPanelProps) {
+  const { t } = useTranslation('dialogs')
   const [name, setName] = useState('')
   const [expression, setExpression] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -68,8 +70,8 @@ export default function AddColumnPanel({
   const insertFunction = (fn: string) => insert(`${fn}(`)
 
   const formulaError = useMemo(
-    () => (expression.trim() ? validateFormula(expression) : 'Enter a formula.'),
-    [expression],
+    () => (expression.trim() ? validateFormula(expression) : t('addColumn.enterFormula')),
+    [expression, t],
   )
 
   const missingColumns = useMemo(() => {
@@ -95,11 +97,11 @@ export default function AddColumnPanel({
   const handleAdd = () => {
     const trimmedName = name.trim()
     if (!trimmedName) {
-      setError('Enter a column name.')
+      setError(t('addColumn.enterName'))
       return
     }
     if (existingNames.includes(trimmedName)) {
-      setError('A column with that name already exists.')
+      setError(t('addColumn.nameExists'))
       return
     }
     const formulaErr = validateFormula(expression)
@@ -109,7 +111,7 @@ export default function AddColumnPanel({
     }
     const missing = extractColumnRefs(expression).filter((ref) => !columns.some((c) => c.name === ref))
     if (missing.length > 0) {
-      setError(`Unknown column(s): ${missing.join(', ')}`)
+      setError(t('addColumn.unknownColumns', { names: missing.join(', ') }))
       return
     }
     onAdd({ name: trimmedName, expression: expression.trim() })
@@ -129,21 +131,23 @@ export default function AddColumnPanel({
 
   const hintText =
     expression.trim() && !formulaError
-      ? `${preview.length} of ${rows.length.toLocaleString()} rows shown`
+      ? t('addColumn.rowsShown', { n: preview.length, total: rows.length.toLocaleString() })
       : ''
 
   return (
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       <Typography variant="caption" color="text.secondary">
-        Build a formula for a new column. Reference source columns with{' '}
+        {t('addColumn.intro')}{' '}
         <Box component="span" sx={{ fontFamily: 'monospace', bgcolor: 'action.hover', px: 0.5, borderRadius: 0.5 }}>
           {'{ColumnName}'}
-        </Box>{' '}
-        — e.g. <Box component="span" sx={{ fontFamily: 'monospace' }}>{'{Price} * {Qty}'}</Box>.
+        </Box>
+        {t('addColumn.introExample')}
+        <Box component="span" sx={{ fontFamily: 'monospace' }}>{'{Price} * {Qty}'}</Box>
+        {t('addColumn.introSuffix')}
       </Typography>
 
       <TextField
-        label="Column name"
+        label={t('addColumn.columnName')}
         value={name}
         onChange={(e) => {
           setName(e.target.value)
@@ -154,7 +158,7 @@ export default function AddColumnPanel({
       />
 
       <TextField
-        label="Formula"
+        label={t('addColumn.formula')}
         value={expression}
         onChange={(e) => {
           setExpression(e.target.value)
@@ -201,7 +205,7 @@ export default function AddColumnPanel({
       {/* Column palette */}
       <Box>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-          Columns
+          {t('addColumn.columns')}
         </Typography>
         <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
           {columns.map((col) => (
@@ -218,14 +222,14 @@ export default function AddColumnPanel({
 
       {(formulaError || missingColumns.length > 0 || error) && (
         <Alert severity="error">
-          {error || formulaError || `Unknown column(s): ${missingColumns.join(', ')}`}
+          {error || formulaError || t('addColumn.unknownColumns', { names: missingColumns.join(', ') })}
         </Alert>
       )}
 
       {hintText && (
         <Box>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Preview · {hintText}
+            {t('addColumn.preview')} · {hintText}
           </Typography>
           <Stack spacing={0.25}>
             {preview.slice(0, 8).map((value, index) => (
@@ -239,10 +243,10 @@ export default function AddColumnPanel({
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, pt: 0.5 }}>
         <Button onClick={handleClose} sx={{ minHeight: 40 }}>
-          Cancel
+          {t('actions.cancel')}
         </Button>
         <Button onClick={handleAdd} variant="contained" disabled={!canAdd} sx={{ minHeight: 40 }}>
-          Add column
+          {t('addColumn.add')}
         </Button>
       </Box>
     </Box>

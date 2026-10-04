@@ -1,0 +1,124 @@
+{
+  "panel": {
+    "summarizing_one": "Summarizing {{count}} row",
+    "summarizing_other": "Summarizing {{count}} rows",
+    "clickGroupHint": " · click a group to filter the grid",
+    "aiSummary": "AI summary",
+    "hideFields": "Hide fields",
+    "fields": "Fields",
+    "table": "Table",
+    "pivot": "Pivot",
+    "touchHint": "On a touch screen, tap + on a shelf to pick a field.",
+    "groupColumnBy": "Group {{name}} by",
+    "dataBars": "Data bars",
+    "copied": "Copied!",
+    "copy": "Copy",
+    "downloadExcel": "Download Excel"
+  },
+  "stats": {
+    "count": "Count",
+    "nulls": "Nulls",
+    "sum": "Sum",
+    "mean": "Average",
+    "min": "Min",
+    "max": "Max",
+    "range": "Range",
+    "median": "Median",
+    "stdDev": "Std dev"
+  },
+  "table": {
+    "column": "Column"
+  },
+  "wells": {
+    "groupBy": "Group by",
+    "groupByHint": "Drop columns to group by",
+    "statistics": "Statistics (numeric)",
+    "statisticsHint": "Drop numeric columns to summarize",
+    "rows": "Rows",
+    "rowsHint": "Drop columns for the table rows",
+    "columns": "Columns",
+    "columnsHint": "Drop columns to spread across",
+    "values": "Values",
+    "valuesHint": "Drop columns to aggregate"
+  },
+  "pivot": {
+    "all": "All",
+    "allRows": "All rows",
+    "total": "Total",
+    "rowLabels": "Row labels ({{fields}})",
+    "columnLabels": "Column labels ({{fields}})",
+    "measureOf": "{{op}} of {{column}}"
+  },
+  "ops": {
+    "none": "None (raw)",
+    "sum": "Sum",
+    "mean": "Mean",
+    "count": "Count",
+    "distinct": "Distinct count",
+    "min": "Min",
+    "max": "Max",
+    "median": "Median",
+    "std": "Std dev",
+    "var": "Variance",
+    "first": "First",
+    "last": "Last",
+    "p25": "Percentile 25",
+    "p75": "Percentile 75",
+    "p90": "Percentile 90",
+    "share": "% of total"
+  },
+  "kind": {
+    "number": "Number",
+    "text": "Text",
+    "boolean": "Boolean",
+    "date": "Date"
+  },
+  "grain": {
+    "none": "Exact value",
+    "year": "Year",
+    "quarter": "Quarter",
+    "month": "Month",
+    "day": "Day"
+  },
+  "aria": {
+    "summaryLayout": "Summary layout",
+    "collapseFields": "Collapse fields",
+    "expandFields": "Expand fields",
+    "filterRows": "Filter rows",
+    "filterColumns": "Filter columns",
+    "aggregationFor": "Aggregation for {{column}}",
+    "close": "Close"
+  },
+  "messages": {
+    "shownOf": "{{shown}} of {{total}} shown",
+    "search": "Search",
+    "selectAll": "Select all",
+    "noMatches": "No matches",
+    "done": "Done",
+    "blank": "(blank)",
+    "aiSummaryFailed": "The AI summary failed.",
+    "exportFailed": "Export failed"
+  },
+  "empty": {
+    "runQuery": "Run a query to summarize results here.",
+    "noRows": "The query returned no rows.",
+    "noStats": "Drag a numeric column onto the Statistics shelf to see its summary.",
+    "noPivot": "Drop a column onto Rows (or Columns), and another onto Values, to build a pivot table."
+  },
+  "alert": {
+    "tableTruncated": "Showing the first {{n}} groups only. Narrow the result (or add a filter) to summarize the remaining groups.",
+    "pivotTruncated": "Showing the first {{rows}} rows × {{cols}} columns. Add a filter to see every combination."
+  },
+  "ai": {
+    "title": "AI statistical summary",
+    "help_one": "The assistant writes a Python script and runs it against the first {{n}} row shown here, then reports what it finds.",
+    "help_other": "The assistant writes a Python script and runs it against the first {{n}} rows shown here, then reports what it finds.",
+    "promptLabel": "What should the analysis focus on? (optional)",
+    "analyzing": "Analyzing…",
+    "runAgain": "Run again",
+    "run": "Run analysis",
+    "timedOut": "The analysis did not finish within {{seconds}}s and was stopped.",
+    "noOutput": "The analysis produced no printed output.",
+    "script": "Python script"
+  }
+}

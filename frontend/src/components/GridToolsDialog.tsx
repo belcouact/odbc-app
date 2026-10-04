@@ -7,6 +7,7 @@ import IconButton from '@mui/material/IconButton'
 import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
 import useMediaQuery from '@mui/material/useMediaQuery'
+import { useTranslation } from 'react-i18next'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CloseIcon from '@mui/icons-material/Close'
 import FunctionsIcon from '@mui/icons-material/Functions'
@@ -58,6 +59,7 @@ export default function GridToolsDialog({
   onTabChange,
   onClose,
 }: GridToolsDialogProps) {
+  const { t } = useTranslation('dialogs')
   const [tab, setTab] = useState<GridToolsTab>(initialTab)
   const fullScreen = useMediaQuery((theme) => theme.breakpoints.down('sm'))
 
@@ -86,9 +88,9 @@ export default function GridToolsDialog({
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={fullScreen}>
       <DialogTitle sx={{ position: 'relative', pr: 7, pb: 0.5 }}>
-        Edit grid
+        {t('gridTools.title')}
         <IconButton
-          aria-label="Close edit grid window"
+          aria-label={t('gridTools.ariaClose')}
           onClick={onClose}
           sx={{ position: 'absolute', top: 4, right: 6 }}
         >
@@ -108,7 +110,7 @@ export default function GridToolsDialog({
             value="ai"
             icon={<AutoAwesomeIcon fontSize="small" />}
             iconPosition="start"
-            label="AI edit"
+            label={t('gridTools.tabs.ai')}
             sx={tabSx}
           />
         )}
@@ -116,14 +118,14 @@ export default function GridToolsDialog({
           value="types"
           icon={<TuneIcon fontSize="small" />}
           iconPosition="start"
-          label="Data types"
+          label={t('gridTools.tabs.types')}
           sx={tabSx}
         />
         <Tab
           value="add"
           icon={<FunctionsIcon fontSize="small" />}
           iconPosition="start"
-          label="Add column"
+          label={t('gridTools.tabs.add')}
           sx={tabSx}
         />
       </Tabs>

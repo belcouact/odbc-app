@@ -5,6 +5,7 @@ import {
   useState,
   type DragEvent as ReactDragEvent,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -52,7 +53,6 @@ import type { DateGrain, GridDrillFilter, QueryResult } from '../types'
 import { aggregateGroup, quantileSorted, toNumber } from '../utils/chartData'
 import { CATEGORICAL_OPERATIONS, OPERATIONS } from '../utils/chartCatalog'
 import {
-  COLUMN_KIND_LABELS,
   DATE_GRAIN_OPTIONS,
   aiExamplePlaceholder,
   detectColumnKind,
@@ -62,20 +62,17 @@ import {
 import FieldWell from './ChartFieldWell'
 
 /** Statistics offered for every column on the Statistics shelf (long table). */
-const STAT_FIELDS: { key: keyof SummaryStat; label: string }[] = [
-  { key: 'count', label: 'Count' },
-  { key: 'nulls', label: 'Nulls' },
-  { key: 'sum', label: 'Sum' },
-  { key: 'mean', label: 'Average' },
-  { key: 'min', label: 'Min' },
-  { key: 'max', label: 'Max' },
-  { key: 'range', label: 'Range' },
-  { key: 'median', label: 'Median' },
-  { key: 'std', label: 'Std dev' },
+const STAT_FIELDS: { key: keyof SummaryStat; labelKey: string }[] = [
+  { key: 'count', labelKey: 'stats.count' },
+  { key: 'nulls', labelKey: 'stats.nulls' },
+  { key: 'sum', labelKey: 'stats.sum' },
+  { key: 'mean', labelKey: 'stats.mean' },
+  { key: 'min', labelKey: 'stats.min' },
+  { key: 'max', labelKey: 'stats.max' },
+  { key: 'range', labelKey: 'stats.range' },
+  { key: 'median', labelKey: 'stats.median' },
+  { key: 'std', labelKey: 'stats.stdDev' },
 ]
-
-/** Header used for the "which column" column of the statistics table. */
-const COLUMN_HEADER = 'Column'
 
 /** Cap the grouped output so grouping by a high-cardinality column can't lock
  *  up the browser (the table is a summary, not a full dump). */
@@ -153,8 +150,8 @@ function formatStat(value: number | null): string {
 }
 
 /** Display a group-by cell value, keeping blanks visible. */
-function formatLabel(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '(blank)'
+function formatLabel(value: unknown, blank: string): string {
+  if (value === null || value === undefined || value === '') return blank
   if (value instanceof Date) return value.toLocaleString()
   return String(value)
 }
@@ -215,14 +212,14 @@ function lineKey(labels: string[]): string {
 }
 
 /** Display a pivot axis key, keeping blanks visible. */
-function displayKey(key: string): string {
-  return key === '' ? '(blank)' : key
+function displayKey(key: string, blank: string): string {
+  return key === '' ? blank : key
 }
 
 /** Readable one-line label of an axis line (one value per field). */
-function formatAxisLabel(line: AxisLine): string {
-  if (line.values.length === 0) return 'All'
-  return line.values.map(displayKey).join(' / ')
+function formatAxisLabel(line: AxisLine, blank: string, all: string): string {
+  if (line.values.length === 0) return all
+  return line.values.map((value) => displayKey(value, blank)).join(' / ')
 }
 
 /**
@@ -231,7 +228,8 @@ function formatAxisLabel(line: AxisLine): string {
  * separator, which otherwise reads as e.g. "Film CNorth".
  */
 function AxisLabel({ line }: { line: AxisLine }) {
-  if (line.values.length <= 1) return <>{displayKey(line.key)}</>
+  const { t } = useTranslation('summary')
+  if (line.values.length <= 1) return <>{displayKey(line.key, t('messages.blank'))}</>
   return (
     <Stack spacing={0}>
       {line.values.map((value, index) => (
@@ -244,7 +242,7 @@ function AxisLabel({ line }: { line: AxisLine }) {
             whiteSpace: 'nowrap',
           }}
         >
-          {displayKey(value)}
+          {displayKey(value, t('messages.blank'))}
         </Box>
       ))}
     </Stack>
@@ -270,13 +268,16 @@ function AxisFilterMenu({
   onChange,
   onClose,
 }: AxisFilterMenuProps) {
+  const { t } = useTranslation('summary')
   const [query, setQuery] = useState('')
   const allKeys = useMemo(() => items.map((item) => item.key), [items])
   const shown = selection === null ? items.length : selection.length
   const allShown = items.length > 0 && shown === items.length
   const needle = query.trim().toLowerCase()
   const visible = needle
-    ? items.filter((item) => formatAxisLabel(item).toLowerCase().includes(needle))
+    ? items.filter((item) =>
+        formatAxisLabel(item, t('messages.blank'), t('pivot.all')).toLowerCase().includes(needle),
+      )
     : items
 
   const toggle = (key: string) => {
@@ -297,7 +298,7 @@ function AxisFilterMenu({
       <Box sx={{ px: 1.5, pt: 1.25, pb: 0.5 }}>
         <Typography variant="subtitle2">{title}</Typography>
         <Typography variant="caption" color="text.secondary">
-          {shown} of {items.length} shown
+          {t('messages.shownOf', { shown, total: items.length })}
         </Typography>
       </Box>
       {items.length > 8 && (
@@ -305,7 +306,7 @@ function AxisFilterMenu({
           <TextField
             size="small"
             fullWidth
-            placeholder="Search"
+            placeholder={t('messages.search')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -319,7 +320,7 @@ function AxisFilterMenu({
           tabIndex={-1}
           disableRipple
         />
-        <ListItemText primary="Select all" />
+        <ListItemText primary={t('messages.selectAll')} />
       </MenuItem>
       <Divider />
       <Box sx={{ maxHeight: 260, overflowY: 'auto' }}>
@@ -332,21 +333,21 @@ function AxisFilterMenu({
               disableRipple
             />
             <ListItemText
-              primary={formatAxisLabel(item)}
+              primary={formatAxisLabel(item, t('messages.blank'), t('pivot.all'))}
               slotProps={{ primary: { noWrap: true } }}
             />
           </MenuItem>
         ))}
         {visible.length === 0 && (
           <MenuItem dense disabled>
-            No matches
+            {t('messages.noMatches')}
           </MenuItem>
         )}
       </Box>
       <Divider />
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 0.75 }}>
         <Button size="small" onClick={onClose} sx={{ minHeight: 40 }}>
-          Done
+          {t('messages.done')}
         </Button>
       </Box>
     </Menu>
@@ -366,6 +367,7 @@ function AxisFilterMenu({
  * share ``groupingKey``, so the match is exact).
  */
 export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelProps) {
+  const { t } = useTranslation('summary')
   const [layout, setLayout] = useState<'table' | 'pivot'>('table')
   const [groupBy, setGroupBy] = useState<string[]>([])
   const [statColumns, setStatColumns] = useState<string[]>([])
@@ -408,11 +410,11 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
       })
       setAiResult(stats)
     } catch (err) {
-      setAiError(err instanceof Error ? err.message : 'The AI summary failed.')
+      setAiError(err instanceof Error ? err.message : t('messages.aiSummaryFailed'))
     } finally {
       setAiBusy(false)
     }
-  }, [result, aiPrompt])
+  }, [result, aiPrompt, t])
 
   /** Click cycle on a sortable header: asc → desc → off. */
   const handleTableSort = useCallback((key: string) => {
@@ -727,7 +729,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
   const matrix = useMemo<{ headers: string[]; rows: unknown[][]; types: ('text' | 'number')[] }>(
     () => {
       if (layout === 'table') {
-        const headers = [...groupBy, COLUMN_HEADER, ...STAT_FIELDS.map((f) => f.label)]
+        const headers = [...groupBy, t('table.column'), ...STAT_FIELDS.map((f) => t(f.labelKey))]
         const types: ('text' | 'number')[] = [
           ...groupBy.map(() => 'text' as const),
           'text',
@@ -743,17 +745,15 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
       }
 
       if (!pivot) return { headers: [], rows: [], types: [] }
-      const measureLabel = (m: Measure) => {
-        const label = MEASURE_OPERATIONS.find((op) => op.value === m.op)?.label ?? m.op
-        return `${label} of ${m.column}`
-      }
+      const measureLabel = (m: Measure) =>
+        t('pivot.measureOf', { op: t(`ops.${m.op}`), column: m.column })
       const headers = pivotCols.length > 0
         ? [
             ...pivotRows,
             ...pivot.colLines.flatMap((line) =>
-              pivot.measures.map((m) => `${formatAxisLabel(line)} · ${measureLabel(m)}`),
+              pivot.measures.map((m) => `${formatAxisLabel(line, t('messages.blank'), t('pivot.all'))} · ${measureLabel(m)}`),
             ),
-            ...pivot.measures.map((m) => `Total · ${measureLabel(m)}`),
+            ...pivot.measures.map((m) => `${t('pivot.total')} · ${measureLabel(m)}`),
           ]
         : [...pivotRows, ...pivot.measures.map(measureLabel)]
       const types: ('text' | 'number')[] = headers.map((_, index) =>
@@ -776,20 +776,20 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
         ])
       }
       rows.push([
-        ...pivotRows.map(() => 'Total'),
+        ...pivotRows.map(() => t('pivot.total')),
         ...pivot.colLines.flatMap((_, c) => pivot.measures.map((__, m) => pivot.colTotalAt(c, m))),
         ...pivot.measures.map((_, m) => pivot.grandAt(m)),
       ])
       return { headers, rows, types }
     },
-    [layout, groupBy, summary, sortedSummaryRows, pivot, pivotRows, pivotCols],
+    [layout, groupBy, summary, sortedSummaryRows, pivot, pivotRows, pivotCols, t],
   )
 
   const handleCopy = useCallback(async () => {
     if (matrix.rows.length === 0) return
     const lines = [
       matrix.headers.join('\t'),
-      ...matrix.rows.map((row) => row.map((cell) => formatLabel(cell)).join('\t')),
+      ...matrix.rows.map((row) => row.map((cell) => formatLabel(cell, t('messages.blank'))).join('\t')),
     ]
     const text = lines.join('\n')
     try {
@@ -807,7 +807,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
     }
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
-  }, [matrix])
+  }, [matrix, t])
 
   const handleDownload = async () => {
     if (matrix.rows.length === 0) return
@@ -826,7 +826,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
       const blob = await api.exportGrid(rows, columns, 'xlsx')
       await downloadBlob(blob, `summary_${stamp}.xlsx`)
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Export failed')
+      setExportError(err instanceof Error ? err.message : t('messages.exportFailed'))
     } finally {
       setExporting(false)
     }
@@ -835,7 +835,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
   if (!result) {
     return (
       <Box sx={{ textAlign: 'center', py: { xs: 5, md: 8 } }}>
-        <Typography color="text.secondary">Run a query to summarize results here.</Typography>
+        <Typography color="text.secondary">{t('empty.runQuery')}</Typography>
       </Box>
     )
   }
@@ -884,11 +884,11 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
           setGrains((prev) => ({ ...prev, [name]: event.target.value as DateGrain }))
         }
         sx={{ minWidth: 110 }}
-        inputProps={{ 'aria-label': `Group ${name} by` }}
+        inputProps={{ 'aria-label': t('panel.groupColumnBy', { name }) }}
       >
         {DATE_GRAIN_OPTIONS.map((option) => (
           <MenuItem key={option.value} value={option.value}>
-            {option.label}
+            {t(`grain.${option.value}`)}
           </MenuItem>
         ))}
       </Select>
@@ -962,9 +962,8 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
         sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between' }}
       >
         <Typography variant="body2" color="text.secondary">
-          Summarizing {result.rows.length.toLocaleString()} row
-          {result.rows.length === 1 ? '' : 's'}
-          {onDrillThrough ? ' · click a group to filter the grid' : ''}
+          {t('panel.summarizing', { count: result.rows.length })}
+          {onDrillThrough ? t('panel.clickGroupHint') : ''}
         </Typography>
         <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center' }}>
           <Button
@@ -974,7 +973,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
             onClick={() => setAiOpen(true)}
             sx={{ minHeight: 40 }}
           >
-            AI summary
+            {t('panel.aiSummary')}
           </Button>
           {/* Below md the palette stacks above the shelves, so the collapse
               toggle has to live here (the side rail is desktop-only). */}
@@ -985,7 +984,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
             onClick={() => setFieldsOpen((prev) => !prev)}
             sx={{ display: { xs: 'inline-flex', md: 'none' }, minHeight: 40 }}
           >
-            {fieldsOpen ? 'Hide fields' : 'Fields'}
+            {fieldsOpen ? t('panel.hideFields') : t('panel.fields')}
           </Button>
           <ToggleButtonGroup
             size="small"
@@ -997,15 +996,15 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                 onDrillThrough?.([])
               }
             }}
-            aria-label="Summary layout"
+            aria-label={t('aria.summaryLayout')}
           >
             <ToggleButton value="table" sx={{ minHeight: 40, px: 1.5 }}>
               <TableRowsIcon fontSize="small" sx={{ mr: 0.5 }} />
-              Table
+              {t('panel.table')}
             </ToggleButton>
             <ToggleButton value="pivot" sx={{ minHeight: 40, px: 1.5 }}>
               <InsightsIcon fontSize="small" sx={{ mr: 0.5 }} />
-              Pivot
+              {t('panel.pivot')}
             </ToggleButton>
           </ToggleButtonGroup>
         </Stack>
@@ -1032,7 +1031,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
           <Stack spacing={1.25}>
             <Stack direction="row" sx={{ alignItems: 'center' }}>
               <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-                Fields
+                {t('panel.fields')}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {allNames.length}
@@ -1040,7 +1039,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
               <IconButton
                 size="small"
                 onClick={() => setFieldsOpen(false)}
-                aria-label="Collapse fields"
+                aria-label={t('aria.collapseFields')}
                 sx={{ display: { xs: 'none', md: 'inline-flex' }, minHeight: 36, minWidth: 36 }}
               >
                 <ChevronLeftIcon fontSize="small" />
@@ -1056,7 +1055,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                   color="text.secondary"
                   sx={{ display: 'block', mb: 0.5 }}
                 >
-                  {COLUMN_KIND_LABELS[kind]}
+                  {t(`kind.${kind}`)}
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                   {allNames
@@ -1095,7 +1094,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
             ))}
 
             <Typography variant="caption" color="text.disabled">
-              On a touch screen, tap + on a shelf to pick a field.
+              {t('panel.touchHint')}
             </Typography>
           </Stack>
         </Paper>
@@ -1113,7 +1112,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
           >
             <IconButton
               onClick={() => setFieldsOpen(true)}
-              aria-label="Expand fields"
+              aria-label={t('aria.expandFields')}
               sx={{ minHeight: 44, minWidth: 36 }}
             >
               <ChevronRightIcon fontSize="small" />
@@ -1123,7 +1122,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
               color="text.secondary"
               sx={{ writingMode: 'vertical-rl', letterSpacing: 1 }}
             >
-              Fields
+              {t('panel.fields')}
             </Typography>
           </Paper>
         )}
@@ -1138,24 +1137,24 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
               }}
             >
               <FieldWell
-                label="Group by"
+                label={t('wells.groupBy')}
                 value={groupBy}
                 multi
                 options={allNames.map((name) => ({ name, kind: columnKinds[name] }))}
                 onChoose={handleGroupToggle}
                 onAdd={handleGroupAdd}
                 onRemove={handleGroupRemove}
-                hint="Drop columns to group by"
+                hint={t('wells.groupByHint')}
               />
               <FieldWell
-                label="Statistics (numeric)"
+                label={t('wells.statistics')}
                 value={statColumns}
                 multi
                 options={numericNames.map((name) => ({ name, kind: columnKinds[name] }))}
                 onChoose={handleStatToggle}
                 onAdd={handleStatAdd}
                 onRemove={handleStatRemove}
-                hint="Drop numeric columns to summarize"
+                hint={t('wells.statisticsHint')}
               />
             </Box>
           ) : (
@@ -1168,29 +1167,29 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                 }}
               >
                 <FieldWell
-                  label="Rows"
+                  label={t('wells.rows')}
                   value={pivotRows}
                   multi
                   options={allNames.map((name) => ({ name, kind: columnKinds[name] }))}
                   onChoose={handleRowToggle}
                   onAdd={handleRowAdd}
                   onRemove={handleRowRemove}
-                  hint="Drop columns for the table rows"
+                  hint={t('wells.rowsHint')}
                 />
                 <FieldWell
-                  label="Columns"
+                  label={t('wells.columns')}
                   value={pivotCols}
                   multi
                   options={allNames.map((name) => ({ name, kind: columnKinds[name] }))}
                   onChoose={handleColToggle}
                   onAdd={handleColAdd}
                   onRemove={handleColRemove}
-                  hint="Drop columns to spread across"
+                  hint={t('wells.columnsHint')}
                 />
               </Box>
 
               <FieldWell
-                label="Values"
+                label={t('wells.values')}
                 value={measures.map((m) => m.column)}
                 multi
                 options={allNames.map((name) => ({ name, kind: columnKinds[name] }))}
@@ -1201,7 +1200,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                 }
                 onAdd={handleMeasureAdd}
                 onRemove={handleMeasureRemove}
-                hint="Drop columns to aggregate"
+                hint={t('wells.valuesHint')}
               />
 
               {measures.length > 0 && (
@@ -1228,11 +1227,11 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                           handleMeasureOp(measure.column, event.target.value as ChartOperation)
                         }
                         sx={{ minWidth: 150 }}
-                        inputProps={{ 'aria-label': `Aggregation for ${measure.column}` }}
+                        inputProps={{ 'aria-label': t('aria.aggregationFor', { column: measure.column }) }}
                       >
                         {operationsFor(measure.column).map((op) => (
                           <MenuItem key={op.value} value={op.value}>
-                            {op.label}
+                            {t(`ops.${op.value}`)}
                           </MenuItem>
                         ))}
                       </Select>
@@ -1255,7 +1254,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                 sx={{ alignItems: 'center', flexWrap: 'wrap' }}
               >
                 <Typography variant="caption" color="text.secondary">
-                  Group {name} by
+                  {t('panel.groupColumnBy', { name })}
                 </Typography>
                 {grainPicker(name)}
               </Stack>
@@ -1278,7 +1277,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                   onChange={(event) => setShowBars(event.target.checked)}
                 />
               }
-              label={<Typography variant="body2">Data bars</Typography>}
+              label={<Typography variant="body2">{t('panel.dataBars')}</Typography>}
             />
             <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
               <Button
@@ -1289,7 +1288,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                 disabled={matrix.rows.length === 0}
                 sx={{ minHeight: 48 }}
               >
-                {copied ? 'Copied!' : 'Copy'}
+                {copied ? t('panel.copied') : t('panel.copy')}
               </Button>
               <Button
                 size="small"
@@ -1299,7 +1298,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                 disabled={matrix.rows.length === 0 || exporting}
                 sx={{ minHeight: 48 }}
               >
-                Download Excel
+                {t('panel.downloadExcel')}
               </Button>
             </Stack>
           </Stack>
@@ -1312,33 +1311,33 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
 
           {layout === 'table' && summary.truncated && (
             <Alert severity="warning">
-              Showing the first {MAX_GROUPS.toLocaleString()} groups only. Narrow the result (or add
-              a filter) to summarize the remaining groups.
+              {t('alert.tableTruncated', { n: MAX_GROUPS.toLocaleString() })}
             </Alert>
           )}
 
           {layout === 'pivot' && pivot?.truncated && (
             <Alert severity="warning">
-              Showing the first {MAX_PIVOT_ROWS.toLocaleString()} rows ×{' '}
-              {MAX_PIVOT_COLS.toLocaleString()} columns. Add a filter to see every combination.
+              {t('alert.pivotTruncated', {
+                rows: MAX_PIVOT_ROWS.toLocaleString(),
+                cols: MAX_PIVOT_COLS.toLocaleString(),
+              })}
             </Alert>
           )}
 
           {empty ? (
             <Box sx={{ textAlign: 'center', py: { xs: 5, md: 8 } }}>
-              <Typography color="text.secondary">The query returned no rows.</Typography>
+              <Typography color="text.secondary">{t('empty.noRows')}</Typography>
             </Box>
           ) : noStats ? (
             <Box sx={{ textAlign: 'center', py: { xs: 5, md: 8 } }}>
               <Typography color="text.secondary">
-                Drag a numeric column onto the Statistics shelf to see its summary.
+                {t('empty.noStats')}
               </Typography>
             </Box>
           ) : noPivot ? (
             <Box sx={{ textAlign: 'center', py: { xs: 5, md: 8 } }}>
               <Typography color="text.secondary">
-                Drop a column onto Rows (or Columns), and another onto Values, to build a pivot
-                table.
+                {t('empty.noPivot')}
               </Typography>
             </Box>
           ) : layout === 'table' ? (
@@ -1363,7 +1362,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                       sx={{ fontWeight: 600 }}
                       sortDirection={tableSort?.key === 'column' ? tableSort.dir : false}
                     >
-                      <TableSortLabel {...sortLabelProps('column')}>{COLUMN_HEADER}</TableSortLabel>
+                      <TableSortLabel {...sortLabelProps('column')}>{t('table.column')}</TableSortLabel>
                     </TableCell>
                     {STAT_FIELDS.map((field) => (
                       <TableCell
@@ -1375,7 +1374,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                         }
                       >
                         <TableSortLabel {...sortLabelProps(`stat:${field.key}`)}>
-                          {field.label}
+                          {t(field.labelKey)}
                         </TableSortLabel>
                       </TableCell>
                     ))}
@@ -1398,7 +1397,9 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                       sx={{ cursor: onDrillThrough ? 'pointer' : 'default' }}
                     >
                       {row.labels.map((value, labelIndex) => (
-                        <TableCell key={labelIndex}>{displayKey(String(value ?? ''))}</TableCell>
+                        <TableCell key={labelIndex}>
+                          {displayKey(String(value ?? ''), t('messages.blank'))}
+                        </TableCell>
                       ))}
                       <TableCell sx={{ fontWeight: 500 }}>{row.column}</TableCell>
                       {STAT_FIELDS.map((field) => (
@@ -1426,11 +1427,11 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                           >
                             <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
                               <Box sx={{ flexGrow: 1 }}>
-                                {pivotRows.length > 0 ? pivotRows.join(' / ') : 'All rows'}
+                                {pivotRows.length > 0 ? pivotRows.join(' / ') : t('pivot.allRows')}
                               </Box>
                               <IconButton
                                 size="small"
-                                aria-label="Filter rows"
+                                aria-label={t('aria.filterRows')}
                                 onClick={(event) => setRowFilterAnchor(event.currentTarget)}
                                 color={rowSelection === null ? 'default' : 'primary'}
                                 sx={{ minHeight: 36, minWidth: 36 }}
@@ -1452,7 +1453,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                               <Box>{pivotCols.join(' / ')}</Box>
                               <IconButton
                                 size="small"
-                                aria-label="Filter columns"
+                                aria-label={t('aria.filterColumns')}
                                 onClick={(event) => setColFilterAnchor(event.currentTarget)}
                                 color={colSelection === null ? 'default' : 'primary'}
                                 sx={{ minHeight: 36, minWidth: 36 }}
@@ -1485,7 +1486,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                             colSpan={pivot.measures.length}
                             sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}
                           >
-                            Total
+                            {t('pivot.total')}
                           </TableCell>
                         </TableRow>
                         {pivot.measures.length > 1 && (
@@ -1501,7 +1502,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                                   variant="head"
                                   sx={{ fontWeight: 500, whiteSpace: 'nowrap' }}
                                 >
-                                  {measure.op}
+                                  {t(`ops.${measure.op}`)}
                                 </TableCell>
                               )),
                             )}
@@ -1512,7 +1513,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                                 variant="head"
                                 sx={{ fontWeight: 500 }}
                               >
-                                {measure.op}
+                                {t(`ops.${measure.op}`)}
                               </TableCell>
                             ))}
                           </TableRow>
@@ -1525,11 +1526,11 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                         >
                           <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
                             <Box sx={{ flexGrow: 1 }}>
-                              {pivotRows.length > 0 ? pivotRows.join(' / ') : 'All rows'}
+                              {pivotRows.length > 0 ? pivotRows.join(' / ') : t('pivot.allRows')}
                             </Box>
                             <IconButton
                               size="small"
-                              aria-label="Filter rows"
+                              aria-label={t('aria.filterRows')}
                               onClick={(event) => setRowFilterAnchor(event.currentTarget)}
                               color={rowSelection === null ? 'default' : 'primary'}
                               sx={{ minHeight: 36, minWidth: 36 }}
@@ -1542,7 +1543,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                           <TableCell key={measure.column} align="right" sx={{ fontWeight: 600 }}>
                             <Box>{measure.column}</Box>
                             <Typography variant="caption" color="text.secondary">
-                              {measure.op}
+                              {t(`ops.${measure.op}`)}
                             </Typography>
                           </TableCell>
                         ))}
@@ -1593,7 +1594,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                             bgcolor: 'background.paper',
                           }}
                         >
-                          Total
+                          {t('pivot.total')}
                         </TableCell>
                         {pivot.colLines.flatMap((line, colIndex) =>
                           pivot.measures.map((measure, measureIndex) => (
@@ -1625,7 +1626,9 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                 </Table>
               </TableContainer>
               <AxisFilterMenu
-                title={`Row labels (${pivotRows.join(' / ') || 'All rows'})`}
+                title={t('pivot.rowLabels', {
+                  fields: pivotRows.join(' / ') || t('pivot.allRows'),
+                })}
                 anchorEl={rowFilterAnchor}
                 items={axisItems.rows}
                 selection={rowSelection}
@@ -1633,7 +1636,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                 onClose={() => setRowFilterAnchor(null)}
               />
               <AxisFilterMenu
-                title={`Column labels (${pivotCols.join(' / ')})`}
+                title={t('pivot.columnLabels', { fields: pivotCols.join(' / ') })}
                 anchorEl={colFilterAnchor}
                 items={axisItems.cols}
                 selection={colSelection}
@@ -1655,20 +1658,21 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <AutoAwesomeIcon color="primary" />
-          <Box sx={{ flexGrow: 1 }}>AI statistical summary</Box>
-          <IconButton aria-label="Close" onClick={() => setAiOpen(false)} sx={{ minWidth: 48, minHeight: 48 }}>
+          <Box sx={{ flexGrow: 1 }}>{t('ai.title')}</Box>
+          <IconButton aria-label={t('aria.close')} onClick={() => setAiOpen(false)} sx={{ minWidth: 48, minHeight: 48 }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
-              The assistant writes a Python script and runs it against the first{' '}
-              {Math.min(result.rows.length, 1000).toLocaleString()} row
-              {result.rows.length === 1 ? '' : 's'} shown here, then reports what it finds.
+              {t('ai.help', {
+                count: result.rows.length,
+                n: Math.min(result.rows.length, 1000).toLocaleString(),
+              })}
             </Typography>
             <TextField
-              label="What should the analysis focus on? (optional)"
+              label={t('ai.promptLabel')}
               placeholder={aiExample}
               value={aiPrompt}
               onChange={(event) => setAiPrompt(event.target.value)}
@@ -1684,7 +1688,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                 disabled={aiBusy}
                 sx={{ minHeight: 44 }}
               >
-                {aiBusy ? 'Analyzing…' : aiResult ? 'Run again' : 'Run analysis'}
+                {aiBusy ? t('ai.analyzing') : aiResult ? t('ai.runAgain') : t('ai.run')}
               </Button>
             </Box>
 
@@ -1692,7 +1696,7 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
 
             {aiResult?.timed_out ? (
               <Alert severity="warning">
-                The analysis did not finish within {Math.round(aiResult.elapsed_ms / 1000)}s and was stopped.
+                {t('ai.timedOut', { seconds: Math.round(aiResult.elapsed_ms / 1000) })}
               </Alert>
             ) : null}
 
@@ -1715,12 +1719,12 @@ export default function SummaryPanel({ result, onDrillThrough }: SummaryPanelPro
                     {aiResult.stdout}
                   </Box>
                 ) : (
-                  <Alert severity="info">The analysis produced no printed output.</Alert>
+                  <Alert severity="info">{t('ai.noOutput')}</Alert>
                 )}
                 {aiResult.stderr ? <Alert severity="warning">{aiResult.stderr}</Alert> : null}
                 <Box component="details">
                   <Box component="summary" sx={{ cursor: 'pointer', fontWeight: 600 }}>
-                    Python script
+                    {t('ai.script')}
                   </Box>
                   <Box
                     component="pre"

@@ -4,7 +4,7 @@ import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import type { KpiCard } from '../utils/chartData'
 import { formatCompactNumber } from '../utils/chartData'
-import { OPERATIONS } from '../utils/chartCatalog'
+import { useTranslation } from 'react-i18next'
 
 interface KpiCardsProps {
   cards: KpiCard[]
@@ -12,6 +12,18 @@ interface KpiCardsProps {
 
 /** Duration of the number roll-up animation. */
 const COUNT_UP_MS = 600
+
+/** Stat labels that have translations; anything else is a data-driven label. */
+const STAT_LABEL_KEYS: Record<string, string> = {
+  Count: 'kpi.stats.count',
+  Nulls: 'kpi.stats.nulls',
+  Sum: 'kpi.stats.sum',
+  Mean: 'kpi.stats.mean',
+  Median: 'kpi.stats.median',
+  Min: 'kpi.stats.min',
+  Max: 'kpi.stats.max',
+  'Std dev': 'kpi.stats.stdDev',
+}
 
 /**
  * Animates a displayed number toward `target` with an rAF ease-out roll.
@@ -69,6 +81,7 @@ function CountUpValue({ value, enabled }: { value: number; enabled: boolean }) {
  * devices a press-down scale.
  */
 export default function KpiCards({ cards }: KpiCardsProps) {
+  const { t } = useTranslation('charts')
   if (cards.length === 0) return null
   return (
     <Box
@@ -79,7 +92,8 @@ export default function KpiCards({ cards }: KpiCardsProps) {
       }}
     >
       {cards.map((card) => {
-        const opLabel = OPERATIONS.find((o) => o.value === card.op)?.label
+        const opLabel = t(`ops.${card.op}`)
+        const label = card.label === 'Total rows' ? t('kpi.totalRows') : card.label
         const numeric = card.formatted !== '—'
         return (
           <Paper
@@ -107,9 +121,9 @@ export default function KpiCards({ cards }: KpiCardsProps) {
               color="text.secondary"
               noWrap
               sx={{ display: 'block' }}
-              title={opLabel && card.stats.length > 0 ? `${card.label} · ${opLabel}` : card.label}
+              title={opLabel && card.stats.length > 0 ? t('kpi.titleWithOp', { label, op: opLabel }) : label}
             >
-              {card.label}
+              {label}
               {opLabel && card.stats.length > 0 ? ` · ${opLabel}` : ''}
             </Typography>
             <Typography variant="h5" noWrap sx={{ fontWeight: 700 }} title={card.formatted}>
@@ -132,7 +146,7 @@ export default function KpiCards({ cards }: KpiCardsProps) {
                       color="text.secondary"
                       sx={{ display: 'block', lineHeight: 1.2 }}
                     >
-                      {stat.label}
+                      {STAT_LABEL_KEYS[stat.label] ? t(STAT_LABEL_KEYS[stat.label]) : stat.label}
                     </Typography>
                     <Typography variant="body2" noWrap title={stat.formatted}>
                       {stat.formatted}

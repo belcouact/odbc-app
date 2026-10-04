@@ -1,0 +1,75 @@
+{
+  "title": "AI Assistant",
+  "clear": "Clear",
+  "send": "Send",
+  "thinking": "Thinking…",
+  "aria": {
+    "close": "Close AI assistant"
+  },
+  "modes": {
+    "chat": {
+      "label": "Chat",
+      "hint": "Ask anything — general questions, explanations, calculations or how to use this app."
+    },
+    "sql": {
+      "label": "SQL",
+      "hint": "Explain, debug or write read-only SQL. Apply generated SQL straight to the editor."
+    },
+    "script": {
+      "label": "Analyze",
+      "hint": "Generate or refine a Python/JavaScript script that processes the queried rows."
+    },
+    "chart": {
+      "label": "Chart",
+      "hint": "Describe a chart (ECharts) to apply to the Analyze tab, or just ask anything. Refine it over several turns."
+    }
+  },
+  "context": {
+    "gridData": "Grid data: ",
+    "columns_one": "{{count}} column",
+    "columns_other": "{{count}} columns",
+    "noColumns": "no columns",
+    "rows_one": " · {{n}} row",
+    "rows_other": " · {{n}} rows",
+    "noRows": " · no rows",
+    "connected": " · connection connected"
+  },
+  "empty": {
+    "chat": "Ask anything — e.g. “What does this app do?”, “Explain standard deviation”, or “Summarize this data in plain words”.",
+    "sql": "e.g. “Explain what this SQL does”, “Fix the error: …”, or “Write a query for …”.",
+    "script": "e.g. “Write a Python script that groups rows by region and prints the total amount per region.”",
+    "chart": "e.g. “A bar chart of total amount per region, title “Sales by region”, blue bars.” — or just ask, e.g. “What chart type fits this data?”"
+  },
+  "apply": {
+    "sql": "Apply to SQL editor",
+    "script": "Insert into script editor",
+    "chart": "Apply chart"
+  },
+  "quickActions": {
+    "explain": "Explain",
+    "optimize": "Optimize"
+  },
+  "input": {
+    "message": "Message"
+  },
+  "placeholder": {
+    "chat": "Ask anything…",
+    "chart": "Ask anything, or describe the chart you want…",
+    "sqlScript": "Ask anything or request SQL / a script…"
+  },
+  "notices": {
+    "sqlApplied": "SQL applied to the SQL editor.",
+    "scriptInserted": "Script inserted into the Analyze editor.",
+    "chartAppliedScript": "Chart applied to the Analyze tab.",
+    "chartAppliedBi": "Chart applied to the Dashboard chart builder."
+  },
+  "errors": {
+    "scriptEmpty": "The script is empty — nothing to apply.",
+    "noOption": "The script did not produce an ECharts `option` object.",
+    "sqlEditorEmpty": "The SQL editor is empty — write or load a query first.",
+    "emptyResponse": "The AI returned an empty response. Please try again.",
+    "aiRequestFailed": "AI request failed",
+    "notConfigured": "AI is not configured — set it up in the AI Setting tab.",
+    "parseChartFailed": "Failed to parse the chart script"
+  }
+}

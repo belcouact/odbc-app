@@ -42,6 +42,8 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { api } from '../api/client'
 import type { ConnectionPayload } from '../api/client'
 import type { DatabaseType, DbConnection, DetectedDsn } from '../types'
@@ -62,57 +64,57 @@ interface ConnectionForm {
   local_path: string
 }
 
-const DATABASE_TYPES: { value: DatabaseType; label: string }[] = [
-  { value: 'auto', label: 'Auto (detect)' },
-  { value: 'sqlserver', label: 'SQL Server' },
-  { value: 'oracle', label: 'Oracle' },
-  { value: 'mysql', label: 'MySQL' },
-  { value: 'postgresql', label: 'PostgreSQL' },
-  { value: 'jet', label: 'Access / Excel (Jet)' },
-  { value: 'other', label: 'Other' },
+const DATABASE_TYPES: { value: DatabaseType; labelKey: string }[] = [
+  { value: 'auto', labelKey: 'databaseType.autoDetect' },
+  { value: 'sqlserver', labelKey: 'databaseType.sqlserver' },
+  { value: 'oracle', labelKey: 'databaseType.oracle' },
+  { value: 'mysql', labelKey: 'databaseType.mysql' },
+  { value: 'postgresql', labelKey: 'databaseType.postgresql' },
+  { value: 'jet', labelKey: 'databaseType.jet' },
+  { value: 'other', labelKey: 'databaseType.other' },
 ]
 
-const DATABASE_TYPE_LABELS: Record<DatabaseType, string> = {
-  auto: 'Auto',
-  sqlserver: 'SQL Server',
-  oracle: 'Oracle',
-  mysql: 'MySQL',
-  postgresql: 'PostgreSQL',
-  jet: 'Access / Excel (Jet)',
-  other: 'Other',
+const DATABASE_TYPE_LABEL_KEYS: Record<DatabaseType, string> = {
+  auto: 'databaseType.auto',
+  sqlserver: 'databaseType.sqlserver',
+  oracle: 'databaseType.oracle',
+  mysql: 'databaseType.mysql',
+  postgresql: 'databaseType.postgresql',
+  jet: 'databaseType.jet',
+  other: 'databaseType.other',
 }
 
 /** Best server-type label for a connection card: the resolved DBMS product
  *  name (live-detected by the backend), else the configured type label. */
-function serverTypeLabel(connection: DbConnection): string | null {
+function serverTypeLabel(connection: DbConnection, t: TFunction): string | null {
   if (connection.resolved_dbms) return connection.resolved_dbms
   if (connection.database_type && connection.database_type !== 'auto') {
-    return DATABASE_TYPE_LABELS[connection.database_type]
+    return t(DATABASE_TYPE_LABEL_KEYS[connection.database_type])
   }
   return null
 }
 
 /** The target the connection points at, as lines for the table's detail cell. */
-function connectionDetailLines(connection: DbConnection): string[] {
+function connectionDetailLines(connection: DbConnection, t: TFunction): string[] {
   if (connection.type === 'access') {
     const lines: string[] = []
     const path = connection.file_path || connection.local_path
-    if (path) lines.push(`File: ${path}`)
-    if (connection.url) lines.push(`Link: ${connection.url}`)
+    if (path) lines.push(t('detail.file', { path }))
+    if (connection.url) lines.push(t('detail.link', { url: connection.url }))
     return lines
   }
   if (connection.type === 'dsn') {
-    return [`DSN: ${connection.dsn || '—'}`]
+    return [t('detail.dsn', { dsn: connection.dsn || '—' })]
   }
   const target =
     [
-      connection.driver && `Driver: ${connection.driver}`,
-      connection.server && `Server: ${connection.server}`,
+      connection.driver && t('detail.driver', { driver: connection.driver }),
+      connection.server && t('detail.server', { server: connection.server }),
     ]
       .filter(Boolean)
-      .join(' · ') || 'Direct connection'
+      .join(' · ') || t('detail.directConnection')
   const lines = [target]
-  if (connection.database) lines.push(`Database: ${connection.database}`)
+  if (connection.database) lines.push(t('detail.database', { database: connection.database }))
   if (!connection.driver && connection.connection_string) lines.push(connection.connection_string)
   return lines
 }
@@ -187,22 +189,23 @@ function formToPayload(form: ConnectionForm): ConnectionPayload {
   return base
 }
 
-function validateForm(form: ConnectionForm): string | null {
-  if (!form.name.trim()) return 'Please enter a connection name.'
+function validateForm(form: ConnectionForm, t: TFunction): string | null {
+  if (!form.name.trim()) return t('validation.nameRequired')
   if (form.type === 'access') {
     if (!form.url.trim() && !form.local_path.trim()) {
-      return 'Provide a SharePoint link or a local file path.'
+      return t('validation.accessRequired')
     }
     return null
   }
-  if (form.type === 'dsn' && !form.dsn.trim()) return 'Please enter the ODBC DSN name.'
+  if (form.type === 'dsn' && !form.dsn.trim()) return t('validation.dsnRequired')
   if (form.type === 'string' && !form.connection_string.trim() && !form.driver.trim()) {
-    return 'Provide a connection string, or at least a driver and server.'
+    return t('validation.stringRequired')
   }
   return null
 }
 
 export default function ConnectionsPage() {
+  const { t } = useTranslation('connections')
   const [connections, setConnections] = useState<DbConnection[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -235,11 +238,11 @@ export default function ConnectionsPage() {
       const list = await api.getConnections()
       setConnections(list)
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Failed to load connections')
+      setLoadError(err instanceof Error ? err.message : t('messages.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void refresh()
@@ -274,7 +277,7 @@ export default function ConnectionsPage() {
   }
 
   const handleSave = async () => {
-    const validation = validateForm(form)
+    const validation = validateForm(form, t)
     if (validation) {
       setFormError(validation)
       return
@@ -285,15 +288,15 @@ export default function ConnectionsPage() {
       const payload = formToPayload(form)
       if (editing) {
         await api.updateConnection(editing.id, payload)
-        setNotice({ severity: 'success', message: `Connection "${payload.name}" updated.` })
+        setNotice({ severity: 'success', message: t('messages.updated', { name: payload.name }) })
       } else {
         await api.saveConnection(payload)
-        setNotice({ severity: 'success', message: `Connection "${payload.name}" saved.` })
+        setNotice({ severity: 'success', message: t('messages.saved', { name: payload.name }) })
       }
       setDialogOpen(false)
       await refresh()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to save connection')
+      setFormError(err instanceof Error ? err.message : t('messages.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -310,13 +313,15 @@ export default function ConnectionsPage() {
       const result = await api.testConnection(payload)
       setDialogNotice({
         severity: result.ok ? 'success' : 'error',
-        message: result.message || (result.ok ? 'Connection successful.' : 'Connection failed.'),
+        message:
+          result.message ||
+          (result.ok ? t('messages.connectionSuccessful') : t('messages.connectionFailed')),
         details: result.details,
       })
     } catch (err) {
       setDialogNotice({
         severity: 'error',
-        message: err instanceof Error ? err.message : 'Connection test failed.',
+        message: err instanceof Error ? err.message : t('messages.testFailed'),
       })
     } finally {
       setTesting(false)
@@ -333,13 +338,18 @@ export default function ConnectionsPage() {
       const result = await api.testConnection(payload)
       setNotice({
         severity: result.ok ? 'success' : 'error',
-        message: `${connection.name}: ${result.message || (result.ok ? 'Connection successful.' : 'Connection failed.')}`,
+        message: `${connection.name}: ${
+          result.message ||
+          (result.ok ? t('messages.connectionSuccessful') : t('messages.connectionFailed'))
+        }`,
         details: result.details,
       })
     } catch (err) {
       setNotice({
         severity: 'error',
-        message: `${connection.name}: ${err instanceof Error ? err.message : 'Test failed.'}`,
+        message: `${connection.name}: ${
+          err instanceof Error ? err.message : t('messages.testFailedShort')
+        }`,
       })
     } finally {
       setTestingId(null)
@@ -351,13 +361,16 @@ export default function ConnectionsPage() {
     setDeleting(true)
     try {
       await api.deleteConnection(deleteTarget.id)
-      setNotice({ severity: 'success', message: `Connection "${deleteTarget.name}" deleted.` })
+      setNotice({
+        severity: 'success',
+        message: t('messages.deleted', { name: deleteTarget.name }),
+      })
       setDeleteTarget(null)
       await refresh()
     } catch (err) {
       setNotice({
         severity: 'error',
-        message: err instanceof Error ? err.message : 'Failed to delete connection',
+        message: err instanceof Error ? err.message : t('messages.deleteFailed'),
       })
       setDeleteTarget(null)
     } finally {
@@ -376,7 +389,7 @@ export default function ConnectionsPage() {
       const list = await api.detectDsn()
       setDetectedDsns(list)
     } catch (err) {
-      setDetectError(err instanceof Error ? err.message : 'Failed to detect ODBC DSNs')
+      setDetectError(err instanceof Error ? err.message : t('messages.detectFailed'))
     } finally {
       setDetecting(false)
     }
@@ -417,11 +430,11 @@ export default function ConnectionsPage() {
       setDetectOpen(false)
       setNotice({
         severity: 'success',
-        message: `Added ${targets.length} connection${targets.length === 1 ? '' : 's'}`,
+        message: t('messages.addedConnections', { count: targets.length }),
       })
       await refresh()
     } catch (err) {
-      setDetectError(err instanceof Error ? err.message : 'Failed to add connections')
+      setDetectError(err instanceof Error ? err.message : t('messages.addFailed'))
     } finally {
       setAddingDsns(false)
     }
@@ -441,9 +454,9 @@ export default function ConnectionsPage() {
         sx={{ mb: 2, alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between' }}
       >
         <Box>
-          <Typography variant="h5">Connections</Typography>
+          <Typography variant="h5">{t('page.title')}</Typography>
           <Typography variant="body2" color="text.secondary">
-            Manage ODBC data sources used by the query builder.
+            {t('page.subtitle')}
           </Typography>
         </Box>
         <Stack
@@ -459,7 +472,7 @@ export default function ConnectionsPage() {
             onClick={() => void openDetect()}
             sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
           >
-            Detect ODBC DSNs
+            {t('actions.detectDsns')}
           </Button>
           <Button
             variant="contained"
@@ -467,7 +480,7 @@ export default function ConnectionsPage() {
             onClick={openCreate}
             sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
           >
-            Add connection
+            {t('actions.addConnection')}
           </Button>
         </Stack>
       </Stack>
@@ -480,7 +493,7 @@ export default function ConnectionsPage() {
           sx={{ mb: 2 }}
           action={
             <Button color="inherit" size="small" startIcon={<RefreshIcon />} onClick={() => void refresh()}>
-              Retry
+              {t('actions.retry')}
             </Button>
           }
         >
@@ -492,28 +505,28 @@ export default function ConnectionsPage() {
         <Paper variant="outlined" sx={{ textAlign: 'center', py: { xs: 6, md: 10 }, px: 2 }}>
           <StorageIcon sx={{ fontSize: 56, color: 'text.disabled', mb: 1 }} />
           <Typography variant="h6" gutterBottom>
-            No connections yet
+            {t('empty.title')}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 420, mx: 'auto' }}>
-            Add an ODBC DSN or a direct connection string to start querying your databases.
+            {t('empty.body')}
           </Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} sx={{ minHeight: 48 }}>
-            Add your first connection
+            {t('empty.action')}
           </Button>
         </Paper>
       )}
 
       {connections.length > 0 && (
         <TableContainer component={Paper} variant="outlined">
-          <Table size="small" aria-label="Saved connections">
+          <Table size="small" aria-label={t('list.aria')}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('list.name')}</TableCell>
                 <TableCell sx={{ fontWeight: 600, display: { xs: 'none', md: 'table-cell' } }}>
-                  Details
+                  {t('list.details')}
                 </TableCell>
                 <TableCell sx={{ fontWeight: 600, display: { xs: 'none', md: 'table-cell' } }}>
-                  Username
+                  {t('list.username')}
                 </TableCell>
                 <TableCell
                   sx={{
@@ -522,7 +535,7 @@ export default function ConnectionsPage() {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  Server type
+                  {t('list.serverType')}
                 </TableCell>
                 <TableCell
                   sx={{
@@ -531,17 +544,17 @@ export default function ConnectionsPage() {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  Added
+                  {t('list.added')}
                 </TableCell>
                 <TableCell align="right" sx={{ fontWeight: 600 }}>
-                  Actions
+                  {t('list.actions')}
                 </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {connections.map((connection) => {
-                const detailLines = connectionDetailLines(connection)
-                const serverType = serverTypeLabel(connection)
+                const detailLines = connectionDetailLines(connection, t)
+                const serverType = serverTypeLabel(connection, t)
                 const added = connection.created_at
                   ? new Date(connection.created_at).toLocaleDateString()
                   : '—'
@@ -574,16 +587,16 @@ export default function ConnectionsPage() {
                         ))}
                         {connection.username && (
                           <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
-                            Username: {connection.username}
+                            {t('list.usernameInline', { value: connection.username })}
                           </Typography>
                         )}
                         {serverType && (
                           <Typography variant="caption" color="text.secondary">
-                            Type: {serverType}
+                            {t('list.typeInline', { value: serverType })}
                           </Typography>
                         )}
                         <Typography variant="caption" color="text.disabled">
-                          Added {added}
+                          {t('list.addedInline', { date: added })}
                         </Typography>
                       </Stack>
                     </TableCell>
@@ -636,24 +649,24 @@ export default function ConnectionsPage() {
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          Test
+                          {t('actions.test')}
                         </Button>
-                        <Tooltip title="Edit">
+                        <Tooltip title={t('actions.edit')}>
                           <IconButton
                             size="small"
                             onClick={() => openEdit(connection)}
-                            aria-label={`Edit ${connection.name}`}
+                            aria-label={t('list.editAria', { name: connection.name })}
                             sx={{ width: { xs: 48, md: 32 }, height: { xs: 48, md: 32 } }}
                           >
                             <EditIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Delete">
+                        <Tooltip title={t('actions.delete')}>
                           <IconButton
                             size="small"
                             color="error"
                             onClick={() => setDeleteTarget(connection)}
-                            aria-label={`Delete ${connection.name}`}
+                            aria-label={t('list.deleteAria', { name: connection.name })}
                             sx={{ width: { xs: 48, md: 32 }, height: { xs: 48, md: 32 } }}
                           >
                             <DeleteIcon fontSize="small" />
@@ -671,26 +684,22 @@ export default function ConnectionsPage() {
 
       {/* Add / Edit dialog */}
       <Dialog open={dialogOpen} onClose={closeDialog}>
-        <DialogTitle>{editing ? 'Edit connection' : 'Add connection'}</DialogTitle>
+        <DialogTitle>{editing ? t('dialog.editTitle') : t('dialog.addTitle')}</DialogTitle>
         <DialogContent dividers sx={{ pt: 2 }}>
           <Stack spacing={2}>
             <TextField
-              label="Connection name"
+              label={t('dialog.nameLabel')}
               value={form.name}
               onChange={updateField('name')}
               fullWidth
               required
-              placeholder="e.g. Production SQL Server"
-              helperText={
-                editing !== null
-                  ? "The name is only a label — you can rename it at any time. It won't affect templates, scripts or channel operations."
-                  : undefined
-              }
+              placeholder={t('dialog.namePlaceholder')}
+              helperText={editing !== null ? t('dialog.nameHelperEdit') : undefined}
             />
 
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                Connection type
+                {t('dialog.typeCaption')}
               </Typography>
               <ToggleButtonGroup
                 exclusive
@@ -702,13 +711,13 @@ export default function ConnectionsPage() {
                 }}
               >
                 <ToggleButton value="dsn" sx={{ minHeight: 48 }}>
-                  ODBC DSN
+                  {t('dialog.typeDsn')}
                 </ToggleButton>
                 <ToggleButton value="string" sx={{ minHeight: 48 }}>
-                  Connection String
+                  {t('dialog.typeString')}
                 </ToggleButton>
                 <ToggleButton value="access" sx={{ minHeight: 48 }}>
-                  Access File
+                  {t('dialog.typeAccess')}
                 </ToggleButton>
               </ToggleButtonGroup>
             </Box>
@@ -716,33 +725,33 @@ export default function ConnectionsPage() {
             {form.type === 'access' ? (
               <>
                 <TextField
-                  label="SharePoint link"
+                  label={t('dialog.sharepointLabel')}
                   value={form.url}
                   onChange={updateField('url')}
                   fullWidth
                   multiline
                   minRows={2}
                   placeholder="https://…sharepoint.com/:u:/r/sites/…/ColorDB.mdb?d=…"
-                  helperText="Paste the shared link to download the .mdb/.accdb file automatically. Internal sites often require a sign-in."
+                  helperText={t('dialog.sharepointHelper')}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
-                  — or —
+                  {t('dialog.orDivider')}
                 </Typography>
                 <TextField
-                  label="Local file path"
+                  label={t('dialog.localPathLabel')}
                   value={form.local_path}
                   onChange={updateField('local_path')}
                   fullWidth
                   placeholder="C:\\Users\\you\\ColorDB.mdb"
-                  helperText="Use a OneDrive-synced folder or a browser download. The local path is preferred when both are given."
+                  helperText={t('dialog.localPathHelper')}
                 />
               </>
             ) : (
               <FormControl fullWidth>
-                <InputLabel id="database-type-label">Database type</InputLabel>
+                <InputLabel id="database-type-label">{t('dialog.databaseTypeLabel')}</InputLabel>
                 <Select
                   labelId="database-type-label"
-                  label="Database type"
+                  label={t('dialog.databaseTypeLabel')}
                   value={form.database_type}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -753,7 +762,7 @@ export default function ConnectionsPage() {
                 >
                   {DATABASE_TYPES.map((option) => (
                     <MenuItem key={option.value} value={option.value}>
-                      {option.label}
+                      {t(option.labelKey)}
                     </MenuItem>
                   ))}
                 </Select>
@@ -763,17 +772,13 @@ export default function ConnectionsPage() {
             {form.type === 'dsn' ? (
               <>
                 <TextField
-                  label="DSN name"
+                  label={t('dialog.dsnLabel')}
                   value={form.dsn}
                   onChange={updateField('dsn')}
                   fullWidth
-                  placeholder="e.g. SQLServerNative"
+                  placeholder={t('dialog.dsnPlaceholder')}
                   disabled={editing !== null}
-                  helperText={
-                    editing !== null
-                      ? "The DSN links templates, scripts & channel operations, so it can't be changed after creation."
-                      : undefined
-                  }
+                  helperText={editing !== null ? t('dialog.dsnHelperEdit') : undefined}
                 />
                 <FormControlLabel
                   control={
@@ -782,13 +787,13 @@ export default function ConnectionsPage() {
                       onChange={updateField('trusted_connection')}
                     />
                   }
-                  label="Use trusted (Windows) authentication"
+                  label={t('dialog.trustedAuth')}
                 />
                 {!form.trusted_connection && (
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
-                        label="Username"
+                        label={t('dialog.usernameLabel')}
                         value={form.username}
                         onChange={updateField('username')}
                         fullWidth
@@ -797,7 +802,7 @@ export default function ConnectionsPage() {
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <TextField
-                        label="Password"
+                        label={t('dialog.passwordLabel')}
                         type="password"
                         value={form.password}
                         onChange={updateField('password')}
@@ -812,20 +817,20 @@ export default function ConnectionsPage() {
               <>
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField label="Driver" value={form.driver} onChange={updateField('driver')} fullWidth placeholder="e.g. ODBC Driver 17 for SQL Server" />
+                    <TextField label={t('dialog.driverLabel')} value={form.driver} onChange={updateField('driver')} fullWidth placeholder="e.g. ODBC Driver 17 for SQL Server" />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField label="Server" value={form.server} onChange={updateField('server')} fullWidth placeholder="e.g. localhost\\SQLEXPRESS" />
+                    <TextField label={t('dialog.serverLabel')} value={form.server} onChange={updateField('server')} fullWidth placeholder="e.g. localhost\\SQLEXPRESS" />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField label="Database" value={form.database} onChange={updateField('database')} fullWidth />
+                    <TextField label={t('dialog.databaseLabel')} value={form.database} onChange={updateField('database')} fullWidth />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField label="Username" value={form.username} onChange={updateField('username')} fullWidth autoComplete="off" />
+                    <TextField label={t('dialog.usernameLabel')} value={form.username} onChange={updateField('username')} fullWidth autoComplete="off" />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField
-                      label="Password"
+                      label={t('dialog.passwordLabel')}
                       type="password"
                       value={form.password}
                       onChange={updateField('password')}
@@ -841,13 +846,13 @@ export default function ConnectionsPage() {
                           onChange={updateField('trusted_connection')}
                         />
                       }
-                      label="Use trusted (Windows) authentication"
+                      label={t('dialog.trustedAuth')}
                     />
                   </Grid>
                 </Grid>
-                <Divider sx={{ my: 1 }}>or provide a full connection string</Divider>
+                <Divider sx={{ my: 1 }}>{t('dialog.stringDivider')}</Divider>
                 <TextField
-                  label="Connection string"
+                  label={t('dialog.connectionStringLabel')}
                   value={form.connection_string}
                   onChange={updateField('connection_string')}
                   fullWidth
@@ -882,11 +887,11 @@ export default function ConnectionsPage() {
             variant="outlined"
             sx={{ minHeight: 44 }}
           >
-            Test
+            {t('actions.test')}
           </Button>
           <Box sx={{ flexGrow: 1 }} />
           <Button onClick={closeDialog} disabled={saving || testing} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('actions.cancel')}
           </Button>
           <Button
             onClick={() => void handleSave()}
@@ -895,23 +900,20 @@ export default function ConnectionsPage() {
             startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
             sx={{ minHeight: 44 }}
           >
-            {editing ? 'Save changes' : 'Add connection'}
+            {editing ? t('actions.saveChanges') : t('actions.addConnection')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Delete confirmation */}
       <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)} maxWidth="xs">
-        <DialogTitle>Delete connection?</DialogTitle>
+        <DialogTitle>{t('deleteDialog.title')}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2">
-            “{deleteTarget?.name}” will be removed from this app. Saved queries that use it may no
-            longer run.
-          </Typography>
+          <Typography variant="body2">{t('deleteDialog.body', { name: deleteTarget?.name })}</Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDeleteTarget(null)} disabled={deleting} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('actions.cancel')}
           </Button>
           <Button
             color="error"
@@ -921,20 +923,20 @@ export default function ConnectionsPage() {
             startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
             sx={{ minHeight: 44 }}
           >
-            Delete
+            {t('actions.delete')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Detect ODBC DSNs */}
       <Dialog open={detectOpen} onClose={() => setDetectOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Detect ODBC DSNs</DialogTitle>
+        <DialogTitle>{t('detect.title')}</DialogTitle>
         <DialogContent dividers sx={{ pt: 2 }}>
           {detecting ? (
             <Box sx={{ py: 3 }}>
               <LinearProgress />
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, textAlign: 'center' }}>
-                Scanning the Windows ODBC registry…
+                {t('detect.scanning')}
               </Typography>
             </Box>
           ) : detectError ? (
@@ -948,7 +950,7 @@ export default function ConnectionsPage() {
                   onClick={() => void openDetect()}
                   sx={{ minHeight: 40 }}
                 >
-                  Retry
+                  {t('actions.retry')}
                 </Button>
               }
             >
@@ -956,7 +958,7 @@ export default function ConnectionsPage() {
             </Alert>
           ) : detectedDsns.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-              No ODBC DSNs found on this PC
+              {t('detect.none')}
             </Typography>
           ) : (
             <>
@@ -975,11 +977,11 @@ export default function ConnectionsPage() {
                       onChange={toggleAllDsns}
                     />
                   }
-                  label="Select all"
+                  label={t('detect.selectAll')}
                   sx={{ minHeight: 48, mx: 0 }}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  ({selectedDsnIndexes.size} of {selectableIndexes.length} selectable)
+                  ({t('detect.selectedOf', { selected: selectedDsnIndexes.size, total: selectableIndexes.length })})
                 </Typography>
               </Stack>
               <Divider sx={{ mb: 1 }} />
@@ -1006,23 +1008,23 @@ export default function ConnectionsPage() {
                           checked={checked}
                           disabled={dsn.already_saved}
                           onChange={() => toggleDsn(index)}
-                          slotProps={{ input: { 'aria-label': `Select ${dsn.dsn}` } }}
+                          slotProps={{ input: { 'aria-label': t('detect.selectDsn', { dsn: dsn.dsn }) } }}
                         />
                         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                           <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
                             {dsn.dsn}
                           </Typography>
                           <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
-                            {dsn.driver || 'Unknown driver'}
+                            {dsn.driver || t('detect.unknownDriver')}
                           </Typography>
                         </Box>
                         {dsn.already_saved ? (
-                          <Chip size="small" color="success" variant="outlined" label="Saved" />
+                          <Chip size="small" color="success" variant="outlined" label={t('detect.saved')} />
                         ) : (
                           <Chip
                             size="small"
                             variant="outlined"
-                            label={`${dsn.scope === 'system' ? 'System' : 'User'} ${dsn.bits}-bit`}
+                            label={t('detect.scopeBits', { scope: dsn.scope === 'system' ? t('detect.scopeSystem') : t('detect.scopeUser'), bits: dsn.bits })}
                           />
                         )}
                       </Stack>
@@ -1035,7 +1037,7 @@ export default function ConnectionsPage() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => setDetectOpen(false)} disabled={addingDsns} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('actions.cancel')}
           </Button>
           <Box sx={{ flexGrow: 1 }} />
           <Button
@@ -1045,7 +1047,7 @@ export default function ConnectionsPage() {
             disabled={addingDsns || selectedDsnIndexes.size === 0}
             sx={{ minHeight: 44 }}
           >
-            Add selected ({selectedDsnIndexes.size})
+            {t('detect.addSelected', { count: selectedDsnIndexes.size })}
           </Button>
         </DialogActions>
       </Dialog>

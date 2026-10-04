@@ -1,0 +1,90 @@
+{
+  "page": {
+    "title": "Settings",
+    "subtitle": "Configure connections and the AI assistant, and view app information."
+  },
+  "sections": {
+    "connections": "Connections",
+    "ai": "AI Assistant",
+    "about": "About"
+  },
+  "appInfo": {
+    "copyrightLabel": "Copyright / License",
+    "copyrightValue": "© 2026 Alex Luo · Gore internal use",
+    "platformLabel": "Development Platform",
+    "platformValue": "Trae CN · Deepseek/GLM flash model",
+    "frontendLabel": "Frontend Stack",
+    "frontendValue": "React 19 · MUI · AG Grid · ECharts",
+    "backendLabel": "Backend Stack",
+    "backendValue": "Python · FastAPI · pyodbc · pandas",
+    "versionLabel": "Build Version"
+  },
+  "about": {
+    "logoAlt": "ODBC Query App logo",
+    "appName": "ODBC Query App",
+    "tagline": "A desktop SQL query, analysis, and scripting workspace.",
+    "updates": "Updates",
+    "checkNow": "Check now",
+    "updateNow": "Update now",
+    "whatsNewToggle": "What’s new & version history",
+    "whatsNewIn": "What’s new in v{{version}}",
+    "versionHistory": "Version history",
+    "thisBuild": "this build",
+    "notesUnavailable": "Release notes aren’t available in this build.",
+    "featuresHeading": "Key Functions & Features",
+    "ackHeading": "Acknowledgements",
+    "ackIntro": "The Tools tabs embed third-party apps. Credit belongs to their authors:",
+    "embeds": "Embeds"
+  },
+  "updates": {
+    "loading": "Loading update status…",
+    "checkFailed": "Update check failed: {{error}}",
+    "checkFailedShort": "Check failed",
+    "available": "Update available: v{{version}} (you are on v{{current}})",
+    "required": " — required",
+    "inProgress": "Update in progress…",
+    "noSource": "No update source configured — automatic update checks are off.",
+    "upToDateChecked": "Up to date (v{{current}}) · last checked {{checked}}",
+    "upToDate": "Up to date (v{{current}}).",
+    "unsupported": "Automatic self-update is only available in the packaged desktop app. To update a development checkout, stop the server, replace the files and start it again."
+  },
+  "features": {
+    "odbc": {
+      "title": "ODBC Connections",
+      "description": "Save any ODBC data source as a reusable profile: pick a driver, fill in the settings and test the connection before you query. Switch databases from the picker in the Query tab."
+    },
+    "builder": {
+      "title": "Visual Builder & SQL Editor",
+      "description": "Build a query without SQL — choose tables or views, then add filters, pick columns, set a date range and a row limit. Prefer raw SQL? Write it with dialect-aware formatting, or load a connection template to fill in the boilerplate."
+    },
+    "charts": {
+      "title": "Charts & KPIs",
+      "description": "Turn the current result set into 20 chart types — bar, line, area, pie, scatter, histogram, box, waterfall, heatmap and more — or KPI cards. Pick X / Y / colour fields and tune operations, sorting and Top-N."
+    },
+    "scripting": {
+      "title": "Python Scripting",
+      "description": "Run a Python script against every row in the grid, with live stdout/stderr you can copy out. Five ready-made examples and saveable custom scripts cover the common analysis steps."
+    },
+    "queries": {
+      "title": "Custom Queries & Run History",
+      "description": "Save Builder or SQL queries as reusable custom queries — with value prompts and Excel reports — and reopen any of the last 20 runs, complete with its connection, row count, timing and SQL."
+    },
+    "tools": {
+      "title": "Tools & Integrations",
+      "description": "Three embedded workspaces open in place: FlowDiagram for AI-assisted architecture diagrams, Project for Gantt-style timelines and ProblemSolving for metric-bowler breakdowns."
+    },
+    "ai": {
+      "title": "AI Assistant",
+      "description": "A docked assistant with SQL, script and chart modes: explain or optimise a query, draft a Python script, or describe a chart — then apply the answer straight into the editor, script or chart tab."
+    },
+    "updates": {
+      "title": "Automatic Updates",
+      "description": "The app checks for a newer build in the background every hour and, when one is found, downloads, checksum-verifies, swaps and restarts itself on request. Settings → About keeps the release notes and full version history."
+    }
+  },
+  "ack": {
+    "flowdiagram": "AI-assisted draw.io diagrams, courtesy of DayuanJiang’s GitHub repository.",
+    "project": "a Gantt-style timeline planner hosted at study-llm.me.",
+    "problemsolving": "a metric-bowler breakdown workspace hosted at study-llm.me."
+  }
+}

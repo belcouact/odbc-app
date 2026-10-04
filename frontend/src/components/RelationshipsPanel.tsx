@@ -41,6 +41,7 @@ import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
+import { useTranslation } from 'react-i18next'
 import RelationshipsDiagram from './RelationshipsDiagram'
 import { api } from '../api/client'
 import type {
@@ -146,6 +147,7 @@ interface ExploreDialogProps {
 
 /** Two-view explorer: master-detail drill + flat join preview. */
 function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogProps) {
+  const { t } = useTranslation('relationships')
   const compact = useMediaQuery((theme) => theme.breakpoints.down('sm'))
   const [view, setView] = useState<'drill' | 'join'>('drill')
 
@@ -186,7 +188,7 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
         if (!cancelled) setBase(detail)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setBaseError(err instanceof Error ? err.message : 'Failed to load the table')
+        if (!cancelled) setBaseError(err instanceof Error ? err.message : t('errors.loadTable'))
       })
       .finally(() => {
         if (!cancelled) setBaseLoading(false)
@@ -194,7 +196,7 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
     return () => {
       cancelled = true
     }
-  }, [baseId, fetchDetail])
+  }, [baseId, fetchDetail, t])
 
   // Flat join preview loads lazily, only when the user opens that view.
   useEffect(() => {
@@ -207,7 +209,7 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
         if (!cancelled) setPreview(data)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setPreviewError(err instanceof Error ? err.message : 'Failed to build the join')
+        if (!cancelled) setPreviewError(err instanceof Error ? err.message : t('errors.buildJoin'))
       })
       .finally(() => {
         if (!cancelled) setPreviewLoading(false)
@@ -215,7 +217,7 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
     return () => {
       cancelled = true
     }
-  }, [view, preview, previewLoading, relationship.id])
+  }, [view, preview, previewLoading, relationship.id, t])
 
   /** Every relationship that starts at the base table (drill targets). */
   const outgoing = relationships.filter((item) => item.left_snapshot_id === baseId)
@@ -270,9 +272,9 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
     <Dialog open onClose={onClose} fullWidth maxWidth="lg" fullScreen={compact}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 7 }}>
         <SearchIcon fontSize="small" />
-        Explore — {relationship.left_name}
+        {t('explore.title', { name: relationship.left_name })}
         <IconButton
-          aria-label="Close explore"
+          aria-label={t('explore.ariaClose')}
           onClick={onClose}
           sx={{ position: 'absolute', top: 8, right: 8 }}
         >
@@ -285,8 +287,8 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
           onChange={(_event, value: 'drill' | 'join') => setView(value)}
           sx={{ borderBottom: 1, borderColor: 'divider', mb: 1.5 }}
         >
-          <Tab value="drill" label="Drill down" />
-          <Tab value="join" label="Joined view" />
+          <Tab value="drill" label={t('explore.tabs.drill')} />
+          <Tab value="join" label={t('explore.tabs.join')} />
         </Tabs>
 
         {view === 'drill' ? (
@@ -300,23 +302,24 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
             {base && (
               <>
                 <Typography variant="caption" color="text.secondary">
-                  Click a row to see its related rows in the linked tables
                   {base.rows.length > DRILL_ROW_LIMIT
-                    ? ` — showing the first ${DRILL_ROW_LIMIT.toLocaleString()} of ${base.row_count.toLocaleString()} rows`
-                    : ''}
-                  .
+                    ? t('explore.drillHintTruncated', {
+                        n: DRILL_ROW_LIMIT.toLocaleString(),
+                        total: base.row_count.toLocaleString(),
+                      })
+                    : t('explore.drillHint')}
                 </Typography>
                 <MiniTable
                   columns={baseColumns}
                   rows={base.rows.slice(0, DRILL_ROW_LIMIT)}
                   highlightColumn={relationship.left_column}
                   onRowClick={(row) => setSelectedRow(row)}
-                  emptyText="This table has no stored rows."
+                  emptyText={t('explore.noStoredRows')}
                 />
                 {selectedRow && (
                   <Stack spacing={1.5} sx={{ pt: 1 }}>
                     <Typography variant="subtitle2">
-                      Related rows for{' '}
+                      {t('explore.relatedRowsFor')}{' '}
                       <Box component="span" sx={{ fontFamily: 'monospace' }}>
                         {relationship.left_column}
                       </Box>{' '}
@@ -327,7 +330,7 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
                     </Typography>
                     {outgoing.length === 0 && (
                       <Typography variant="body2" color="text.secondary">
-                        No relationships start at this table.
+                        {t('explore.noOutgoing')}
                       </Typography>
                     )}
                     {relatedLoading && (
@@ -347,13 +350,13 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
                             variant="outlined"
                             label={`${section.relationship.left_column} = ${section.relationship.right_column}`}
                           />
-                          <Chip size="small" label={`${section.rows.length} row(s)`} />
+                          <Chip size="small" label={t('explore.rowCount', { count: section.rows.length })} />
                         </Stack>
                         <MiniTable
                           columns={section.columns}
                           rows={section.rows.slice(0, DRILL_ROW_LIMIT)}
                           highlightColumn={section.relationship.right_column}
-                          emptyText="No matching rows in this table."
+                          emptyText={t('explore.noMatchingRows')}
                           maxHeight={240}
                         />
                       </Box>
@@ -374,16 +377,24 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
             {preview && (
               <>
                 <Typography variant="caption" color="text.secondary">
-                  {relationship.left_name} {relationship.join_type} join {relationship.right_name} on{' '}
-                  {relationship.left_column} = {relationship.right_column} — {preview.total.toLocaleString()} rows
-                  {preview.truncated ? ` (first ${JOIN_ROW_LIMIT.toLocaleString()} shown)` : ''} ·{' '}
-                  {preview.matched_left.toLocaleString()} of {preview.left_row_count.toLocaleString()} left rows
-                  matched.
+                  {t('explore.joinSummary', {
+                    left: relationship.left_name,
+                    join: t(`joinTypes.${relationship.join_type}`),
+                    right: relationship.right_name,
+                    lcol: relationship.left_column,
+                    rcol: relationship.right_column,
+                    total: preview.total.toLocaleString(),
+                    truncated: preview.truncated
+                      ? t('explore.joinTruncated', { n: JOIN_ROW_LIMIT.toLocaleString() })
+                      : '',
+                    matched: preview.matched_left.toLocaleString(),
+                    leftRows: preview.left_row_count.toLocaleString(),
+                  })}
                 </Typography>
                 <MiniTable
                   columns={preview.columns}
                   rows={preview.rows}
-                  emptyText="The join produced no rows."
+                  emptyText={t('explore.joinEmpty')}
                   maxHeight={520}
                 />
               </>
@@ -392,7 +403,7 @@ function ExploreDialog({ relationship, relationships, onClose }: ExploreDialogPr
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{t('actions.close')}</Button>
       </DialogActions>
     </Dialog>
   )
@@ -422,6 +433,7 @@ export default function RelationshipsPanel({
   onNotice,
   onChanged,
 }: RelationshipsPanelProps) {
+  const { t } = useTranslation('relationships')
   const compact = useMediaQuery('(max-width:700px)')
   const editorFullScreen = useMediaQuery((theme) => theme.breakpoints.down('sm'))
 
@@ -455,7 +467,7 @@ export default function RelationshipsPanel({
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load relationships')
+        if (!cancelled) setError(err instanceof Error ? err.message : t('errors.loadList'))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -463,7 +475,7 @@ export default function RelationshipsPanel({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [t])
 
   const openCreate = useCallback(() => {
     setEditingId(null)
@@ -515,10 +527,10 @@ export default function RelationshipsPanel({
           : [saved, ...prev],
       )
       setEditorOpen(false)
-      onNotice(editingId !== null ? 'Relationship updated' : 'Relationship saved')
+      onNotice(editingId !== null ? t('notices.updated') : t('notices.saved'))
       onChanged?.()
     } catch (err) {
-      onNotice(err instanceof Error ? err.message : 'Failed to save the relationship')
+      onNotice(err instanceof Error ? err.message : t('errors.save'))
     } finally {
       setSaving(false)
     }
@@ -531,10 +543,10 @@ export default function RelationshipsPanel({
       await api.deleteRelationship(deleteTarget.id)
       setRelationships((prev) => prev.filter((item) => item.id !== deleteTarget.id))
       setDeleteTarget(null)
-      onNotice('Relationship deleted')
+      onNotice(t('notices.deleted'))
       onChanged?.()
     } catch (err) {
-      onNotice(err instanceof Error ? err.message : 'Failed to delete the relationship')
+      onNotice(err instanceof Error ? err.message : t('errors.delete'))
     } finally {
       setDeleteBusy(false)
     }
@@ -551,7 +563,7 @@ export default function RelationshipsPanel({
       {/* Toolbar (the tab label carries the section title) */}
       <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         {relationships.length > 0 && (
-          <Tooltip title="See all relationships in one diagram">
+          <Tooltip title={t('toolbar.diagramTooltip')}>
             <Button
               size="small"
               variant="outlined"
@@ -559,17 +571,16 @@ export default function RelationshipsPanel({
               onClick={() => setDiagramOpen(true)}
               sx={{ minHeight: 40, mr: 1 }}
             >
-              Diagram
+              {t('toolbar.diagram')}
             </Button>
           </Tooltip>
         )}
         <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={openCreate} sx={{ minHeight: 40 }}>
-          New relationship
+          {t('toolbar.new')}
         </Button>
       </Stack>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-        Link warehouse tables on a shared column, then drill from a row in one table to its rows in
-        another.
+        {t('toolbar.intro')}
       </Typography>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -580,7 +591,7 @@ export default function RelationshipsPanel({
         </Box>
       ) : relationships.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-          No relationships yet — link two snapshots on a shared column (e.g. NAME = NAME).
+          {t('list.empty')}
         </Typography>
       ) : (
         <Stack spacing={1}>
@@ -601,34 +612,38 @@ export default function RelationshipsPanel({
                       icon={<LinkIcon />}
                       label={`${relationship.left_name}.${relationship.left_column} = ${relationship.right_name}.${relationship.right_column}`}
                     />
-                    <Chip size="small" variant="outlined" label={relationship.join_type} />
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={t(`joinTypeShort.${relationship.join_type}`)}
+                    />
                   </Stack>
                 </Box>
                 <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
-                  <Tooltip title="Explore — drill into related rows or preview the join">
+                  <Tooltip title={t('list.exploreTooltip')}>
                     <IconButton
                       size="small"
-                      aria-label={`Explore ${relationship.name}`}
+                      aria-label={t('list.exploreAria', { name: relationship.name })}
                       onClick={() => setExploreTarget(relationship)}
                       sx={actionSx}
                     >
                       <SearchIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Edit relationship">
+                  <Tooltip title={t('list.editTooltip')}>
                     <IconButton
                       size="small"
-                      aria-label={`Edit ${relationship.name}`}
+                      aria-label={t('list.editAria', { name: relationship.name })}
                       onClick={() => openEdit(relationship)}
                       sx={actionSx}
                     >
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Delete relationship">
+                  <Tooltip title={t('list.deleteTooltip')}>
                     <IconButton
                       size="small"
-                      aria-label={`Delete ${relationship.name}`}
+                      aria-label={t('list.deleteAria', { name: relationship.name })}
                       onClick={() => setDeleteTarget(relationship)}
                       sx={actionSx}
                     >
@@ -651,9 +666,9 @@ export default function RelationshipsPanel({
         fullScreen={editorFullScreen}
       >
         <DialogTitle sx={{ position: 'relative', pr: 7 }}>
-          {editingId !== null ? 'Edit relationship' : 'New relationship'}
+          {editingId !== null ? t('editor.titleEdit') : t('editor.titleNew')}
           <IconButton
-            aria-label="Close relationship editor"
+            aria-label={t('editor.ariaClose')}
             onClick={() => setEditorOpen(false)}
             disabled={saving}
             sx={{ position: 'absolute', top: 8, right: 8 }}
@@ -664,11 +679,11 @@ export default function RelationshipsPanel({
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             <TextField
-              label="Name (optional)"
+              label={t('editor.name')}
               size="small"
               value={form.name}
               onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-              placeholder="e.g. Colour readings to LIMS"
+              placeholder={t('editor.namePlaceholder')}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
               <TextField
@@ -676,7 +691,7 @@ export default function RelationshipsPanel({
                 fullWidth
                 required
                 size="small"
-                label="Left table"
+                label={t('editor.leftTable')}
                 value={form.left_snapshot_id}
                 onChange={(event) =>
                   setForm((prev) => ({
@@ -697,7 +712,7 @@ export default function RelationshipsPanel({
                 fullWidth
                 required
                 size="small"
-                label="Left column"
+                label={t('editor.leftColumn')}
                 value={form.left_column}
                 onChange={(event) => setForm((prev) => ({ ...prev, left_column: event.target.value }))}
                 disabled={form.left_snapshot_id.length === 0}
@@ -715,7 +730,7 @@ export default function RelationshipsPanel({
                 fullWidth
                 required
                 size="small"
-                label="Right table"
+                label={t('editor.rightTable')}
                 value={form.right_snapshot_id}
                 onChange={(event) =>
                   setForm((prev) => ({
@@ -736,7 +751,7 @@ export default function RelationshipsPanel({
                 fullWidth
                 required
                 size="small"
-                label="Right column"
+                label={t('editor.rightColumn')}
                 value={form.right_column}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, right_column: event.target.value }))
@@ -753,40 +768,40 @@ export default function RelationshipsPanel({
             <TextField
               select
               size="small"
-              label="Join type"
+              label={t('editor.joinType')}
               value={form.join_type}
               onChange={(event) => setForm((prev) => ({ ...prev, join_type: event.target.value }))}
-              helperText="Left keeps unmatched rows of the left table; inner keeps only matches."
+              helperText={t('editor.joinHelper')}
             >
-              <MenuItem value="left">Left join</MenuItem>
-              <MenuItem value="inner">Inner join</MenuItem>
+              <MenuItem value="left">{t('joinTypeNames.left')}</MenuItem>
+              <MenuItem value="inner">{t('joinTypeNames.inner')}</MenuItem>
             </TextField>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditorOpen(false)} disabled={saving}>
-            Cancel
+            {t('actions.cancel')}
           </Button>
           <Button variant="contained" onClick={() => void handleSave()} disabled={saving || !formValid}>
-            {editingId !== null ? 'Save changes' : 'Save relationship'}
+            {editingId !== null ? t('editor.saveEdit') : t('editor.saveNew')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* ---- Delete confirmation ---- */}
       <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Delete relationship</DialogTitle>
+        <DialogTitle>{t('delete.title')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Delete “{deleteTarget?.name}”? The snapshots themselves are not touched.
+            {t('delete.confirm', { name: deleteTarget?.name ?? '' })}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>
-            Cancel
+            {t('actions.cancel')}
           </Button>
           <Button color="error" variant="contained" onClick={() => void handleDelete()} disabled={deleteBusy}>
-            Delete
+            {t('actions.delete')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -809,9 +824,9 @@ export default function RelationshipsPanel({
         fullScreen={editorFullScreen}
       >
         <DialogTitle sx={{ position: 'relative', pr: 7 }}>
-          Relationship diagram
+          {t('diagram.title')}
           <IconButton
-            aria-label="Close relationship diagram"
+            aria-label={t('diagram.ariaClose')}
             onClick={() => setDiagramOpen(false)}
             sx={{ position: 'absolute', top: 8, right: 8 }}
           >
@@ -820,8 +835,7 @@ export default function RelationshipsPanel({
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            Every saved relationship as a line between its tables — hover a line for details, scroll
-            to zoom.
+            {t('diagram.caption')}
           </Typography>
           <RelationshipsDiagram
             relationships={relationships}
@@ -829,7 +843,7 @@ export default function RelationshipsPanel({
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDiagramOpen(false)}>Close</Button>
+          <Button onClick={() => setDiagramOpen(false)}>{t('actions.close')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -1,0 +1,116 @@
+{
+  "header": {
+    "renameTooltip": "{{name}} — 双击可重命名",
+    "renameAria": "重命名列 {{name}}"
+  },
+  "empty": {
+    "noResult": "运行查询、上传文件或粘贴数据后，可在此查看结果。",
+    "noRows": "查询未返回任何行。"
+  },
+  "rows": {
+    "drilled": "{{drilled}}/{{total}} 行",
+    "count_other": "{{value}} 行"
+  },
+  "revert": {
+    "tooltip": "将表格恢复到上次 AI 编辑或粘贴之前的状态",
+    "button": "还原"
+  },
+  "drill": {
+    "label": "下钻筛选：",
+    "clear": "清除",
+    "blank": "（空白）"
+  },
+  "paste": {
+    "nothingEmpty": "没有可粘贴的内容 — 所有行都是空的。",
+    "noColumns": "没有可粘贴的内容 — 未找到列。",
+    "headerOnlyAddRows": "只粘贴了表头行 — 请在下方添加数据行。",
+    "headerOnlyNothing": "只粘贴了表头行 — 没有可添加的数据。",
+    "rowsColumns": "已粘贴 {{rows}} 行 · {{columns}} 列",
+    "emptySkipped": "已跳过 {{count}} 个空行",
+    "resultNewTable": "{{summary}} — 已创建新表。",
+    "resultTableReplaced": "{{summary}} — 已替换表格。",
+    "rowsPasted": "已粘贴 {{count}} 行",
+    "tableReplaced": "已替换表格",
+    "newAppended": "新增 {{count}} 行",
+    "beyondTable": "已跳过超出表格的 {{count}} 列",
+    "dialogTitle": "从剪贴板粘贴",
+    "introWithGrid": "在 Excel（或任意位置）复制单元格后粘贴到下方 — 桌面端按 Ctrl+V，触屏端长按 → 粘贴。在表格本身上，Ctrl+V 会从当前单元格起按 Excel 方式填充。在此处粘贴会替换整张表 — 粘贴内容中的表头（若包含）将成为新的列标题；空行会被丢弃。",
+    "introNoGrid": "在 Excel（或任意位置）复制单元格后粘贴到下方 — 桌面端按 Ctrl+V，触屏端长按 → 粘贴。在表格本身上，Ctrl+V 会从当前单元格起按 Excel 方式填充。在此处粘贴会根据粘贴内容创建一张新表；空行会被丢弃。",
+    "placeholder": "列 A\t列 B\n值\t值",
+    "headerLabelWithGrid": "首行是列标题 — 跳过它",
+    "headerLabelNoGrid": "首行是列标题 — 用它命名新列",
+    "cancel": "取消",
+    "pasteIntoGrid": "粘贴到表格",
+    "pasteAsNewTable": "粘贴为新表"
+  },
+  "menu": {
+    "copyCell": "复制单元格",
+    "copyRow": "复制整行",
+    "copySelected": "复制所选行",
+    "copySelectedCount": "复制所选的 {{count}} 行",
+    "filterBy": "按此值筛选",
+    "filterOut": "排除此值",
+    "openFilter": "打开筛选",
+    "clearFilter": "清除此列的筛选",
+    "clearAllFilters": "清除所有筛选",
+    "sortAsc": "升序排序",
+    "sortDesc": "降序排序",
+    "clearSort": "清除排序",
+    "pinLeft": "将列固定到左侧",
+    "pinRight": "将列固定到右侧",
+    "unpin": "取消固定列",
+    "autosizeThis": "自动调整此列宽度",
+    "autosizeAll": "自动调整所有列宽",
+    "resetColumns": "重置列",
+    "hideColumn": "隐藏此列",
+    "showAllColumns": "显示所有列"
+  },
+  "help": {
+    "title": "此表格的全部功能",
+    "subtitle": "右键点击单元格或列标题，可打开完整菜单。",
+    "copy": {
+      "title": "复制",
+      "detail": "通过右键菜单复制单元格 / 整行 / 所选行。复制按钮会复制你选中的行；未选中任何行时，则复制整个结果 — 可直接粘贴到 Excel。"
+    },
+    "paste": {
+      "title": "粘贴",
+      "detail": "在表格上按 Ctrl+V 即可按 Excel 方式填充，或使用结果标题栏中的粘贴按钮：对话框粘贴会清空当前行，并用粘贴内容替换整张表（在尚未运行任何查询前，则会新建一张表）。表头行会自动识别，也可用复选框手动切换；空行会被丢弃；数字会按数字存储；还原可撤销粘贴。"
+    },
+    "sort": {
+      "title": "排序",
+      "detail": "点击列标题即可排序，或使用右键菜单中的升序 / 降序 / 清除排序。"
+    },
+    "multiSort": {
+      "title": "多列排序",
+      "detail": "按住 Shift 点击更多列标题，可将它们加入排序。列标题上的数字徽标显示排序顺序；再次点击列标题可翻转或扩展其方向。"
+    },
+    "filter": {
+      "title": "筛选",
+      "detail": "通过右键菜单按某个值筛选或排除该值、打开筛选器，或清除单列 / 全部筛选。"
+    },
+    "columns": {
+      "title": "列",
+      "detail": "固定到左侧或右侧、自动调整某列或全部列宽、重置列，以及隐藏或显示列 — 均可通过右键菜单完成。拖动列标题之间的边界可调整宽度或重新排序。"
+    },
+    "rename": {
+      "title": "重命名列",
+      "detail": "双击任意列标题。"
+    },
+    "editGrid": {
+      "title": "编辑表格",
+      "detail": "一个窗口，三个标签页：AI 编辑（用自然语言描述修改，AI 为表格编写 Python 脚本）、数据类型（在文本、数字和日期之间切换列类型）以及添加列（用公式构建计算列）。"
+    },
+    "save": {
+      "title": "保存数据",
+      "detail": "将表格作为快照保存到仪表盘仓库（仪表盘标签页），以便日后无需重新运行查询即可绘制图表或查看。"
+    },
+    "revert": {
+      "title": "还原",
+      "detail": "撤销上一次 AI 编辑或粘贴，恢复此前的表格。"
+    },
+    "selection": {
+      "title": "选择",
+      "detail": "点击一行即可选中；按住 Ctrl/Cmd 点击或拖动可选择多行，然后一次性复制它们。"
+    }
+  }
+}

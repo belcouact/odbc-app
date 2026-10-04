@@ -26,8 +26,11 @@
     "ag-grid-react": "^36.1.0",
     "axios": "^1.19.0",
     "echarts": "^6.1.0",
+    "i18next": "^26.4.2",
+    "lxgw-wenkai-screen-webfont": "^1.7.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-i18next": "^17.0.15",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "sql-formatter": "^15.8.2"

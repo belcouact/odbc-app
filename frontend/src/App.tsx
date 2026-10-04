@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
+import { changeAppLanguage, isChinese } from './i18n'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import Alert from '@mui/material/Alert'
@@ -15,8 +18,6 @@ import IconButton from '@mui/material/IconButton'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Snackbar from '@mui/material/Snackbar'
-import ToggleButton from '@mui/material/ToggleButton'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -66,32 +67,33 @@ type View =
   | 'problemsolving'
   | 'settings'
 
-/** Tabs that sit directly in the top bar. */
-const MAIN_TABS: { value: View; label: string; icon: ReactElement }[] = [
-  { value: 'editor', label: 'Query', icon: <CodeIcon color="primary" /> },
-  { value: 'script', label: 'Analyze', icon: <TerminalIcon color="secondary" /> },
-  { value: 'bi', label: 'Dashboard', icon: <DashboardIcon color="info" /> },
+/** Tabs that sit directly in the top bar. Labels are i18n keys. */
+const MAIN_TABS: { value: View; labelKey: string; icon: ReactElement }[] = [
+  { value: 'editor', labelKey: 'tabs.query', icon: <CodeIcon color="primary" /> },
+  { value: 'script', labelKey: 'tabs.analyze', icon: <TerminalIcon color="secondary" /> },
+  { value: 'bi', labelKey: 'tabs.dashboard', icon: <DashboardIcon color="info" /> },
 ]
 
 /** Grouped behind a single menu button to keep the bar uncluttered. */
-const TOOL_TABS: { value: View; label: string; icon: ReactElement }[] = [
-  { value: 'flowdiagram', label: 'FlowDiagram', icon: <AccountTreeIcon color="info" /> },
-  { value: 'project', label: 'Project', icon: <ViewTimelineIcon color="success" /> },
-  { value: 'problemsolving', label: 'ProblemSolving', icon: <TroubleshootIcon color="error" /> },
+const TOOL_TABS: { value: View; labelKey: string; icon: ReactElement }[] = [
+  { value: 'flowdiagram', labelKey: 'tabs.flowDiagram', icon: <AccountTreeIcon color="info" /> },
+  { value: 'project', labelKey: 'tabs.project', icon: <ViewTimelineIcon color="success" /> },
+  { value: 'problemsolving', labelKey: 'tabs.problemSolving', icon: <TroubleshootIcon color="error" /> },
 ]
 
-const SETTINGS_TAB: { value: View; label: string; icon: ReactElement } = {
+const SETTINGS_TAB: { value: View; labelKey: string; icon: ReactElement } = {
   value: 'settings',
-  label: 'Settings',
+  labelKey: 'tabs.settings',
   icon: <SettingsIcon color="warning" />,
 }
 
-/** Short mantras shown under the enlarged brand icon in the Alex lightbox. */
-const ALEX_MOTTOS = [
-  'stay hungry, stay foolish',
-  'don’t wait, start now',
-  'start small, learn by doing',
-  'improve over time',
+/** Short mantras shown under the enlarged brand icon in the Alex lightbox,
+ *  each paired with its Chinese rendering on the line below. */
+const ALEX_MOTTOS: { en: string; zh: string }[] = [
+  { en: 'Stay hungry, stay foolish', zh: '求知若渴心如童' },
+  { en: 'Don’t wait, start now', zh: '莫待明朝趁晓风' },
+  { en: 'Start small, learn by doing', zh: '微始躬行勤学步' },
+  { en: 'Improve over time', zh: '日新其道渐无穷' },
 ]
 
 /** Board posts this machine has already looked at — the feedback badge counts the rest. */
@@ -216,30 +218,6 @@ const HELP_STEPS_ZH: { title: string; description: string }[] = [
   },
 ]
 
-type HelpLanguage = 'en' | 'zh'
-
-/** Static labels of the "How to use this app" dialog, per language. */
-const HELP_CHROME: Record<
-  HelpLanguage,
-  { title: string; close: string; firstRunTitle: string; firstRunHint: string; replay: string }
-> = {
-  en: {
-    title: 'How to use this app',
-    close: 'Close',
-    firstRunTitle: 'First-run guide',
-    firstRunHint:
-      'Walk through ODBC detection, template queries, and template scripts step by step.',
-    replay: 'Replay guide',
-  },
-  zh: {
-    title: '如何使用本应用',
-    close: '关闭',
-    firstRunTitle: '首次使用引导',
-    firstRunHint: '逐步演示 ODBC 检测、模板查询与模板脚本的完整流程。',
-    replay: '重播引导',
-  },
-}
-
 function HowToUseDialog({
   open,
   onClose,
@@ -249,9 +227,8 @@ function HowToUseDialog({
   onClose: () => void
   onReplayTour: () => void
 }) {
-  const [language, setLanguage] = useState<HelpLanguage>('en')
-  const steps = language === 'zh' ? HELP_STEPS_ZH : HELP_STEPS
-  const text = HELP_CHROME[language]
+  const { t, i18n } = useTranslation()
+  const steps = i18n.language.startsWith('zh') ? HELP_STEPS_ZH : HELP_STEPS
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -264,25 +241,9 @@ function HowToUseDialog({
           pr: 1,
         }}
       >
-        {text.title}
+        {t('help.title')}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          <ToggleButtonGroup
-            value={language}
-            exclusive
-            size="small"
-            onChange={(_event, next: HelpLanguage | null) => {
-              if (next) setLanguage(next)
-            }}
-            aria-label="Help language"
-          >
-            <ToggleButton value="en" sx={{ px: 1.25, minHeight: 32 }}>
-              EN
-            </ToggleButton>
-            <ToggleButton value="zh" sx={{ px: 1.25, minHeight: 32 }}>
-              中文
-            </ToggleButton>
-          </ToggleButtonGroup>
-          <IconButton onClick={onClose} aria-label={text.close} size="small" sx={{ mr: -0.5 }}>
+          <IconButton onClick={onClose} aria-label={t('help.close')} size="small" sx={{ mr: -0.5 }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
@@ -335,10 +296,10 @@ function HowToUseDialog({
         >
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              {text.firstRunTitle}
+              {t('help.firstRunTitle')}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {text.firstRunHint}
+              {t('help.firstRunHint')}
             </Typography>
           </Box>
           <Button
@@ -347,7 +308,7 @@ function HowToUseDialog({
             onClick={onReplayTour}
             sx={{ minHeight: 44, flexShrink: 0 }}
           >
-            {text.replay}
+            {t('help.replay')}
           </Button>
         </Box>
       </DialogContent>
@@ -370,44 +331,42 @@ function ShutdownDialog({
   onClose: () => void
   onConfirm: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <Dialog open={open} onClose={stage === 'stopping' ? undefined : onClose} maxWidth="xs">
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <PowerSettingsNewIcon color="error" fontSize="small" />
-        Shut down server
+        {t('shutdown.title')}
       </DialogTitle>
       <DialogContent dividers>
         {stage === 'confirm' && (
-          <Typography color="text.secondary">
-            This stops the embedded ODBCQueryApp server and disconnects any connected users. You
-            can close this tab afterwards. Continue?
-          </Typography>
+          <Typography color="text.secondary">{t('shutdown.confirm')}</Typography>
         )}
         {stage === 'stopping' && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <CircularProgress size={20} />
-            <Typography color="text.secondary">Stopping the server…</Typography>
+            <Typography color="text.secondary">{t('shutdown.stopping')}</Typography>
           </Box>
         )}
         {stage === 'stopped' && (
-          <Typography color="text.secondary">
-            The server has been stopped. You can now close this tab.
-          </Typography>
+          <Typography color="text.secondary">{t('shutdown.stopped')}</Typography>
         )}
         {stage === 'error' && (
-          <Typography color="error">Could not stop the server: {error}</Typography>
+          <Typography color="error">{t('shutdown.failed', { error })}</Typography>
         )}
       </DialogContent>
       <DialogActions>
         {stage === 'confirm' && (
           <>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose}>{t('shutdown.cancel')}</Button>
             <Button color="error" variant="contained" onClick={onConfirm}>
-              Shut down server
+              {t('shutdown.title')}
             </Button>
           </>
         )}
-        {(stage === 'stopped' || stage === 'error') && <Button onClick={onClose}>Close</Button>}
+        {(stage === 'stopped' || stage === 'error') && (
+          <Button onClick={onClose}>{t('shutdown.close')}</Button>
+        )}
       </DialogActions>
     </Dialog>
   )
@@ -570,23 +529,26 @@ function formatDownloadRate(rate: number | null | undefined): string {
   return `${Math.max(1, Math.round(kb))} kB/s`
 }
 
-function updateStatusLabel(status: UpdateStatus): string {
+function updateStatusLabel(status: UpdateStatus, t: TFunction): string {
   switch (status.state) {
     case 'checking':
-      return 'Checking for updates…'
+      return t('update.checking')
     case 'downloading': {
       const rate = formatDownloadRate(status.download_rate)
       const rateText = rate ? ` · ${rate}` : ''
-      return status.download_percent != null
-        ? `Downloading version ${status.latest_version}… ${status.download_percent}%${rateText}`
-        : `Downloading version ${status.latest_version}…${rateText}`
+      const percentSuffix = status.download_percent != null ? ` ${status.download_percent}%` : ''
+      return t('update.downloading', {
+        version: status.latest_version,
+        percentSuffix,
+        rateText,
+      })
     }
     case 'verifying':
-      return 'Verifying the download…'
+      return t('update.verifying')
     case 'waiting_idle':
-      return 'Waiting for running queries to finish…'
+      return t('update.waitingIdle')
     case 'restarting':
-      return 'Installing the update and restarting — this tab reconnects automatically.'
+      return t('update.restarting')
     default:
       return ''
   }
@@ -603,6 +565,7 @@ function updateStatusLabel(status: UpdateStatus): string {
  * stale one still in memory.
  */
 function useAppUpdate(online: boolean) {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const [dismissedVersion, setDismissedVersion] = useState<string>(() => {
     try {
@@ -726,11 +689,11 @@ function useAppUpdate(online: boolean) {
       return apply({
         ...current,
         state: 'error',
-        error: err instanceof Error ? err.message : 'Update could not be started.',
-        message: 'Update could not be installed.',
+        error: err instanceof Error ? err.message : t('update.startFailed'),
+        message: t('update.installFailed'),
       })
     }
-  }, [apply])
+  }, [apply, t])
 
   // Updates never start on their own: a check only offers the banner / About
   // card, and the download+install begins solely when the user presses one of
@@ -751,7 +714,7 @@ function useAppUpdate(online: boolean) {
     status,
     busy,
     restartStalled,
-    updateLabel: status ? updateStatusLabel(status) : '',
+    updateLabel: status ? updateStatusLabel(status, t) : '',
     startUpdate,
     dismiss,
     dismissedVersion,
@@ -762,7 +725,8 @@ function useAppUpdate(online: boolean) {
 }
 
 function AppShell() {
-  const [view, setView] = useState<View>('editor')
+  const { t } = useTranslation()
+  const [view, setViewState] = useState<View>('editor')
   // Anchor element for the grouped FlowDiagram / Project / ProblemSolving menu.
   const [toolsAnchor, setToolsAnchor] = useState<HTMLElement | null>(null)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('connections')
@@ -773,6 +737,14 @@ function AppShell() {
   const [introOpen, setIntroOpen] = useState(false)
   const [alexOpen, setAlexOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  // Navigating from the top bar dismisses the feedback overlay so the requested
+  // destination is always visible — including when the target view is already
+  // the current one (e.g. re-clicking the version badge while the board is open),
+  // which a bare view change would miss.
+  const setView = useCallback((nextView: View) => {
+    setFeedbackOpen(false)
+    setViewState(nextView)
+  }, [])
   // Posts made since this machine last opened the board, counted for the badge.
   const [feedbackUnread, setFeedbackUnread] = useState(0)
   const [shutdownOpen, setShutdownOpen] = useState(false)
@@ -810,7 +782,7 @@ function AppShell() {
       await api.shutdown()
       setShutdownStage('stopped')
     } catch (err) {
-      setShutdownError(err instanceof Error ? err.message : 'Unexpected error')
+      setShutdownError(err instanceof Error ? err.message : t('shutdown.unexpected'))
       setShutdownStage('error')
     }
   }
@@ -984,12 +956,12 @@ function AppShell() {
   // Opening the board reads everything on it; closing re-reads, so a post that
   // arrived while the board was open is not left flagged as unread.
   const openFeedback = useCallback(() => {
-    void markBoardRead()
-    setFeedbackOpen(true)
-  }, [markBoardRead])
-  const closeFeedback = useCallback(() => {
-    void markBoardRead()
-    setFeedbackOpen(false)
+    // Toggles: with no close button on the board itself, clicking the
+    // top-bar icon again is one way out (tab switch is the other).
+    setFeedbackOpen((open) => {
+      if (!open) void markBoardRead()
+      return !open
+    })
   }, [markBoardRead])
   const replayTour = useCallback(() => {
     setHelpOpen(false)
@@ -1058,18 +1030,14 @@ function AppShell() {
               onClick={connection.retryNow}
               sx={{ '&&': { minHeight: { xs: 48, sm: 44 } }, whiteSpace: 'nowrap' }}
             >
-              {connectionBanner === 'retrying' ? 'Reconnecting…' : 'Retry now'}
+              {connectionBanner === 'retrying' ? t('connection.reconnecting') : t('connection.retryNow')}
             </Button>
           }
         >
-          {connectionBanner === 'retrying' &&
-            'Reconnecting to the local server… testing the connection now.'}
-          {connectionBanner === 'retried' &&
-            'Reconnected — the local server is answering again. Carry on; no refresh needed.'}
-          {connectionBanner === 'failed' &&
-            'Retry failed — the local server is still not answering. It may still be starting up; try again in a moment.'}
-          {connectionBanner === 'offline' &&
-            'Lost connection to the local server. Your work is safe in this tab. It usually comes back on its own within a minute; if not, launch ODBCQueryApp.exe again — the page will reconnect without a refresh.'}
+          {connectionBanner === 'retrying' && t('connection.retrying')}
+          {connectionBanner === 'retried' && t('connection.retried')}
+          {connectionBanner === 'failed' && t('connection.failed')}
+          {connectionBanner === 'offline' && t('connection.offline')}
         </Alert>
       )}
 
@@ -1119,7 +1087,7 @@ function AppShell() {
                     onClick={update.startUpdate}
                     sx={{ '&&': { minHeight: { xs: 48, sm: 44 } } }}
                   >
-                    Update now
+                    {t('update.now')}
                   </Button>
                 )}
                 <Button
@@ -1128,7 +1096,7 @@ function AppShell() {
                   onClick={update.dismiss}
                   sx={{ '&&': { minHeight: { xs: 48, sm: 44 } } }}
                 >
-                  {updateStatus.supported ? 'Later' : 'Dismiss'}
+                  {updateStatus.supported ? t('update.later') : t('update.dismiss')}
                 </Button>
               </Box>
             )
@@ -1139,14 +1107,17 @@ function AppShell() {
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               {update.busy
                 ? update.updateLabel
-                : `A new version (${updateStatus.latest_version}) is available — you are on ${updateStatus.current_version}.`}
+                : t('update.available', {
+                    latest: updateStatus.latest_version,
+                    current: updateStatus.current_version,
+                  })}
             </Typography>
           </Box>
           {update.busy && update.restartStalled && (
             <Typography variant="caption" component="div" sx={{ mt: 0.5 }}>
               {updateStatus.state === 'restarting'
-                ? 'Still restarting — this page reconnects on its own. If nothing happens within a minute, close it and start the app again; the update is already installed.'
-                : 'Lost contact with the app during the update — it should come back on its own. If it stays quiet, restart the app and run the update again.'}
+                ? t('update.stalledRestarting')
+                : t('update.stalledLost')}
             </Typography>
           )}
           {!update.busy && updateStatus.notes && (
@@ -1156,7 +1127,7 @@ function AppShell() {
           )}
           {!update.busy && !updateStatus.supported && (
             <Typography variant="caption" component="div" sx={{ mt: 0.5 }}>
-              {`This copy of the app cannot update itself. Close it and open the newest ODBCQueryApp.exe (${updateStatus.latest_version}) to upgrade.`}
+              {t('update.unsupported', { latest: updateStatus.latest_version })}
             </Typography>
           )}
           {updateStatus.state === 'error' && updateStatus.error && (
@@ -1176,8 +1147,8 @@ function AppShell() {
             onClick={openAlex}
             role="button"
             tabIndex={0}
-            aria-label="Enlarge the Alex icon"
-            title="Enlarge the Alex icon"
+            aria-label={t('bar.enlargeAlex')}
+            title={t('bar.enlargeAlex')}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
@@ -1212,8 +1183,8 @@ function AppShell() {
               onClick={openIntro}
               role="button"
               tabIndex={0}
-              aria-label="Watch the intro"
-              title="Watch the intro"
+              aria-label={t('bar.watchIntro')}
+              title={t('bar.watchIntro')}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
@@ -1234,42 +1205,8 @@ function AppShell() {
                 '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
               }}
             >
-              ODBC Query
+              {t('bar.appTitle')}
             </Typography>
-            {updateStatus?.current_version && (
-              <Typography
-                component="span"
-                role="button"
-                tabIndex={0}
-                aria-label="Open updates in Settings"
-                title="Open updates in Settings"
-                onClick={() => {
-                  setSettingsSection('about')
-                  setView('settings')
-                  setExpandUpdatesTick((t) => t + 1)
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    setSettingsSection('about')
-                    setView('settings')
-                    setExpandUpdatesTick((t) => t + 1)
-                  }
-                }}
-                sx={{
-                  fontSize: '0.7rem',
-                  lineHeight: 1.15,
-                  color: 'text.secondary',
-                  cursor: 'pointer',
-                  borderRadius: 0.5,
-                  transition: 'color 0.15s ease',
-                  '&:hover': { color: 'primary.main' },
-                  '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
-                }}
-              >
-                v{updateStatus.current_version}
-              </Typography>
-            )}
           </Box>
           <Tabs
             value={activeTool ? TOOLS_TAB_VALUE : view}
@@ -1291,7 +1228,7 @@ function AppShell() {
                 value={tab.value}
                 icon={tab.icon}
                 iconPosition="start"
-                label={tab.label}
+                label={t(tab.labelKey)}
               />
             ))}
             {/* One button for FlowDiagram / Project / ProblemSolving. It keeps the
@@ -1305,7 +1242,7 @@ function AppShell() {
               aria-expanded={toolsAnchor ? 'true' : undefined}
               label={
                 <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                  {activeTool ? activeTool.label : 'Tools'}
+                  {activeTool ? t(activeTool.labelKey) : t('tabs.tools')}
                   <ArrowDropDownIcon fontSize="small" />
                 </Box>
               }
@@ -1314,7 +1251,7 @@ function AppShell() {
               value={SETTINGS_TAB.value}
               icon={SETTINGS_TAB.icon}
               iconPosition="start"
-              label={SETTINGS_TAB.label}
+              label={t(SETTINGS_TAB.labelKey)}
             />
           </Tabs>
           <Menu
@@ -1335,24 +1272,46 @@ function AppShell() {
                 sx={{ minHeight: 48, minWidth: 200, gap: 1.5 }}
               >
                 {tool.icon}
-                {tool.label}
+                {t(tool.labelKey)}
               </MenuItem>
             ))}
           </Menu>
+          {/* Interface language: one tap on EN/中 flips every translated string
+              in the app; the choice persists in localStorage. */}
+          <Tooltip title={t('bar.language')}>
+            <IconButton
+              aria-label={t('bar.language')}
+              onClick={() => changeAppLanguage(isChinese() ? 'en' : 'zh')}
+              sx={{ flexShrink: 0, ml: 'auto', color: 'primary.main' }}
+            >
+              <Box component="span" sx={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>
+                {isChinese() ? 'EN' : '中'}
+              </Box>
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={t('bar.howToUse')}>
+            <IconButton
+              aria-label={t('bar.howToUse')}
+              onClick={() => setHelpOpen(true)}
+              sx={{ flexShrink: 0, ml: 0.5, color: 'primary.main' }}
+            >
+              <InfoIcon />
+            </IconButton>
+          </Tooltip>
           {/* AI assistant: opens the sidebar on the general Chat tab, which
               answers any question without needing a query in the editor. */}
-          <Tooltip title="Open AI assistant">
+          <Tooltip title={t('bar.aiAssistant')}>
             <IconButton
-              aria-label="Open AI assistant"
+              aria-label={t('bar.aiAssistant')}
               onClick={() => openAi('chat')}
-              sx={{ flexShrink: 0, ml: 'auto', color: 'primary.main' }}
+              sx={{ flexShrink: 0, ml: 0.5, color: 'primary.main' }}
             >
               <AutoAwesomeIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Open Connections settings">
+          <Tooltip title={t('bar.connections')}>
             <IconButton
-              aria-label="Open Connections settings"
+              aria-label={t('bar.connections')}
               onClick={() => {
                 setSettingsSection('connections')
                 setView('settings')
@@ -1368,15 +1327,15 @@ function AppShell() {
           <Tooltip
             title={
               feedbackUnread > 0
-                ? `Feedback — ${feedbackUnread} unread post${feedbackUnread === 1 ? '' : 's'}`
-                : 'Feedback — report a problem or suggest an idea'
+                ? t('bar.feedbackUnread', { count: feedbackUnread })
+                : t('bar.feedbackIdle')
             }
           >
             <IconButton
               aria-label={
                 feedbackUnread > 0
-                  ? `Open feedback, ${feedbackUnread} unread`
-                  : 'Open feedback'
+                  ? t('bar.openFeedbackUnread', { count: feedbackUnread })
+                  : t('bar.openFeedback')
               }
               onClick={openFeedback}
               sx={{ flexShrink: 0, ml: 0.5 }}
@@ -1392,15 +1351,44 @@ function AppShell() {
               </Badge>
             </IconButton>
           </Tooltip>
-          <Tooltip title="How to use this app">
-            <IconButton
-              aria-label="How to use this app"
-              onClick={() => setHelpOpen(true)}
-              sx={{ flexShrink: 0, ml: 0.5, color: 'secondary.main' }}
-            >
-              <InfoIcon color="secondary" />
-            </IconButton>
-          </Tooltip>
+          {/* Boxed version badge: version number only. Clicking it opens
+              Settings -> About with the updates panel expanded. */}
+          {updateStatus?.current_version && (
+            <Tooltip title={t('bar.updates')}>
+              <Box
+                component="button"
+                type="button"
+                aria-label={t('bar.updates')}
+                onClick={() => {
+                  setSettingsSection('about')
+                  setView('settings')
+                  setExpandUpdatesTick((t) => t + 1)
+                }}
+                sx={{
+                  flexShrink: 0,
+                  ml: 0.5,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  height: 34,
+                  px: 1,
+                  borderRadius: 1,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'transparent',
+                  font: 'inherit',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  color: 'primary.main',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.15s ease',
+                  '&:hover': { bgcolor: 'action.hover' },
+                  '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+                }}
+              >
+                v{updateStatus.current_version}
+              </Box>
+            </Tooltip>
+          )}
         </Box>
       </AppBar>
 
@@ -1468,6 +1456,60 @@ function AppShell() {
             expandUpdates={expandUpdatesTick}
           />
         </Box>
+        {/* Feedback board — a workspace layered just below the top bar instead
+            of a full-screen modal, so the app bar and its tabs stay in reach.
+            Switching tabs dismisses it via the effect keyed on `view`. */}
+        {feedbackOpen && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              // Above page-internal sticky/z-indexed content (which uses
+              // small z-indexes), far below MUI portals (~1300).
+              zIndex: 20,
+              bgcolor: 'background.default',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: { xs: 1.5, sm: 2 },
+                py: 0.75,
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                flexShrink: 0,
+              }}
+            >
+              <ForumOutlinedIcon color="warning" />
+              <Typography variant="h6" component="div" sx={{ minWidth: 0 }}>
+                {t('bar.feedbackBoard')}
+              </Typography>
+              <Box sx={{ flexGrow: 1 }} />
+              {/* Slot: FeedbackPage portals its view toggle and "New feedback"
+                  button here so they share the title row. */}
+              <Box id="feedback-header-actions" sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }} />
+            </Box>
+            {/* The board draws its own gutter, bands and scrolling regions, so
+                this wrapper only constrains the height. */}
+            <Box
+              sx={{
+                flexGrow: 1,
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
+              <FeedbackPage />
+            </Box>
+          </Box>
+        )}
       </Box>
 
       {/* Global AI assistant: Query / Analyze / Chart conversations */}
@@ -1497,7 +1539,7 @@ function AppShell() {
       <Dialog
         open={alexOpen}
         onClose={closeAlex}
-        maxWidth="xs"
+        maxWidth="sm"
         fullWidth
         slotProps={{
           paper: {
@@ -1507,119 +1549,99 @@ function AppShell() {
               border: `1px solid ${BRAND.lightGray}`,
               bgcolor: BRAND.paper,
               backgroundImage: 'none',
-              p: { xs: 3, sm: 4 },
+              p: { xs: 3, sm: 5 },
               textAlign: 'center',
             },
           },
         }}
       >
-        <IconButton
-          aria-label="Close enlarged icon"
-          onClick={closeAlex}
-          sx={{
-            position: 'absolute',
-            top: 8,
-            right: 8,
-            color: BRAND.ink,
-            // 48px touch target on phones, where tapping is the only exit.
-            '&&': { minWidth: 48, minHeight: 48 },
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
+        {/* No close button: clicking anywhere outside the dialog (or Escape)
+            dismisses it via the Dialog's onClose. */}
+        {/* Picture left, sentences right on wide screens; stacked on phones. */}
         <Box
-          component="img"
-          src="/alex.ico"
-          alt="Alex"
-          sx={{
-            display: 'block',
-            mx: 'auto',
-            width: { xs: '56vw', sm: 220 },
-            maxWidth: 280,
-            height: 'auto',
-            borderRadius: '50%',
-            bgcolor: '#ffffff',
-            p: 1.5,
-            boxShadow: `0 0 0 3px ${BRAND.clay}33, 0 12px 40px rgba(217, 119, 87, 0.28)`,
-          }}
-        />
-        <Box
-          component="ul"
-          sx={{
-            listStyle: 'none',
-            m: 0,
-            p: 0,
-            mt: { xs: 2.5, sm: 3 },
-            display: 'grid',
-            gap: 0.75,
-          }}
-        >
-          {ALEX_MOTTOS.map((motto) => (
-            <Typography
-              key={motto}
-              component="li"
-              variant="body2"
-              sx={{ color: BRAND.ink, opacity: 0.75, textTransform: 'uppercase' }}
-            >
-              {motto}
-            </Typography>
-          ))}
-        </Box>
-      </Dialog>
-
-      {/* Feedback board — full window so the list, the open thread and the
-          composer all have room on a phone as well as on a desktop. The window
-          is deliberately square-cornered: it is a workspace, not a popup. */}
-      <Dialog
-        open={feedbackOpen}
-        onClose={closeFeedback}
-        fullScreen
-        slotProps={{ paper: { sx: { borderRadius: 0 } } }}
-      >
-        <DialogTitle
           sx={{
             display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
             alignItems: 'center',
-            gap: 1,
-            py: 1.25,
-            pr: 7,
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-            flexShrink: 0,
+            justifyContent: 'center',
+            gap: { xs: 2.5, sm: 4 },
           }}
         >
-          <ForumOutlinedIcon color="warning" />
-          <Typography variant="h6" component="div" sx={{ minWidth: 0 }}>
-            Feedback
-          </Typography>
-          <IconButton
-            aria-label="Close feedback"
-            onClick={closeFeedback}
+          <Box
+            component="img"
+            src="/alex.ico"
+            alt="Alex"
             sx={{
-              position: 'absolute',
-              right: { xs: 4, sm: 8 },
-              top: { xs: 4, sm: 8 },
-              // The theme keeps dialog-title buttons compact at 36px; widen the
-              // touch target back to 48px on phones, where it is the only exit.
-              '&&': { minWidth: { xs: 48, sm: 36 }, minHeight: { xs: 48, sm: 36 } },
+              display: 'block',
+              flexShrink: 0,
+              width: { xs: '60vw', sm: 260 },
+              maxWidth: 340,
+              height: 'auto',
+              borderRadius: '50%',
+              bgcolor: '#ffffff',
+              p: 1.5,
+              boxShadow: `0 0 0 3px ${BRAND.clay}33, 0 12px 40px rgba(217, 119, 87, 0.28)`,
+            }}
+          />
+          {/* All English lines first, then all Chinese lines, with a gap
+              between the two groups. */}
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              display: 'grid',
+              gap: { xs: 2.5, sm: 3 },
+              textAlign: { xs: 'center', sm: 'left' },
             }}
           >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        {/* The board draws its own gutter, bands and scrolling regions, so the
-            content box carries no padding and never scrolls as a whole. */}
-        <DialogContent
-          sx={{
-            p: 0,
-            pt: '0 !important',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          <FeedbackPage />
-        </DialogContent>
+            <Box
+              component="ul"
+              sx={{
+                listStyle: 'none',
+                m: 0,
+                p: 0,
+                display: 'grid',
+                gap: 1,
+              }}
+            >
+              {ALEX_MOTTOS.map(({ en }) => (
+                <Typography
+                  key={en}
+                  component="li"
+                  variant="body1"
+                  sx={{ color: 'black', whiteSpace: 'nowrap', fontSize: { xs: '0.9rem', sm: '1rem' } }}
+                >
+                  {en}
+                </Typography>
+              ))}
+            </Box>
+            <Box
+              component="ul"
+              sx={{
+                listStyle: 'none',
+                m: 0,
+                p: 0,
+                display: 'grid',
+                gap: 1,
+              }}
+            >
+              {ALEX_MOTTOS.map(({ zh }) => (
+                <Typography
+                  key={zh}
+                  component="li"
+                  variant="body1"
+                  sx={{
+                    color: 'black',
+                    letterSpacing: 3,
+                    fontSize: { xs: '0.95rem', sm: '1.15rem' },
+                  }}
+                >
+                  {zh}
+                </Typography>
+              ))}
+            </Box>
+          </Box>
+        </Box>
       </Dialog>
 
       {/* First-run / replay step-by-step guide (overlay) */}
@@ -1640,14 +1662,20 @@ function AppShell() {
       <Dialog open={forcedUpdateVisible && !update.busy} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <SystemUpdateAltIcon color="info" fontSize="small" />
-          Update required
+          {t('update.requiredTitle')}
         </DialogTitle>
         <DialogContent dividers>
           {updateStatus && (
             <>
               <Typography color="text.secondary" gutterBottom>
-                This version ({updateStatus.current_version}) is no longer supported. Version{' '}
-                <strong>{updateStatus.latest_version}</strong> is required to continue.
+                <Trans
+                  i18nKey="update.requiredText"
+                  values={{
+                    current: updateStatus.current_version,
+                    latest: updateStatus.latest_version,
+                  }}
+                  components={{ strong: <strong /> }}
+                />
               </Typography>
               {updateStatus.notes && (
                 <Typography variant="body2" component="div" sx={{ whiteSpace: 'pre-line', mb: 1 }}>
@@ -1656,13 +1684,11 @@ function AppShell() {
               )}
               {updateStatus.supported ? (
                 <Typography variant="body2" color="text.secondary">
-                  “Update now” downloads the new build, waits for running queries to finish, then
-                  restarts the app automatically — this tab reconnects on its own.
+                  {t('update.requiredAuto')}
                 </Typography>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  Automatic update is not available in this environment. Please close the app and
-                  copy the latest ODBCQueryApp.exe from your IT team&apos;s share folder.
+                  {t('update.requiredManual')}
                 </Typography>
               )}
               {updateStatus.state === 'error' && updateStatus.error && (
@@ -1680,7 +1706,7 @@ function AppShell() {
               onClick={update.startUpdate}
               sx={{ '&&': { minHeight: { xs: 48, sm: 44 } } }}
             >
-              Update now
+              {t('update.now')}
             </Button>
           )}
         </DialogActions>
@@ -1702,7 +1728,7 @@ function AppShell() {
         open={connection.reconnected}
         autoHideDuration={3000}
         onClose={connection.dismissReconnected}
-        message="Connected to the local server."
+        message={t('connection.reconnectedToast')}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
 
@@ -1714,7 +1740,7 @@ function AppShell() {
         onClose={update.dismissUpdated}
         message={
           update.updatedTo
-            ? `Updated to version ${update.updatedTo} — refreshing to load the new interface…`
+            ? t('update.updatedToast', { version: update.updatedTo })
             : ''
         }
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}

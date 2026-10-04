@@ -7,7 +7,8 @@ import MenuItem from '@mui/material/MenuItem'
 import Typography from '@mui/material/Typography'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
-import { COLUMN_KIND_LABELS, type ColumnKind } from '../utils/columns'
+import { useTranslation } from 'react-i18next'
+import { type ColumnKind } from '../utils/columns'
 
 /** A selectable column shown in a well's picker menu. */
 export interface WellColumn {
@@ -49,6 +50,7 @@ export default function FieldWell({
   onRemove,
   hint,
 }: FieldWellProps) {
+  const { t } = useTranslation('charts')
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [over, setOver] = useState(false)
   const open = Boolean(anchorEl)
@@ -123,7 +125,7 @@ export default function FieldWell({
         <IconButton
           size="small"
           onClick={(event: ReactMouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
-          aria-label={`Add ${label}`}
+          aria-label={t('well.addAria', { name: label })}
           // On phones/tablets this "+" is the main way to fill a shelf (dragging
           // is unreliable on touch), so it keeps a full-size touch target. Desktop
           // keeps the compact pointer-sized button.
@@ -135,7 +137,7 @@ export default function FieldWell({
 
       <Menu anchorEl={anchorEl} open={open} onClose={() => setAnchorEl(null)}>
         {options.length === 0 ? (
-          <MenuItem disabled>No matching columns</MenuItem>
+          <MenuItem disabled>{t('well.noMatching')}</MenuItem>
         ) : (
           options.map((o) => {
             const selected = value.includes(o.name)
@@ -149,7 +151,7 @@ export default function FieldWell({
                     {o.name}
                   </Box>
                   <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                    {COLUMN_KIND_LABELS[o.kind]}
+                    {t(`kind.${o.kind}`)}
                   </Typography>
                 </Box>
               </MenuItem>

@@ -1,0 +1,117 @@
+{
+  "header": {
+    "renameTooltip": "{{name}} — double-click to rename",
+    "renameAria": "Rename column {{name}}"
+  },
+  "empty": {
+    "noResult": "Run a query, upload a file, or paste data to see results here.",
+    "noRows": "The query returned no rows."
+  },
+  "rows": {
+    "drilled": "{{drilled}} of {{total}} rows",
+    "count_one": "{{value}} row",
+    "count_other": "{{value}} rows"
+  },
+  "revert": {
+    "tooltip": "Restore the grid to the state before the last AI edit or paste",
+    "button": "Revert"
+  },
+  "drill": {
+    "label": "Drill-through:",
+    "clear": "Clear",
+    "blank": "(blank)"
+  },
+  "paste": {
+    "nothingEmpty": "Nothing to paste — every row was empty.",
+    "noColumns": "Nothing to paste — no columns found.",
+    "headerOnlyAddRows": "Only a header row was pasted — add some data rows below it.",
+    "headerOnlyNothing": "Only a header row was pasted — nothing to add.",
+    "rowsColumns": "Pasted {{rows}} row(s) · {{columns}} column(s)",
+    "emptySkipped": "{{count}} empty skipped",
+    "resultNewTable": "{{summary}} — new table created.",
+    "resultTableReplaced": "{{summary}} — table replaced.",
+    "rowsPasted": "Pasted {{count}} row(s)",
+    "tableReplaced": "table replaced",
+    "newAppended": "{{count}} new",
+    "beyondTable": "{{count}} column(s) beyond the table skipped",
+    "dialogTitle": "Paste from clipboard",
+    "introWithGrid": "Copy cells in Excel (or anywhere) and paste below — Ctrl+V on desktop, or long-press → Paste on touch. On the grid itself, Ctrl+V pastes Excel-style from the focused cell. A paste here replaces the whole table — pasted headers (when included) become the column headers; blank rows are dropped.",
+    "introNoGrid": "Copy cells in Excel (or anywhere) and paste below — Ctrl+V on desktop, or long-press → Paste on touch. On the grid itself, Ctrl+V pastes Excel-style from the focused cell. A paste here creates a brand-new table from the block; blank rows are dropped.",
+    "placeholder": "column A\tcolumn B\nvalue\tvalue",
+    "headerLabelWithGrid": "First row contains column headers — skip it",
+    "headerLabelNoGrid": "First row contains column headers — name the new columns",
+    "cancel": "Cancel",
+    "pasteIntoGrid": "Paste into grid",
+    "pasteAsNewTable": "Paste as new table"
+  },
+  "menu": {
+    "copyCell": "Copy cell",
+    "copyRow": "Copy row",
+    "copySelected": "Copy selected rows",
+    "copySelectedCount": "Copy {{count}} selected rows",
+    "filterBy": "Filter by this value",
+    "filterOut": "Filter out this value",
+    "openFilter": "Open filter",
+    "clearFilter": "Clear this column's filter",
+    "clearAllFilters": "Clear all filters",
+    "sortAsc": "Sort ascending",
+    "sortDesc": "Sort descending",
+    "clearSort": "Clear sort",
+    "pinLeft": "Pin column left",
+    "pinRight": "Pin column right",
+    "unpin": "Unpin column",
+    "autosizeThis": "Autosize this column",
+    "autosizeAll": "Autosize all columns",
+    "resetColumns": "Reset columns",
+    "hideColumn": "Hide this column",
+    "showAllColumns": "Show all columns"
+  },
+  "help": {
+    "title": "Everything this table can do",
+    "subtitle": "Right-click a cell or a column header for the full menu.",
+    "copy": {
+      "title": "Copy",
+      "detail": "Copy cell / row / selected rows from the right-click menu. The Copy button copies the rows you selected, or the whole result when nothing is selected — paste it straight into Excel."
+    },
+    "paste": {
+      "title": "Paste",
+      "detail": "Press Ctrl+V on the grid for an Excel-style fill, or use the Paste button in the results header: the dialog paste clears the current rows and replaces the table with the block (or creates a new table before any query has run). The header row is auto-detected or toggle it with the checkbox, blank rows are dropped, numbers land as numbers, and Revert undoes the paste."
+    },
+    "sort": {
+      "title": "Sort",
+      "detail": "Click a header to sort, or use Sort ascending / descending / Clear sort in the right-click menu."
+    },
+    "multiSort": {
+      "title": "Sort by several columns",
+      "detail": "Hold Shift and click more headers to add them to the sort. Numbered badges on the headers show the order; click a header again to flip or extend its direction."
+    },
+    "filter": {
+      "title": "Filter",
+      "detail": "Filter by or out a single value, open the filter, or clear one / all filters from the right-click menu."
+    },
+    "columns": {
+      "title": "Columns",
+      "detail": "Pin left or right, autosize one or all columns, reset columns, and hide or show columns — all from the right-click menu. Drag between headers to resize or reorder."
+    },
+    "rename": {
+      "title": "Rename a column",
+      "detail": "Double-click any column header."
+    },
+    "editGrid": {
+      "title": "Edit grid",
+      "detail": "One window, three tabs: AI edit (describe a change and AI writes a Python script for the table), Data types (switch a column between text, number and date) and Add column (build a calculated column with a formula)."
+    },
+    "save": {
+      "title": "Save data",
+      "detail": "Store the grid as a snapshot in the Dashboard warehouse (the Dashboard tab) so you can chart or inspect it later without re-running the query."
+    },
+    "revert": {
+      "title": "Revert",
+      "detail": "Undo the last AI edit or paste and restore the previous table."
+    },
+    "selection": {
+      "title": "Selection",
+      "detail": "Click a row to select it; ctrl/cmd-click or drag to select several, then copy them in one go."
+    }
+  }
+}

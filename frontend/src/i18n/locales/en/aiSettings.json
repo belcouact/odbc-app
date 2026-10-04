@@ -1,0 +1,74 @@
+{
+  "page": {
+    "title": "AI Setting",
+    "subtitle": "Configure an OpenAI-compatible LLM endpoint used for NL-to-SQL and AI summaries."
+  },
+  "actions": {
+    "retry": "Retry",
+    "save": "Save",
+    "testConnection": "Test connection",
+    "cancel": "Cancel",
+    "delete": "Delete"
+  },
+  "form": {
+    "enableLabel": "Enable AI (LLM)",
+    "savedSettingsLabel": "Saved settings",
+    "loadSavedPlaceholder": "Load a saved setting…",
+    "noSavedSettings": "No saved settings yet — they appear after you click Save",
+    "presetLabel": "Quick setup preset",
+    "customPreset": "Custom (edit fields below)",
+    "providerLabel": "Provider protocol",
+    "providerOpenai": "OpenAI-compatible (chat/completions)",
+    "providerAnthropic": "Anthropic (Messages API)",
+    "baseUrlLabel": "API Base URL (full endpoint)",
+    "baseUrlHelper": "Used exactly as entered — nothing is appended. Stored locally in %APPDATA%.",
+    "applyForKey": "Apply for a {{brand}} API key",
+    "apiKeyLabel": "API Key",
+    "apiKeyPlaceholder": "sk-… (optional)",
+    "apiKeyHelperRestore": "Cleared after the model change — the key saved for {{label}} is still on file.",
+    "apiKeyHelper": "Optional — leave blank for keyless endpoints such as local Ollama.",
+    "hideApiKey": "Hide API key",
+    "showApiKey": "Show API key",
+    "useSavedKey": "Use saved API key — {{label}}",
+    "modelLabel": "Model",
+    "modelPlaceholder": "gpt-5.6-luna",
+    "modelHelper": "Free text — type any model name, including models not listed in the presets.",
+    "temperature": "Temperature"
+  },
+  "profile": {
+    "savedAt": " · saved {{date}}",
+    "deleteAria": "Delete saved setting {{label}}",
+    "deleteTitle": "Delete saved setting \"{{label}}\""
+  },
+  "presets": {
+    "openai": "OpenAI",
+    "qwen": "Qwen (Alibaba · DashScope)",
+    "kimi": "Kimi (Moonshot · CN)",
+    "deepseek": "DeepSeek",
+    "glm": "GLM (Zhipu)",
+    "volcengine": "Volcengine (Doubao · ARK)",
+    "mimo": "MiMo (Xiaomi)",
+    "claude": "Claude (Anthropic)",
+    "ollama": "Ollama (local, no API key)"
+  },
+  "fallback": {
+    "customEndpoint": "Custom endpoint",
+    "unknownModel": "unknown model"
+  },
+  "alerts": {
+    "disabled": "AI is disabled — NL-to-SQL (“Ask AI”) and AI summaries are off until you enable it and save.",
+    "connected": "Connected — model replied: {{message}}"
+  },
+  "deleteDialog": {
+    "title": "Delete saved setting?",
+    "body": "will be removed from the \"Saved settings\" dropdown. Its API key stays on file, so re-saving the same endpoint configuration restores it."
+  },
+  "messages": {
+    "loadFailed": "Failed to load AI settings",
+    "profileDeleted": "Saved setting \"{{label}}\" deleted.",
+    "deleteFailed": "Failed to delete saved setting",
+    "saved": "AI settings saved — the assistant uses them on your next message.",
+    "saveFailed": "Failed to save AI settings",
+    "testFailed": "Connection test failed"
+  }
+}

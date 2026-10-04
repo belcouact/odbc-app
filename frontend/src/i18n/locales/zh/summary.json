@@ -1,0 +1,122 @@
+{
+  "panel": {
+    "summarizing_other": "正在汇总 {{count}} 行",
+    "clickGroupHint": " · 点击分组可筛选结果网格",
+    "aiSummary": "AI 统计分析",
+    "hideFields": "隐藏字段",
+    "fields": "字段",
+    "table": "表格",
+    "pivot": "透视表",
+    "touchHint": "在触摸屏上，点击字段架上的 + 来选择字段。",
+    "groupColumnBy": "按 {{name}} 分组",
+    "dataBars": "数据条",
+    "copied": "已复制！",
+    "copy": "复制",
+    "downloadExcel": "下载 Excel"
+  },
+  "stats": {
+    "count": "计数",
+    "nulls": "空值",
+    "sum": "求和",
+    "mean": "平均值",
+    "min": "最小值",
+    "max": "最大值",
+    "range": "极差",
+    "median": "中位数",
+    "stdDev": "标准差"
+  },
+  "table": {
+    "column": "列"
+  },
+  "wells": {
+    "groupBy": "分组依据",
+    "groupByHint": "将列拖到此处进行分组",
+    "statistics": "统计（数值）",
+    "statisticsHint": "拖入数值列以进行汇总",
+    "rows": "行",
+    "rowsHint": "拖入列作为表格的行",
+    "columns": "列",
+    "columnsHint": "拖入列以横向展开",
+    "values": "值",
+    "valuesHint": "拖入列以进行聚合"
+  },
+  "pivot": {
+    "all": "全部",
+    "allRows": "全部行",
+    "total": "总计",
+    "rowLabels": "行标签（{{fields}}）",
+    "columnLabels": "列标签（{{fields}}）",
+    "measureOf": "{{column}} 的{{op}}"
+  },
+  "ops": {
+    "none": "无（原始值）",
+    "sum": "求和",
+    "mean": "平均值",
+    "count": "计数",
+    "distinct": "去重计数",
+    "min": "最小值",
+    "max": "最大值",
+    "median": "中位数",
+    "std": "标准差",
+    "var": "方差",
+    "first": "首个",
+    "last": "末个",
+    "p25": "第 25 百分位",
+    "p75": "第 75 百分位",
+    "p90": "第 90 百分位",
+    "share": "占总计百分比"
+  },
+  "kind": {
+    "number": "数值",
+    "text": "文本",
+    "boolean": "布尔值",
+    "date": "日期"
+  },
+  "grain": {
+    "none": "精确值",
+    "year": "年",
+    "quarter": "季度",
+    "month": "月",
+    "day": "日"
+  },
+  "aria": {
+    "summaryLayout": "汇总布局",
+    "collapseFields": "收起字段",
+    "expandFields": "展开字段",
+    "filterRows": "筛选行",
+    "filterColumns": "筛选列",
+    "aggregationFor": "{{column}} 的聚合方式",
+    "close": "关闭"
+  },
+  "messages": {
+    "shownOf": "已显示 {{shown}}/{{total}}",
+    "search": "搜索",
+    "selectAll": "全选",
+    "noMatches": "无匹配项",
+    "done": "完成",
+    "blank": "（空白）",
+    "aiSummaryFailed": "AI 汇总失败。",
+    "exportFailed": "导出失败"
+  },
+  "empty": {
+    "runQuery": "运行查询后，将在此处汇总结果。",
+    "noRows": "查询未返回任何行。",
+    "noStats": "将数值列拖到“统计”字段架上即可查看其汇总。",
+    "noPivot": "将一列拖到“行”（或“列”），再将另一列拖到“值”，即可创建透视表。"
+  },
+  "alert": {
+    "tableTruncated": "仅显示前 {{n}} 个分组。请缩小结果范围（或添加筛选条件）以汇总其余分组。",
+    "pivotTruncated": "仅显示前 {{rows}} 行 × {{cols}} 列。请添加筛选条件以查看所有组合。"
+  },
+  "ai": {
+    "title": "AI 统计分析",
+    "help_other": "助手会编写一段 Python 脚本，对当前显示的前 {{n}} 行数据运行，并汇报分析结果。",
+    "promptLabel": "分析应重点关注什么？（可选）",
+    "analyzing": "分析中…",
+    "runAgain": "再次运行",
+    "run": "运行分析",
+    "timedOut": "分析未能在 {{seconds}} 秒内完成，已停止。",
+    "noOutput": "分析未产生任何打印输出。",
+    "script": "Python 脚本"
+  }
+}

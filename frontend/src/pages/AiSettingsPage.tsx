@@ -32,6 +32,8 @@ import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import Slider from '@mui/material/Slider'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { api } from '../api/client'
 import type { AiSettings, AiSettingsProfile } from '../types'
 
@@ -43,7 +45,7 @@ type Notice = { severity: 'success' | 'error'; message: string } | null
  *  a null `key_url` means the preset needs no key (e.g. local Ollama). */
 const LLM_PRESETS: {
   id: string
-  label: string
+  labelKey: string
   brand: string
   provider: string
   base_url: string
@@ -52,7 +54,7 @@ const LLM_PRESETS: {
 }[] = [
   {
     id: 'openai',
-    label: 'OpenAI',
+    labelKey: 'presets.openai',
     brand: 'OpenAI',
     provider: 'openai',
     base_url: 'https://api.openai.com/v1/chat/completions',
@@ -61,7 +63,7 @@ const LLM_PRESETS: {
   },
   {
     id: 'qwen',
-    label: 'Qwen (Alibaba · DashScope)',
+    labelKey: 'presets.qwen',
     brand: 'Qwen (DashScope)',
     provider: 'openai',
     base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
@@ -70,7 +72,7 @@ const LLM_PRESETS: {
   },
   {
     id: 'kimi',
-    label: 'Kimi (Moonshot · CN)',
+    labelKey: 'presets.kimi',
     brand: 'Moonshot Kimi',
     provider: 'openai',
     base_url: 'https://api.moonshot.cn/v1/chat/completions',
@@ -79,7 +81,7 @@ const LLM_PRESETS: {
   },
   {
     id: 'deepseek',
-    label: 'DeepSeek',
+    labelKey: 'presets.deepseek',
     brand: 'DeepSeek',
     provider: 'openai',
     base_url: 'https://api.deepseek.com/chat/completions',
@@ -88,7 +90,7 @@ const LLM_PRESETS: {
   },
   {
     id: 'glm',
-    label: 'GLM (Zhipu)',
+    labelKey: 'presets.glm',
     brand: 'Zhipu GLM',
     provider: 'openai',
     base_url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
@@ -97,7 +99,7 @@ const LLM_PRESETS: {
   },
   {
     id: 'volcengine',
-    label: 'Volcengine (Doubao · ARK)',
+    labelKey: 'presets.volcengine',
     brand: 'Volcengine (Doubao)',
     provider: 'openai',
     base_url: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
@@ -106,7 +108,7 @@ const LLM_PRESETS: {
   },
   {
     id: 'mimo',
-    label: 'MiMo (Xiaomi)',
+    labelKey: 'presets.mimo',
     brand: 'MiMo (Xiaomi)',
     provider: 'openai',
     base_url: 'https://api.xiaomimimo.com/v1/chat/completions',
@@ -115,7 +117,7 @@ const LLM_PRESETS: {
   },
   {
     id: 'claude',
-    label: 'Claude (Anthropic)',
+    labelKey: 'presets.claude',
     brand: 'Anthropic Claude',
     provider: 'anthropic',
     base_url: 'https://api.anthropic.com/v1/messages',
@@ -124,7 +126,7 @@ const LLM_PRESETS: {
   },
   {
     id: 'ollama',
-    label: 'Ollama (local, no API key)',
+    labelKey: 'presets.ollama',
     brand: 'Ollama',
     provider: 'openai',
     base_url: 'http://localhost:11434/v1/chat/completions',
@@ -149,7 +151,7 @@ const API_KEY_HINTS: { contains: string; brand: string; url: string }[] = [
 
 /** Endpoint identity an API key belongs to: a known preset brand, else a URL
  *  hint, else the host itself, so two custom endpoints don't share one key. */
-function brandOf(settings: Pick<AiSettings, 'provider' | 'base_url' | 'model'>): string {
+function brandOf(settings: Pick<AiSettings, 'provider' | 'base_url' | 'model'>, t: TFunction): string {
   const preset = LLM_PRESETS.find(
     (p) =>
       p.provider === settings.provider &&
@@ -161,19 +163,20 @@ function brandOf(settings: Pick<AiSettings, 'provider' | 'base_url' | 'model'>):
   const hint = API_KEY_HINTS.find((h) => lower.includes(h.contains))
   if (hint) return hint.brand
   try {
-    return new URL(settings.base_url).host || 'Custom endpoint'
+    return new URL(settings.base_url).host || t('fallback.customEndpoint')
   } catch {
-    return 'Custom endpoint'
+    return t('fallback.customEndpoint')
   }
 }
 
 /** The label a saved key is filed under: the brand and model it was used for. */
-function savedKeyLabel(settings: Pick<AiSettings, 'provider' | 'base_url' | 'model'>): string {
-  const model = settings.model.trim() || 'unknown model'
-  return `${brandOf(settings)} · ${model}`
+function savedKeyLabel(settings: Pick<AiSettings, 'provider' | 'base_url' | 'model'>, t: TFunction): string {
+  const model = settings.model.trim() || t('fallback.unknownModel')
+  return `${brandOf(settings, t)} · ${model}`
 }
 
 export default function AiSettingsPage() {
+  const { t } = useTranslation('aiSettings')
   const [form, setForm] = useState<AiSettings>({
     enabled: true,
     provider: 'openai',
@@ -218,17 +221,17 @@ export default function AiSettingsPage() {
       // A key saved before keys were filed by label still belongs to whatever
       // brand/model it was saved for, so it is filed under that label now.
       const keys = { ...(settings.saved_keys ?? {}) }
-      const label = savedKeyLabel(loaded)
+      const label = savedKeyLabel(loaded, t)
       if (loaded.api_key && !keys[label]) keys[label] = loaded.api_key
       setSavedKeys(keys)
       setSavedProfiles(settings.saved_profiles ?? [])
       setShowApiKey(false)
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Failed to load AI settings')
+      setLoadError(err instanceof Error ? err.message : t('messages.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void loadSettings()
@@ -264,7 +267,7 @@ export default function AiSettingsPage() {
       // previous key no longer applies. If this brand/model already has a key on
       // file it is restored right away, so switching back keeps working without
       // having to hunt for the key again.
-      api_key: savedKeys[savedKeyLabel(preset)] ?? '',
+      api_key: savedKeys[savedKeyLabel(preset, t)] ?? '',
     }))
     setShowApiKey(false)
     setTestResult(null)
@@ -299,11 +302,11 @@ export default function AiSettingsPage() {
     try {
       const saved = await api.deleteAiSettingsProfile(pendingDelete.label)
       setSavedProfiles(saved?.saved_profiles ?? [])
-      setNotice({ severity: 'success', message: `Saved setting "${pendingDelete.label}" deleted.` })
+      setNotice({ severity: 'success', message: t('messages.profileDeleted', { label: pendingDelete.label }) })
     } catch (err) {
       setNotice({
         severity: 'error',
-        message: err instanceof Error ? err.message : 'Failed to delete saved setting',
+        message: err instanceof Error ? err.message : t('messages.deleteFailed'),
       })
     } finally {
       setDeleting(false)
@@ -323,7 +326,7 @@ export default function AiSettingsPage() {
   }
 
   /** The saved key filed under the selected brand and model, if there is one. */
-  const savedKey = savedKeys[savedKeyLabel(form)] ?? ''
+  const savedKey = savedKeys[savedKeyLabel(form, t)] ?? ''
   const canRestoreSavedKey = savedKey !== '' && form.api_key !== savedKey
 
   const restoreSavedKey = () => {
@@ -340,16 +343,16 @@ export default function AiSettingsPage() {
       // label also names the configuration snapshot the dropdown can re-load.
       const saved = await api.saveAiSettings({
         ...form,
-        key_label: savedKeyLabel(form),
-        profile_label: savedKeyLabel(form),
+        key_label: savedKeyLabel(form, t),
+        profile_label: savedKeyLabel(form, t),
       })
       setSavedKeys(saved?.saved_keys ?? {})
       setSavedProfiles(saved?.saved_profiles ?? savedProfiles)
-      setNotice({ severity: 'success', message: 'AI settings saved — the assistant uses them on your next message.' })
+      setNotice({ severity: 'success', message: t('messages.saved') })
     } catch (err) {
       setNotice({
         severity: 'error',
-        message: err instanceof Error ? err.message : 'Failed to save AI settings',
+        message: err instanceof Error ? err.message : t('messages.saveFailed'),
       })
     } finally {
       setSaving(false)
@@ -365,7 +368,7 @@ export default function AiSettingsPage() {
     } catch (err) {
       setTestResult({
         ok: false,
-        message: err instanceof Error ? err.message : 'Connection test failed',
+        message: err instanceof Error ? err.message : t('messages.testFailed'),
       })
     } finally {
       setTesting(false)
@@ -376,9 +379,9 @@ export default function AiSettingsPage() {
     <Box sx={{ maxWidth: 900, mx: 'auto', width: '100%' }}>
       <Stack spacing={2}>
         <Box>
-          <Typography variant="h5">AI Setting</Typography>
+          <Typography variant="h5">{t('page.title')}</Typography>
           <Typography variant="body2" color="text.secondary">
-            Configure an OpenAI-compatible LLM endpoint used for NL-to-SQL and AI summaries.
+            {t('page.subtitle')}
           </Typography>
         </Box>
 
@@ -393,7 +396,7 @@ export default function AiSettingsPage() {
             severity="error"
             action={
               <Button color="inherit" size="small" onClick={() => void loadSettings()}>
-                Retry
+                {t('actions.retry')}
               </Button>
             }
           >
@@ -414,14 +417,14 @@ export default function AiSettingsPage() {
                     }}
                   />
                 }
-                label="Enable AI (LLM)"
+                label={t('form.enableLabel')}
               />
 
               <FormControl fullWidth>
-                <InputLabel id="llm-saved-label">Saved settings</InputLabel>
+                <InputLabel id="llm-saved-label">{t('form.savedSettingsLabel')}</InputLabel>
                 <Select
                   labelId="llm-saved-label"
-                  label="Saved settings"
+                  label={t('form.savedSettingsLabel')}
                   value={pickedProfile}
                   onChange={applySavedProfile}
                   sx={{ minHeight: 48 }}
@@ -429,8 +432,8 @@ export default function AiSettingsPage() {
                   <MenuItem value="">
                     <em>
                       {savedProfiles.length
-                        ? 'Load a saved setting…'
-                        : 'No saved settings yet — they appear after you click Save'}
+                        ? t('form.loadSavedPlaceholder')
+                        : t('form.noSavedSettings')}
                     </em>
                   </MenuItem>
                   {savedProfiles.map((profile) => (
@@ -456,13 +459,13 @@ export default function AiSettingsPage() {
                         >
                           {profile.model}
                           {profile.saved_at
-                            ? ` · saved ${new Date(profile.saved_at).toLocaleDateString()}`
+                            ? t('profile.savedAt', { date: new Date(profile.saved_at).toLocaleDateString() })
                             : ''}
                         </Typography>
                       </Box>
                       <IconButton
-                        aria-label={`Delete saved setting ${profile.label}`}
-                        title={`Delete saved setting "${profile.label}"`}
+                        aria-label={t('profile.deleteAria', { label: profile.label })}
+                        title={t('profile.deleteTitle', { label: profile.label })}
                         onClick={(event) => {
                           // Stop the click so the Select does not treat it as
                           // picking this profile, and the menu stays open.
@@ -480,46 +483,46 @@ export default function AiSettingsPage() {
               </FormControl>
 
               <FormControl fullWidth>
-                <InputLabel id="llm-preset-label">Quick setup preset</InputLabel>
+                <InputLabel id="llm-preset-label">{t('form.presetLabel')}</InputLabel>
                 <Select
                   labelId="llm-preset-label"
-                  label="Quick setup preset"
+                  label={t('form.presetLabel')}
                   value={activePreset}
                   onChange={applyPreset}
                   sx={{ minHeight: 48 }}
                 >
                   <MenuItem value="">
-                    <em>Custom (edit fields below)</em>
+                    <em>{t('form.customPreset')}</em>
                   </MenuItem>
                   {LLM_PRESETS.map((preset) => (
                     <MenuItem key={preset.id} value={preset.id}>
-                      {preset.label}
+                      {t(preset.labelKey)}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
 
               <FormControl fullWidth>
-                <InputLabel id="llm-provider-label">Provider protocol</InputLabel>
+                <InputLabel id="llm-provider-label">{t('form.providerLabel')}</InputLabel>
                 <Select
                   labelId="llm-provider-label"
-                  label="Provider protocol"
+                  label={t('form.providerLabel')}
                   value={form.provider}
                   onChange={updateProvider}
                   sx={{ minHeight: 48 }}
                 >
-                  <MenuItem value="openai">OpenAI-compatible (chat/completions)</MenuItem>
-                  <MenuItem value="anthropic">Anthropic (Messages API)</MenuItem>
+                  <MenuItem value="openai">{t('form.providerOpenai')}</MenuItem>
+                  <MenuItem value="anthropic">{t('form.providerAnthropic')}</MenuItem>
                 </Select>
               </FormControl>
 
               <TextField
-                label="API Base URL (full endpoint)"
+                label={t('form.baseUrlLabel')}
                 value={form.base_url}
                 onChange={updateField('base_url')}
                 fullWidth
                 placeholder="https://api.openai.com/v1/chat/completions"
-                helperText="Used exactly as entered — nothing is appended. Stored locally in %APPDATA%."
+                helperText={t('form.baseUrlHelper')}
               />
 
               <Box>
@@ -534,13 +537,13 @@ export default function AiSettingsPage() {
                       onClick={() => setTestResult(null)}
                       sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, minHeight: 32 }}
                     >
-                      {`Apply for a ${apiKeyApply.brand} API key`}
+                      {t('form.applyForKey', { brand: apiKeyApply.brand })}
                       <OpenInNewIcon sx={{ fontSize: 14 }} />
                     </Link>
                   </Box>
                 )}
                 <TextField
-                  label="API Key"
+                  label={t('form.apiKeyLabel')}
                   type={showApiKey ? 'text' : 'password'}
                   value={form.api_key}
                   onChange={updateField('api_key')}
@@ -549,8 +552,8 @@ export default function AiSettingsPage() {
                   placeholder="sk-… (optional)"
                   helperText={
                     canRestoreSavedKey
-                      ? `Cleared after the model change — the key saved for ${savedKeyLabel(form)} is still on file.`
-                      : 'Optional — leave blank for keyless endpoints such as local Ollama.'
+                      ? t('form.apiKeyHelperRestore', { label: savedKeyLabel(form, t) })
+                      : t('form.apiKeyHelper')
                   }
                   slotProps={{
                     input: {
@@ -560,9 +563,9 @@ export default function AiSettingsPage() {
                             onClick={() => setShowApiKey((visible) => !visible)}
                             onMouseDown={(event) => event.preventDefault()}
                             edge="end"
-                            aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                            aria-label={showApiKey ? t('form.hideApiKey') : t('form.showApiKey')}
                             aria-pressed={showApiKey}
-                            title={showApiKey ? 'Hide API key' : 'Show API key'}
+                            title={showApiKey ? t('form.hideApiKey') : t('form.showApiKey')}
                             sx={{ width: 48, height: 48, mr: -1 }}
                           >
                             {showApiKey ? (
@@ -583,23 +586,23 @@ export default function AiSettingsPage() {
                     onClick={restoreSavedKey}
                     sx={{ mt: 0.5, minHeight: 48, textAlign: 'left' }}
                   >
-                    {`Use saved API key — ${savedKeyLabel(form)}`}
+                    {t('form.useSavedKey', { label: savedKeyLabel(form, t) })}
                   </Button>
                 )}
               </Box>
 
               <TextField
-                label="Model"
+                label={t('form.modelLabel')}
                 value={form.model}
                 onChange={updateField('model')}
                 fullWidth
                 placeholder="gpt-5.6-luna"
-                helperText="Free text — type any model name, including models not listed in the presets."
+                helperText={t('form.modelHelper')}
               />
 
               <Box>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Temperature
+                  {t('form.temperature')}
                 </Typography>
                 <Slider
                   value={form.temperature}
@@ -617,14 +620,13 @@ export default function AiSettingsPage() {
 
               {!form.enabled && (
                 <Alert severity="info" icon={<AutoAwesomeIcon fontSize="small" />}>
-                  AI is disabled — NL-to-SQL (“Ask AI”) and AI summaries are off until you enable it
-                  and save.
+                  {t('alerts.disabled')}
                 </Alert>
               )}
 
               {testResult && (
                 <Alert severity={testResult.ok ? 'success' : 'error'} icon={testResult.ok ? <CheckCircleIcon /> : <ErrorIcon />}>
-                  {testResult.ok ? `Connected — model replied: ${testResult.message}` : testResult.message}
+                  {testResult.ok ? t('alerts.connected', { message: testResult.message }) : testResult.message}
                 </Alert>
               )}
 
@@ -641,7 +643,7 @@ export default function AiSettingsPage() {
                   startIcon={saving ? <CircularProgress size={18} color="inherit" /> : undefined}
                   sx={{ minHeight: 48 }}
                 >
-                  Save
+                  {t('actions.save')}
                 </Button>
                 <Button
                   variant="outlined"
@@ -650,7 +652,7 @@ export default function AiSettingsPage() {
                   startIcon={testing ? <CircularProgress size={18} /> : <CheckCircleIcon />}
                   sx={{ minHeight: 48 }}
                 >
-                  Test connection
+                  {t('actions.testConnection')}
                 </Button>
               </Stack>
             </Stack>
@@ -663,17 +665,16 @@ export default function AiSettingsPage() {
         onClose={() => (deleting ? undefined : setPendingDelete(null))}
         aria-labelledby="ai-profile-delete-title"
       >
-        <DialogTitle id="ai-profile-delete-title">Delete saved setting?</DialogTitle>
+        <DialogTitle id="ai-profile-delete-title">{t('deleteDialog.title')}</DialogTitle>
         <DialogContent>
           <DialogContentText component="div">
-            <strong>{pendingDelete?.label}</strong> will be removed from the
-            "Saved settings" dropdown. Its API key stays on file, so re-saving
-            the same endpoint configuration restores it.
+            <strong>{pendingDelete?.label}</strong>{' '}
+            {t('deleteDialog.body')}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPendingDelete(null)} disabled={deleting}>
-            Cancel
+            {t('actions.cancel')}
           </Button>
           <Button
             color="error"
@@ -682,7 +683,7 @@ export default function AiSettingsPage() {
             disabled={deleting}
             onClick={() => void handleDeleteConfirmed()}
           >
-            Delete
+            {t('actions.delete')}
           </Button>
         </DialogActions>
       </Dialog>

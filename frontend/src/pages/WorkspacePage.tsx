@@ -72,6 +72,8 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
+import { Trans, useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { SqlLanguage } from 'sql-formatter'
 import { api, downloadBlob, QueryCanceledError } from '../api/client'
 import type { ChannelSet, ComponentSet, ConnectionTemplateField, ConnectionTemplateOption, ColorEnrichStep, ExportFormat } from '../api/client'
@@ -184,19 +186,19 @@ const historyDedupKey = (entry: HistoryEntry): string =>
 /** The "Recent runs" panel keeps only the newest entries so it stays scannable. */
 const RECENT_RUNS_LIMIT = 20
 
-const OPERATORS: { value: string; label: string }[] = [
+const OPERATORS: { value: string; label?: string; labelKey?: string }[] = [
   { value: '=', label: '=' },
   { value: '!=', label: '≠' },
   { value: '>', label: '>' },
   { value: '>=', label: '≥' },
   { value: '<', label: '<' },
   { value: '<=', label: '≤' },
-  { value: 'contains', label: 'contains' },
-  { value: 'starts_with', label: 'starts with' },
-  { value: 'ends_with', label: 'ends with' },
-  { value: 'in', label: 'in' },
-  { value: 'is null', label: 'is null' },
-  { value: 'is not null', label: 'is not null' },
+  { value: 'contains', labelKey: 'operators.contains' },
+  { value: 'starts_with', labelKey: 'operators.startsWith' },
+  { value: 'ends_with', labelKey: 'operators.endsWith' },
+  { value: 'in', labelKey: 'operators.in' },
+  { value: 'is null', labelKey: 'operators.isNull' },
+  { value: 'is not null', labelKey: 'operators.isNotNull' },
 ]
 
 const NULL_OPERATORS = new Set(['is null', 'is not null'])
@@ -225,20 +227,15 @@ const TEMPLATE_OPERATORS: Record<string, string> = {
 /** Operators that don't need a value input (the value field is hidden). */
 const IS_NULL_OPERATORS = new Set(['is null', 'is not null'])
 
-/** Hover hint shown on the value field while a LIKE-style operator is active. */
-const LIKE_TOOLTIP = "Use % as a wildcard — e.g. %abc% matches any value containing 'abc'."
-/** Hover hint shown on the value field while an IN-style operator is active. */
-const IN_TOOLTIP = "Separate multiple values with ';' — e.g. A; B."
-
 /** Reference content for the "How to use operators" help dialog. */
-const OPERATOR_GUIDE: { symbol: string; meaning: string; example: string }[] = [
-  { symbol: '=', meaning: 'Equal to.', example: "status = 'Closed'" },
-  { symbol: '<>', meaning: 'Not equal to.', example: "status <> 'Closed'" },
-  { symbol: 'LIKE / NOT LIKE', meaning: 'Pattern match. You type the % wildcards yourself — %abc% contains, abc% starts with, %abc ends with.', example: "name LIKE 'Ave%'" },
-  { symbol: 'IN / NOT IN', meaning: 'Value must / must not be in a list. Separate values with ;', example: "lot IN ('A'; 'B')" },
-  { symbol: 'IS NULL / IS NOT NULL', meaning: 'Value is empty / not empty (no value input needed).', example: 'note IS NULL' },
-  { symbol: 'BETWEEN', meaning: 'Value within an inclusive range — fill the from and to fields.', example: 'date BETWEEN 2024-01-01 AND 2024-01-31' },
-  { symbol: '>  >=  <  <=', meaning: 'Greater than, greater or equal, less than, less or equal.', example: 'value >= 100' },
+const OPERATOR_GUIDE: { symbol: string; meaningKey: string; example: string }[] = [
+  { symbol: '=', meaningKey: 'operatorGuide.equal', example: "status = 'Closed'" },
+  { symbol: '<>', meaningKey: 'operatorGuide.notEqual', example: "status <> 'Closed'" },
+  { symbol: 'LIKE / NOT LIKE', meaningKey: 'operatorGuide.like', example: "name LIKE 'Ave%'" },
+  { symbol: 'IN / NOT IN', meaningKey: 'operatorGuide.in', example: "lot IN ('A'; 'B')" },
+  { symbol: 'IS NULL / IS NOT NULL', meaningKey: 'operatorGuide.isNull', example: 'note IS NULL' },
+  { symbol: 'BETWEEN', meaningKey: 'operatorGuide.between', example: 'date BETWEEN 2024-01-01 AND 2024-01-31' },
+  { symbol: '>  >=  <  <=', meaningKey: 'operatorGuide.compare', example: 'value >= 100' },
 ]
 
 /** Small keyboard-key badge used in the autocomplete shortcuts tab. */
@@ -269,10 +266,11 @@ function KeyCap({ children }: { children: ReactNode }) {
   )
 }
 
-const HELP_TABS = ['Operators', 'Autocomplete'] as const
+const HELP_TABS = ['helpDialog.tabOperators', 'helpDialog.tabAutocomplete'] as const
 
 /** Popup explaining how to use the criteria operator symbols and editor autocomplete. */
 function OperatorHelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('workspace')
   const [tab, setTab] = useState(0)
 
   // Reopening always lands on the first tab.
@@ -307,18 +305,18 @@ function OperatorHelpDialog({ open, onClose }: { open: boolean; onClose: () => v
           )}
           <Box>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
-              {tab === 0 ? 'How to use operators' : 'Editor autocomplete'}
+              {tab === 0 ? t('helpDialog.operatorsTitle') : t('helpDialog.autocompleteTitle')}
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {tab === 0
-                ? 'Reference for the operator dropdowns in the criteria fields'
-                : 'Query faster in the SQL and Python editors'}
+                ? t('helpDialog.operatorsSubtitle')
+                : t('helpDialog.autocompleteSubtitle')}
             </Typography>
           </Box>
         </Box>
         <IconButton
           onClick={onClose}
-          aria-label="Close how to use operators"
+          aria-label={t('helpDialog.close')}
           sx={{ position: 'absolute', top: 10, right: 10 }}
         >
           <CloseIcon />
@@ -335,8 +333,8 @@ function OperatorHelpDialog({ open, onClose }: { open: boolean; onClose: () => v
           '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, minHeight: 44 },
         }}
       >
-        {HELP_TABS.map((label) => (
-          <Tab key={label} label={label} />
+        {HELP_TABS.map((labelKey) => (
+          <Tab key={labelKey} label={t(labelKey)} />
         ))}
       </Tabs>
 
@@ -381,7 +379,7 @@ function OperatorHelpDialog({ open, onClose }: { open: boolean; onClose: () => v
                   </Box>
                 </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body2">{row.meaning}</Typography>
+                  <Typography variant="body2">{t(row.meaningKey)}</Typography>
                 </Box>
                 <Box
                   component="code"
@@ -408,27 +406,27 @@ function OperatorHelpDialog({ open, onClose }: { open: boolean; onClose: () => v
             {[
               {
                 keys: ['type'],
-                text: 'Suggestions appear automatically while you type.',
+                textKey: 'helpDialog.shortcuts.type',
               },
               {
                 keys: ['↑', '↓'],
-                text: 'Move through the suggestion list.',
+                textKey: 'helpDialog.shortcuts.move',
               },
               {
                 keys: ['Enter', 'Tab'],
-                text: 'Accept the highlighted suggestion.',
+                textKey: 'helpDialog.shortcuts.accept',
               },
               {
                 keys: ['Esc'],
-                text: 'Dismiss the suggestion list.',
+                textKey: 'helpDialog.shortcuts.dismiss',
               },
               {
                 keys: ['Ctrl', 'Space'],
-                text: 'Open the suggestion list manually at the cursor.',
+                textKey: 'helpDialog.shortcuts.manual',
               },
               {
                 keys: ['Click'],
-                text: 'Accept a suggestion with the mouse.',
+                textKey: 'helpDialog.shortcuts.mouse',
               },
             ].map((row) => (
               <Box
@@ -457,13 +455,11 @@ function OperatorHelpDialog({ open, onClose }: { open: boolean; onClose: () => v
                     <KeyCap key={key}>{key}</KeyCap>
                   ))}
                 </Box>
-                <Typography variant="body2">{row.text}</Typography>
+                <Typography variant="body2">{t(row.textKey)}</Typography>
               </Box>
             ))}
             <Alert severity="info" variant="outlined" sx={{ mt: 1, borderRadius: 2 }}>
-              While the list is open, Enter or Tab accepts the highlighted suggestion — press Esc
-              first if you want a newline. The SQL editor suggests SQL keywords; the Python editor
-              also suggests builtins and snippets.
+              {t('helpDialog.info')}
             </Alert>
           </Stack>
         )}
@@ -496,10 +492,10 @@ function extraOperatorsForType(dataType: string): string[] {
 
 /** Data type options for a user-added parameter's value input. */
 const EXTRA_DATA_TYPES = [
-  { value: 'text', label: 'Text' },
-  { value: 'number', label: 'Number' },
-  { value: 'date', label: 'Date' },
-  { value: 'datetime', label: 'Date & time' },
+  { value: 'text', labelKey: 'dataType.text' },
+  { value: 'number', labelKey: 'dataType.number' },
+  { value: 'date', labelKey: 'dataType.date' },
+  { value: 'datetime', labelKey: 'dataType.datetime' },
 ] as const
 
 /** Map a chosen data type to the native <input> type used for the value field. */
@@ -1124,16 +1120,16 @@ function buildSqlPreview(input: {
   return sql
 }
 
-function validateBuilder(snapshot: BuilderSnapshot): string | null {
-  if (!snapshot.connectionId) return 'Select a connection first.'
-  if (!snapshot.table) return 'Select a table first.'
+function validateBuilder(snapshot: BuilderSnapshot, t: TFunction): string | null {
+  if (!snapshot.connectionId) return t('validation.selectConnection')
+  if (!snapshot.table) return t('validation.selectTable')
   if (
     snapshot.dateColumn &&
     snapshot.dateFrom &&
     snapshot.dateTo &&
     snapshot.dateFrom > snapshot.dateTo
   ) {
-    return 'The date range start must not be after the end.'
+    return t('validation.dateRangeOrder')
   }
   return null
 }
@@ -1153,9 +1149,9 @@ interface WorkspacePageProps {
   ref?: Ref<WorkspacePageHandle>
 }
 
-const EXPRESSION_EXAMPLES: { label: string; examples: { alias: string; expression: string }[] }[] = [
+const EXPRESSION_EXAMPLES: { labelKey: string; examples: { alias: string; expression: string }[] }[] = [
   {
-    label: 'Arithmetic',
+    labelKey: 'expressionExamples.arithmetic',
     examples: [
       { alias: 'Delta', expression: 'AFTER - BEFORE' },
       { alias: 'Amount', expression: 'QTY * PRICE' },
@@ -1164,7 +1160,7 @@ const EXPRESSION_EXAMPLES: { label: string; examples: { alias: string; expressio
     ],
   },
   {
-    label: 'Text',
+    labelKey: 'expressionExamples.text',
     examples: [
       { alias: 'Upper', expression: 'UPPER(NAME)' },
       { alias: 'Code', expression: 'LEFT(CODE, 3)' },
@@ -1173,7 +1169,7 @@ const EXPRESSION_EXAMPLES: { label: string; examples: { alias: string; expressio
     ],
   },
   {
-    label: 'Date & time',
+    labelKey: 'expressionExamples.dateTime',
     examples: [
       { alias: 'Year', expression: 'YEAR(DATE_COL)' },
       { alias: 'Month', expression: 'MONTH(DATE_COL)' },
@@ -1182,7 +1178,7 @@ const EXPRESSION_EXAMPLES: { label: string; examples: { alias: string; expressio
     ],
   },
   {
-    label: 'Conditional',
+    labelKey: 'expressionExamples.conditional',
     examples: [
       { alias: 'Bucket', expression: "CASE WHEN SCORE >= 90 THEN 'A' ELSE 'B' END" },
       { alias: 'Fallback', expression: 'COALESCE(A, B)' },
@@ -1191,6 +1187,7 @@ const EXPRESSION_EXAMPLES: { label: string; examples: { alias: string; expressio
 ]
 
 function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
+  const { t } = useTranslation('workspace')
   const filterIdRef = useRef(0)
   const [connections, setConnections] = useState<DbConnection[]>([])
   const [connectionsError, setConnectionsError] = useState<string | null>(null)
@@ -1217,12 +1214,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   // ---- SQL mode ----
   const [sqlText, setSqlText] = useState('')
   /** The raw SQL editor box is expandable/collapsible. Expanded by default;
-   *  checking "Use template" collapses it (the criteria form drives the SQL). */
+   *  picking a template collapses it (the criteria form drives the SQL). */
   const [editorExpanded, setEditorExpanded] = useState(true)
   const [mode, setMode] = useState<Mode>('sql')
-  /** Whether the SQL editor is driven by the selected connection template.
-   *  Turned off to keep the current SQL and hide the template panel. */
-  const [useTemplate, setUseTemplate] = useState(true)
 
   // ---- FabLIMS connection templates ----
   const [fabTemplates, setFabTemplates] = useState<ConnectionTemplateOption[]>([])
@@ -1401,9 +1395,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
    *  `computedColumns` state so they survive the per-result reset and apply to
    *  every result the template returns — including re-runs and exports. */
   const templateComputedColumns = useMemo<ComputedColumn[]>(() => {
-    const specs = useTemplate ? selectedFabOption?.computed_columns ?? [] : []
+    const specs = selectedFabOption?.computed_columns ?? []
     return specs.map((spec) => ({ name: spec.name, expression: spec.expression }))
-  }, [useTemplate, selectedFabOption])
+  }, [selectedFabOption])
 
   /** Bake computed columns into the result so the grid header (type chip) and
    *  the chart field list both see them as regular columns. */
@@ -1495,11 +1489,13 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
 
   const openWarehouseSave = useCallback(() => {
     setWarehouseSaveName(
-      `Grid result — ${new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`,
+      t('messages.defaultSnapshotName', {
+        date: new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
+      }),
     )
     setWarehouseSaveError(null)
     setWarehouseSaveOpen(true)
-  }, [])
+  }, [t])
 
   const handleWarehouseSave = useCallback(async () => {
     if (!effectiveResult || effectiveResult.rows.length === 0) return
@@ -1518,14 +1514,14 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       })
       setWarehouseSaveOpen(false)
       setNotice(
-        `Saved "${created.name}" (${created.row_count.toLocaleString()} rows) — manage it in the Dashboard tab`,
+        t('messages.warehouseSaved', { name: created.name, count: created.row_count }),
       )
     } catch (err) {
-      setWarehouseSaveError(err instanceof Error ? err.message : 'Failed to save the snapshot')
+      setWarehouseSaveError(err instanceof Error ? err.message : t('messages.failSaveSnapshot'))
     } finally {
       setWarehouseSaving(false)
     }
-  }, [effectiveResult, warehouseSaveName, warehouseSaving, connectionId, sqlText])
+  }, [effectiveResult, warehouseSaveName, warehouseSaving, connectionId, sqlText, t])
 
   // Latest committed state, readable from the editorBus 'request-run' handler.
   const stateRef = useRef<
@@ -1594,9 +1590,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       .getConnections()
       .then((list) => setConnections(list))
       .catch((err: unknown) =>
-        setConnectionsError(err instanceof Error ? err.message : 'Failed to load connections'),
+        setConnectionsError(err instanceof Error ? err.message : t('messages.failLoadConnections')),
       )
-  }, [])
+  }, [t])
 
   useEffect(() => {
     loadConnections()
@@ -1623,7 +1619,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setSchemaError(err instanceof Error ? err.message : 'Failed to load tables')
+        if (!cancelled) setSchemaError(err instanceof Error ? err.message : t('messages.failLoadTables'))
       })
       .finally(() => {
         if (!cancelled) setLoadingTables(false)
@@ -1631,7 +1627,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     return () => {
       cancelled = true
     }
-  }, [connectionId])
+  }, [connectionId, t])
 
   useEffect(() => {
     if (!connectionId || !table) {
@@ -1649,7 +1645,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setSchemaError(err instanceof Error ? err.message : 'Failed to load columns')
+        if (!cancelled) setSchemaError(err instanceof Error ? err.message : t('messages.failLoadColumns'))
       })
       .finally(() => {
         if (!cancelled) setLoadingColumns(false)
@@ -1657,7 +1653,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     return () => {
       cancelled = true
     }
-  }, [connectionId, table, schemaReloadKey])
+  }, [connectionId, table, schemaReloadKey, t])
 
   // ---- Connection templates: auto-loaded per selected connection while the
   // SQL tab is active (the connection dropdown drives the template list). ----
@@ -1669,10 +1665,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   useEffect(() => {
     const connectionName = templateKey
 
-    // Leaving SQL-template mode (another mode tab, template disabled, or a
-    // connection switch): remember the current session so we can restore it
-    // when the user returns to the same connection's SQL tab.
-    if (mode !== 'sql' || !useTemplate) {
+    // Leaving SQL-template mode (another mode tab or a connection switch):
+    // remember the current session so we can restore it when the user returns
+    // to the same connection's SQL tab.
+    if (mode !== 'sql') {
       fabSessionRef.current = { connectionName, fabOption, fabValues, fabOperators, fabExtraFilters }
       setFabTemplates([])
       return
@@ -1723,14 +1719,16 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       .catch((err: unknown) => {
         if (!cancelled) {
           setFabTemplateError(
-            err instanceof Error ? err.message : `Failed to load templates for '${connectionName}'`,
+            err instanceof Error
+              ? err.message
+              : t('messages.failLoadTemplates', { connection: connectionName }),
           )
         }
       })
     return () => {
       cancelled = true
     }
-  }, [mode, templateKey, useTemplate])
+  }, [mode, templateKey, t])
 
   // Columns start unselected by default — empty selection means "SELECT *".
 
@@ -1881,14 +1879,19 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       )
       const summary = enriched.summary
       setNotice(
-        `Lot genealogy added — ${summary.wol_matched.toLocaleString()}/${summary.wol_total.toLocaleString()} WOL → Product, ` +
-          `${summary.batch_matched.toLocaleString()}/${summary.batch_total.toLocaleString()} Batch → Raw_item ` +
-          `(${summary.genealogy_rows.toLocaleString()} genealogy rows${summary.cached ? ', cached' : ''}).`,
+        t('messages.genealogyAdded', {
+          wolMatched: summary.wol_matched.toLocaleString(),
+          wolTotal: summary.wol_total.toLocaleString(),
+          batchMatched: summary.batch_matched.toLocaleString(),
+          batchTotal: summary.batch_total.toLocaleString(),
+          rows: summary.genealogy_rows.toLocaleString(),
+          cached: summary.cached ? t('messages.genealogyCachedSuffix') : '',
+        }),
       )
       return enriched
     } catch (err) {
       setEnrichError(
-        err instanceof Error ? err.message : 'Failed to load the FabLIMS lot genealogy.',
+        err instanceof Error ? err.message : t('messages.failLoadGenealogy'),
       )
       return source
     } finally {
@@ -1935,10 +1938,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       try {
         final = await maybeTransform(response)
         if (final !== response) {
-          setNotice(`Transformed ${final.row_count.toLocaleString()} row(s) into a wide table.`)
+          setNotice(t('messages.transformed', { count: final.row_count }))
         }
       } catch (transformErr) {
-        setError(transformErr instanceof Error ? transformErr.message : 'Transform failed')
+        setError(transformErr instanceof Error ? transformErr.message : t('messages.transformFailed'))
         final = response
       }
       final = await maybeEnrichColorData(final)
@@ -1947,9 +1950,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       setUploadActive(false)
       signalRunFeedback(true)
     } catch (err) {
-      if (err instanceof QueryCanceledError) setNotice('Query canceled.')
+      if (err instanceof QueryCanceledError) setNotice(t('messages.queryCanceled'))
       else {
-        setError(err instanceof Error ? err.message : 'Query failed')
+        setError(err instanceof Error ? err.message : t('messages.queryFailed'))
         signalRunFeedback(false)
       }
     } finally {
@@ -1980,10 +1983,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       try {
         final = await maybeTransform(response)
         if (final !== response) {
-          setNotice(`Transformed ${final.row_count.toLocaleString()} row(s) into a wide table.`)
+          setNotice(t('messages.transformed', { count: final.row_count }))
         }
       } catch (transformErr) {
-        setError(transformErr instanceof Error ? transformErr.message : 'Transform failed')
+        setError(transformErr instanceof Error ? transformErr.message : t('messages.transformFailed'))
         final = response
       }
       final = await maybeEnrichColorData(final)
@@ -1992,9 +1995,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       setUploadActive(false)
       signalRunFeedback(true)
     } catch (err) {
-      if (err instanceof QueryCanceledError) setNotice('Query canceled.')
+      if (err instanceof QueryCanceledError) setNotice(t('messages.queryCanceled'))
       else {
-        setError(err instanceof Error ? err.message : 'Query failed')
+        setError(err instanceof Error ? err.message : t('messages.queryFailed'))
         signalRunFeedback(false)
       }
     } finally {
@@ -2046,7 +2049,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       sql: result.sql,
     })
     const logLine = log.trim() ? ` — ${log.trim().split('\n').slice(-1)[0].slice(0, 80)}` : ''
-    setNotice(`Grid updated (${rows.length.toLocaleString()} row(s))${logLine}.`)
+    setNotice(t('messages.gridUpdated', { count: rows.length, log: logLine }))
   }
 
   /** Restore the most recent pre-transform grid state. */
@@ -2056,7 +2059,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     setResult(last.result)
     setComputedColumns(last.computedColumns)
     setGridHistory((prev) => prev.slice(0, -1))
-    setNotice('Grid reverted to the previous state.')
+    setNotice(t('messages.gridReverted'))
   }
 
   /** Column-type override from the grid (Column Types dialog): written back
@@ -2127,9 +2130,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       })
       setUploadActive(true)
       setUploadName(file.name.replace(/\.[^.]+$/, '') || 'uploaded')
-      setNotice(`Uploaded ${file.name} — ${response.row_count.toLocaleString()} rows.`)
+      setNotice(t('messages.uploaded', { name: file.name, count: response.row_count }))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
+      setError(err instanceof Error ? err.message : t('messages.uploadFailed'))
     } finally {
       setUploading(false)
       setUploadPct(null)
@@ -2141,7 +2144,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const handleRun = async () => {
     if (mode === 'builder') {
       const snapshot = builderSnapshot()
-      const validation = validateBuilder(snapshot)
+      const validation = validateBuilder(snapshot, t)
       if (validation) {
         setError(validation)
         return
@@ -2151,15 +2154,15 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       await runQueryDef(query)
     } else {
       // Template quick-search SQL runs against the selected connection (the
-      // one whose templates were loaded when "Use template" was turned on).
+      // one whose templates were loaded when the SQL tab opened).
       const connId = connectionId || connections[0]?.id
       if (!connId) {
-        setError('No connections available — add one in ODBC Setup first.')
+        setError(t('messages.noConnectionsAvailable'))
         return
       }
       // Date criteria are mandatory for template runs: block the query and
       // remind the user which date fields still need a value.
-      if (useTemplate && selectedFabOption) {
+      if (selectedFabOption) {
         const missing = missingRequiredDates(selectedFabOption, fabValues, fabOperators)
         if (missing.length > 0) {
           setMissingDateReminder(missing)
@@ -2176,7 +2179,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         }
       }
       if (!sqlText.trim()) {
-        setError('Enter some SQL to run.')
+        setError(t('messages.enterSomeSql'))
         return
       }
       await runRawSql(connId, sqlText)
@@ -2197,22 +2200,22 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       // Export exactly what the grid shows (including computed columns) —
       // never re-run the SQL/query on the backend.
       if (!effectiveResult || effectiveResult.rows.length === 0) {
-        setError('Nothing to export — run a query first.')
+        setError(t('messages.nothingToExport'))
         return
       }
       const blob = await api.exportGrid(effectiveResult.rows, effectiveResult.columns, format)
       const saved = await downloadBlob(blob, filename)
       if (saved.cancelled) {
-        setNotice('Export cancelled')
+        setNotice(t('messages.exportCancelled'))
         return
       }
       setNotice(
         saved.savedPath
-          ? `Exported ${format.toUpperCase()} to ${saved.savedPath}`
-          : `Exported ${format.toUpperCase()} (${filename})`,
+          ? t('messages.exportedTo', { format: format.toUpperCase(), path: saved.savedPath })
+          : t('messages.exportedAs', { format: format.toUpperCase(), filename }),
       )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed')
+      setError(err instanceof Error ? err.message : t('messages.exportFailed'))
     } finally {
       setExporting(null)
     }
@@ -2275,7 +2278,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const handleSaveQuery = async () => {
     const name = saveName.trim()
     if (!name) {
-      setSaveError('Enter a name for the query.')
+      setSaveError(t('messages.enterQueryName'))
       return
     }
     setSavingQuery(true)
@@ -2284,7 +2287,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       if (mode === 'builder') {
         const query = buildQuery(builderSnapshot())
         if (!query) {
-          setSaveError('Complete the query first.')
+          setSaveError(t('messages.completeQueryFirst'))
           return
         }
         // Collect fully-defined prompt parameters (non-empty label + column).
@@ -2309,11 +2312,11 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       void refreshCustomQueryCount()
       setNotice(
         selectedSqlId
-          ? `Updated pre-defined SQL "${name}".`
-          : `Saved as pre-defined ${mode === 'builder' ? 'query' : 'SQL'} "${name}".`,
+          ? t('messages.updatedPredefinedSql', { name })
+          : t(mode === 'builder' ? 'messages.savedPredefinedQuery' : 'messages.savedPredefinedSql', { name }),
       )
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save query')
+      setSaveError(err instanceof Error ? err.message : t('messages.failSaveQuery'))
     } finally {
       setSavingQuery(false)
     }
@@ -2327,11 +2330,11 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       const list = await api.getHistory(100)
       setHistory(list)
     } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Failed to load history')
+      setHistoryError(err instanceof Error ? err.message : t('messages.failLoadHistory'))
     } finally {
       setHistoryLoading(false)
     }
-  }, [])
+  }, [t])
 
   const toggleHistory = () => {
     const next = !historyOpen
@@ -2378,9 +2381,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     try {
       await Promise.all(ids.map((id) => api.deleteHistoryEntry(id)))
       setHistory((current) => current.filter((h) => historyDedupKey(h) !== historyDedupKey(entry)))
-      setNotice('History entry deleted.')
+      setNotice(t('messages.historyDeleted'))
     } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Failed to delete history entry')
+      setHistoryError(err instanceof Error ? err.message : t('messages.failDeleteHistory'))
     } finally {
       setHistoryBusyId(null)
     }
@@ -2396,7 +2399,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           sx={{ mb: historyGroups.length > 0 ? 1 : 0 }}
           action={
             <Button color="inherit" size="small" onClick={() => void refreshHistory()} sx={{ minHeight: 36 }}>
-              Retry
+              {t('history.retry')}
             </Button>
           }
         >
@@ -2412,7 +2415,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       ) : historyGroups.length === 0 ? (
         !historyError && (
           <Typography variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
-            No recent runs yet. Run a query to record it here.
+            {t('history.empty')}
           </Typography>
         )
       ) : (
@@ -2439,12 +2442,12 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       <Chip
                         size="small"
                         variant="outlined"
-                        label={entry.connection_name || 'Unknown connection'}
+                        label={entry.connection_name || t('history.unknownConnection')}
                       />
                       <Chip
                         size="small"
                         color={entry.kind === 'builder' ? 'primary' : 'secondary'}
-                        label={entry.kind === 'builder' ? 'Builder' : 'SQL'}
+                        label={entry.kind === 'builder' ? t('history.builder') : t('history.sql')}
                       />
                       {group.count > 1 && (
                         <Chip
@@ -2455,7 +2458,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         />
                       )}
                       <Typography variant="caption" color="text.secondary">
-                        {entry.row_count.toLocaleString()} rows · {entry.elapsed_ms.toLocaleString()} ms
+                        {t('common.rowsMs', { rows: entry.row_count.toLocaleString(), ms: entry.elapsed_ms.toLocaleString() })}
                       </Typography>
                     </Stack>
                     <Typography
@@ -2467,19 +2470,19 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         '&:hover': { textDecoration: 'underline', color: 'primary.main' },
                       }}
                       onClick={() => loadHistoryEntry(entry)}
-                      title="Click to load in editor"
+                      title={t('history.loadInEditorTitle')}
                     >
                       {entry.sql || '—'}
                     </Typography>
                   </Box>
                   <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexShrink: 0 }}>
-                    <Tooltip title="Run again">
+                    <Tooltip title={t('history.runAgain')}>
                       <span>
                         <IconButton
                           size="small"
                           onClick={() => void runHistoryEntry(entry)}
                           disabled={historyBusyId !== null}
-                          aria-label={`Run ${entry.sql}`}
+                          aria-label={t('history.runAria', { sql: entry.sql })}
                         >
                           {historyBusyId === group.entry.id ? (
                             <CircularProgress size={18} />
@@ -2489,26 +2492,26 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         </IconButton>
                       </span>
                     </Tooltip>
-                    <Tooltip title="Load in editor">
+                    <Tooltip title={t('history.loadInEditor')}>
                       <span>
                         <IconButton
                           size="small"
                           onClick={() => loadHistoryEntry(entry)}
                           disabled={historyBusyId !== null}
-                          aria-label={`Load ${entry.sql}`}
+                          aria-label={t('history.loadAria', { sql: entry.sql })}
                         >
                           <FileOpenIcon fontSize="small" />
                         </IconButton>
                       </span>
                     </Tooltip>
-                    <Tooltip title="Delete">
+                    <Tooltip title={t('history.delete')}>
                       <span>
                         <IconButton
                           size="small"
                           color="error"
                           onClick={() => void handleDeleteHistoryGroup(entry)}
                           disabled={historyBusyId !== null}
-                          aria-label={`Delete ${entry.sql}`}
+                          aria-label={t('history.deleteAria', { sql: entry.sql })}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -2610,7 +2613,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         dateTo: s.dateTo,
         limit: s.limit,
       }
-      const validation = validateBuilder(snapshot)
+      const validation = validateBuilder(snapshot, t)
       if (validation) {
         setError(validation)
         return
@@ -2621,11 +2624,11 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     } else if (s.mode === 'sql') {
       const connId = s.connectionId || s.connections[0]?.id
       if (!connId) {
-        setError('No connections available — add one in ODBC Setup first.')
+        setError(t('messages.noConnectionsAvailable'))
         return
       }
       if (!s.sqlText.trim()) {
-        setError('Enter some SQL to run.')
+        setError(t('messages.enterSomeSql'))
         return
       }
       void runRawSql(connId, s.sqlText)
@@ -2668,7 +2671,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           sql: '',
         })
         setUploadActive(false)
-        setNotice(`Loaded "${name}" — ${rows.length.toLocaleString()} rows into the grid.`)
+        setNotice(t('messages.loadedRows', { name, count: rows.length }))
         window.setTimeout(() => {
           gridAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }, 120)
@@ -2723,9 +2726,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           keywordCase: 'upper',
         }),
       )
-      setNotice('SQL formatted')
+      setNotice(t('messages.sqlFormatted'))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to format SQL')
+      setError(err instanceof Error ? err.message : t('messages.failFormatSql'))
     }
   }
 
@@ -2747,13 +2750,13 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between' }}
         >
           <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <Typography variant="h6">Data</Typography>
+            <Typography variant="h6">{t('results.title')}</Typography>
             {result && (
               <Chip
                 size="small"
                 color="primary"
                 variant="outlined"
-                label={`${result.row_count.toLocaleString()} rows · ${result.elapsed_ms.toLocaleString()} ms`}
+                label={t('common.rowsMs', { rows: result.row_count.toLocaleString(), ms: result.elapsed_ms.toLocaleString() })}
               />
             )}
           </Stack>
@@ -2777,9 +2780,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               disabled={uploading || running}
               sx={{ minHeight: 40 }}
             >
-              Upload
+              {t('results.upload')}
             </Button>
-            <Tooltip title="Paste rows from the clipboard — clears the current rows and replaces the table contents (creates a new table when no results are loaded yet)">
+            <Tooltip title={t('results.pasteTooltip')}>
               <Button
                 size="small"
                 variant="outlined"
@@ -2787,7 +2790,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 onClick={() => gridHandleRef.current?.openPasteDialog()}
                 sx={{ minHeight: 40 }}
               >
-                Paste
+                {t('results.paste')}
               </Button>
             </Tooltip>
             <Button
@@ -2800,10 +2803,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             >
               XLSX
             </Button>
-            <Tooltip title="See everything this table can do">
+            <Tooltip title={t('results.tableFeaturesTooltip')}>
               <IconButton
                 size="small"
-                aria-label="Table features"
+                aria-label={t('results.tableFeaturesAria')}
                 onClick={(event) => gridHandleRef.current?.openHelp(event.currentTarget)}
                 disabled={gridEmpty}
                 sx={{ width: 40, height: 40 }}
@@ -2811,7 +2814,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 <HelpOutlineOutlinedIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="Edit this grid — AI transform, column data types and calculated columns">
+            <Tooltip title={t('results.editGridTooltip')}>
               <Button
                 size="small"
                 variant="outlined"
@@ -2820,7 +2823,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 disabled={gridEmpty}
                 sx={{ minHeight: 40 }}
               >
-                Edit grid
+                {t('results.editGrid')}
               </Button>
             </Tooltip>
             <Button
@@ -2831,9 +2834,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               disabled={gridEmpty}
               sx={{ minHeight: 40 }}
             >
-              {gridCopied ? 'Copied!' : 'Copy'}
+              {gridCopied ? t('results.copied') : t('results.copy')}
             </Button>
-            <Tooltip title="Save this grid as a snapshot in the Dashboard warehouse">
+            <Tooltip title={t('results.saveDataTooltip')}>
               <Button
                 size="small"
                 variant="outlined"
@@ -2843,7 +2846,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 disabled={gridEmpty}
                 sx={{ minHeight: 40 }}
               >
-                Save data
+                {t('results.saveData')}
               </Button>
             </Tooltip>
           </Stack>
@@ -2864,7 +2867,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             sx={{ mx: { xs: 1, sm: 1.5 }, mt: 1, borderRadius: 1.5 }}
           >
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              {enrichError ? 'Lot genealogy not loaded' : 'Adding FabLIMS lot genealogy…'}
+              {enrichError ? t('results.enrichNotLoaded') : t('results.enrichAdding')}
             </Typography>
             {enrichError ? (
               <Typography variant="body2" sx={{ mt: 0.5 }}>
@@ -2939,8 +2942,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               <CircularProgress size={36} />
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
                 {queryProgress !== null && queryProgress > 0
-                  ? `Loading ${queryProgress.toLocaleString()} rows…`
-                  : 'Running query…'}
+                  ? t('results.loadingRows', { rows: queryProgress.toLocaleString() })
+                  : t('results.runningQuery')}
               </Typography>
               <LinearProgress sx={{ width: 'min(240px, 60vw)' }} />
               {/* Skeleton rows hint at the table that is about to land. */}
@@ -2971,14 +2974,14 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               <CircularProgress size={36} />
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
                 {uploadStage === 'upload'
-                  ? `Uploading file… ${uploadPct ?? 0}%`
+                  ? t('results.uploadingFile', { pct: uploadPct ?? 0 })
                   : uploadStage === 'read'
                     ? uploadRows !== null
-                      ? `Reading rows… ${uploadRows.toLocaleString()}`
-                      : 'Reading workbook… this can take a while for large files'
+                      ? t('results.readingRows', { rows: uploadRows.toLocaleString() })
+                      : t('results.readingWorkbook')
                     : uploadTotalRows !== null
-                      ? `Importing rows… ${(uploadRows ?? 0).toLocaleString()} / ${uploadTotalRows.toLocaleString()}`
-                      : `Importing rows… ${(uploadRows ?? 0).toLocaleString()}`}
+                      ? t('results.importingRowsOf', { rows: (uploadRows ?? 0).toLocaleString(), total: uploadTotalRows.toLocaleString() })
+                      : t('results.importingRows', { rows: (uploadRows ?? 0).toLocaleString() })}
               </Typography>
               {uploadStage === 'import' && uploadTotalRows !== null ? (
                 <LinearProgress
@@ -3168,7 +3171,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     const isLikeOp = currentOp === 'like' || currentOp === 'not like'
     const isInOp = currentOp === 'in' || currentOp === 'not in'
     /** Hover hint for the value field, when the active operator needs one. */
-    const valueTooltip = isLikeOp ? LIKE_TOOLTIP : isInOp ? IN_TOOLTIP : ''
+    const valueTooltip = isLikeOp ? t('tooltips.likeValue') : isInOp ? t('tooltips.inValue') : ''
     // Field label stays pinned above the input (like the Op label), never inside it.
     const inputProps = { inputLabel: { shrink: true } }
     // Date criteria are mandatory for template runs; flag their labels with a
@@ -3222,7 +3225,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             disabled
             fullWidth
             slotProps={{ inputLabel: { shrink: true } }}
-            helperText="No value needed for this operator"
+            helperText={t('tooltips.noValueNeeded')}
           />
         ) : isBetween ? (
           <Stack
@@ -3238,7 +3241,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           >
             <TextField
               size="small"
-              label={withRequiredMark(`${field.label} (from)`)}
+              label={withRequiredMark(t('sqlEditor.fieldFrom', { label: field.label }))}
               type={field.type === 'datetime' ? 'datetime-local' : 'text'}
               value={fabValues[field.key] ?? ''}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -3252,7 +3255,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             />
             <TextField
               size="small"
-              label="to"
+              label={t('sqlEditor.to')}
               type={field.type === 'datetime' ? 'datetime-local' : 'text'}
               value={fabValues[`${field.key}__to`] ?? ''}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -3304,10 +3307,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         )}
         {!isOperationDropdown && (
           <FormControl size="small" sx={{ width: { xs: '100%', sm: 116 }, flexShrink: 0 }}>
-            <InputLabel id={`op-${field.key}`}>Op</InputLabel>
+            <InputLabel id={`op-${field.key}`}>{t('sqlEditor.op')}</InputLabel>
             <Select
               labelId={`op-${field.key}`}
-              label="Op"
+              label={t('sqlEditor.op')}
               value={currentOp}
               onChange={(event: SelectChangeEvent) =>
                 setFabOperators((current) => ({
@@ -3332,10 +3335,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     <Box sx={{ maxWidth: 1200, mx: 'auto', width: '100%' }}>
       {/* Header: title + subtitle first, consistent with the Analyze page */}
       <Box sx={{ mb: 2 }}>
-        <Typography variant="h5">Query</Typography>
+        <Typography variant="h5">{t('page.title')}</Typography>
         <Typography variant="body2" color="text.secondary">
-          Run SQL, build a query visually, or upload a CSV/Excel file. Results
-          load into the grid and feed the Analyze tab for charts and scripts.
+          {t('page.subtitle')}
         </Typography>
       </Box>
 
@@ -3347,8 +3349,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         scrollButtons="auto"
         sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
       >
-        <Tab value="sql" icon={<CodeIcon />} iconPosition="start" label="SQL editor" />
-        <Tab value="builder" icon={<TableChartIcon />} iconPosition="start" label="Builder" />
+        <Tab value="sql" icon={<CodeIcon />} iconPosition="start" label={t('tabs.sqlEditor')} />
+        <Tab value="builder" icon={<TableChartIcon />} iconPosition="start" label={t('tabs.builder')} />
       </Tabs>
       {connectionsError && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -3360,7 +3362,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       {mode === 'builder' && (
         <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
           <Stack spacing={2} sx={{ mb: 2 }}>
-            <Typography variant="h6">Query Builder</Typography>
+            <Typography variant="h6">{t('builder.title')}</Typography>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               spacing={1}
@@ -3368,17 +3370,17 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: 'wrap' }}
             >
               <FormControl size="small" sx={{ width: { xs: '100%', md: 380 } }}>
-                <InputLabel id="workspace-connection-label">Connection</InputLabel>
+                <InputLabel id="workspace-connection-label">{t('builder.connection')}</InputLabel>
                 <Select
                   size="small"
                   labelId="workspace-connection-label"
-                  label="Connection"
+                  label={t('builder.connection')}
                   value={connectionId}
                   onChange={handleConnectionChange}
                   disabled={connections.length === 0}
                 >
                   <MenuItem value="" disabled>
-                    {connections.length === 0 ? 'No connections — add one first' : 'Select a connection'}
+                    {connections.length === 0 ? t('builder.noConnections') : t('builder.selectConnection')}
                   </MenuItem>
                   {connections.map((connection) => (
                     <MenuItem key={connection.id} value={connection.id}>
@@ -3404,33 +3406,33 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 onChange={(_event: ReactMouseEvent<HTMLElement>, value: 'all' | 'tables' | 'views' | null) => {
                   if (value) setTableFilter(value)
                 }}
-                aria-label="Filter table list by type"
+                aria-label={t('builder.filterTableAria')}
               >
-                <ToggleButton value="all" sx={{ minHeight: 40 }}>
-                  All
+                <ToggleButton value="all" sx={{ minHeight: 40, minWidth: 76, px: 2, whiteSpace: 'nowrap' }}>
+                  {t('builder.all')}
                 </ToggleButton>
-                <ToggleButton value="tables" sx={{ minHeight: 40 }}>
-                  Tables
+                <ToggleButton value="tables" sx={{ minHeight: 40, minWidth: 76, px: 2, whiteSpace: 'nowrap' }}>
+                  {t('builder.tables')}
                 </ToggleButton>
-                <ToggleButton value="views" sx={{ minHeight: 40 }}>
-                  Views
+                <ToggleButton value="views" sx={{ minHeight: 40, minWidth: 76, px: 2, whiteSpace: 'nowrap' }}>
+                  {t('builder.views')}
                 </ToggleButton>
               </ToggleButtonGroup>
               <FormControl fullWidth size="small">
-                <InputLabel id="table-label">Table / View</InputLabel>
+                <InputLabel id="table-label">{t('builder.tableView')}</InputLabel>
                 <Select
                   labelId="table-label"
-                  label="Table / View"
+                  label={t('builder.tableView')}
                   value={table}
                   onChange={handleTableChange}
                   disabled={!connectionId}
                 >
                   <MenuItem value="" disabled>
-                    {connectionId ? 'Select a table' : 'Select a connection first'}
+                    {connectionId ? t('builder.selectTable') : t('builder.selectConnectionFirst')}
                   </MenuItem>
-                  {filteredTables.map((t) => (
-                    <MenuItem key={t.name} value={t.name}>
-                      {t.name} {t.type === 'view' ? '(view)' : ''}
+                  {filteredTables.map((tbl) => (
+                    <MenuItem key={tbl.name} value={tbl.name}>
+                      {tbl.name} {tbl.type === 'view' ? t('builder.view') : ''}
                     </MenuItem>
                   ))}
                 </Select>
@@ -3456,10 +3458,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                 >
                   <FilterAltIcon fontSize="small" color="secondary" />
-                  Filters
+                  {t('builder.filters')}
                 </Typography>
                 <Button size="small" startIcon={<AddIcon />} onClick={addFilter} sx={{ minHeight: 36 }}>
-                  Add filter
+                  {t('builder.addFilter')}
                 </Button>
               </Stack>
               <Stack spacing={1}>
@@ -3480,7 +3482,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         displayEmpty
                       >
                         <MenuItem value="" disabled>
-                          Column
+                          {t('builder.column')}
                         </MenuItem>
                         {columns.map((column) => (
                           <MenuItem key={column.name} value={column.name}>
@@ -3498,7 +3500,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       >
                         {OPERATORS.map((op) => (
                           <MenuItem key={op.value} value={op.value}>
-                            {op.label}
+                            {op.labelKey ? t(op.labelKey) : op.label}
                           </MenuItem>
                         ))}
                       </Select>
@@ -3510,7 +3512,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         onChange={(event: ChangeEvent<HTMLInputElement>) =>
                           updateFilter(filter.id, 'value', event.target.value)
                         }
-                        placeholder={filter.operator === 'in' ? 'comma-separated values' : 'value'}
+                        placeholder={filter.operator === 'in' ? t('builder.commaValues') : t('builder.valuePlaceholder')}
                         fullWidth
                         sx={{ flexGrow: 1 }}
                       />
@@ -3518,7 +3520,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                     <IconButton
                       size="small"
                       onClick={() => removeFilter(filter.id)}
-                      aria-label="Remove filter"
+                      aria-label={t('builder.removeFilter')}
                       sx={{ alignSelf: { xs: 'flex-end', sm: 'center' } }}
                     >
                       <CloseIcon fontSize="small" />
@@ -3527,7 +3529,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 ))}
                 {filters.length === 0 && (
                   <Typography variant="body2" color="text.secondary">
-                    No filters — all rows will be returned.
+                    {t('builder.noFilters')}
                   </Typography>
                 )}
               </Stack>
@@ -3547,7 +3549,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                       >
                         <GridViewIcon fontSize="small" color="primary" />
-                        Columns
+                        {t('builder.columns')}
                         {columns.length > 0 && (
                           <Chip
                             size="small"
@@ -3559,7 +3561,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       </Typography>
                       {columns.length > 0 && (
                         <Button size="small" onClick={toggleSelectAllColumns} sx={{ minHeight: 36 }}>
-                          {allColumnsSelected ? 'Clear all' : 'Select all'}
+                          {allColumnsSelected ? t('builder.clearAll') : t('builder.selectAll')}
                         </Button>
                       )}
                     </Stack>
@@ -3600,7 +3602,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         ))}
                         {columns.length === 0 && (
                           <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
-                            {loadingColumns ? 'Loading columns…' : 'Select a table to see its columns.'}
+                            {loadingColumns ? t('builder.loadingColumns') : t('builder.selectTableForColumns')}
                           </Typography>
                         )}
                       </FormGroup>
@@ -3615,20 +3617,20 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   {/* Date range */}
                   <Box>
                     <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                      Date range (optional)
+                      {t('builder.dateRange')}
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid size={{ xs: 12, sm: 6 }}>
                         <FormControl fullWidth size="small">
-                          <InputLabel id="date-column-label">Date column</InputLabel>
+                          <InputLabel id="date-column-label">{t('builder.dateColumn')}</InputLabel>
                           <Select
                             labelId="date-column-label"
-                            label="Date column"
+                            label={t('builder.dateColumn')}
                             value={dateColumn}
                             onChange={(event: SelectChangeEvent) => setDateColumn(event.target.value)}
                           >
                             <MenuItem value="">
-                              <em>None</em>
+                              <em>{t('builder.none')}</em>
                             </MenuItem>
                             {dateColumns.map((column) => (
                               <MenuItem key={column.name} value={column.name}>
@@ -3639,13 +3641,13 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         </FormControl>
                         {dateColumns.length === 0 && (
                           <Typography variant="caption" color="text.secondary">
-                            No date/time columns detected in this table.
+                            {t('builder.noDateColumns')}
                           </Typography>
                         )}
                       </Grid>
                       <Grid size={{ xs: 6, sm: 3 }}>
                         <TextField
-                          label="From"
+                          label={t('builder.from')}
                           type="date"
                           value={dateFrom}
                           onChange={(event: ChangeEvent<HTMLInputElement>) => setDateFrom(event.target.value)}
@@ -3656,7 +3658,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       </Grid>
                       <Grid size={{ xs: 6, sm: 3 }}>
                         <TextField
-                          label="To"
+                          label={t('builder.to')}
                           type="date"
                           value={dateTo}
                           onChange={(event: ChangeEvent<HTMLInputElement>) => setDateTo(event.target.value)}
@@ -3670,12 +3672,12 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
 
                   {/* Row limit */}
                   <TextField
-                    label="Row limit"
+                    label={t('builder.rowLimit')}
                     type="number"
                     value={limit}
                     onChange={(event: ChangeEvent<HTMLInputElement>) => setLimit(event.target.value)}
-                    placeholder="all"
-                    helperText="Maximum rows to return (blank = all)."
+                    placeholder={t('builder.rowLimitPlaceholder')}
+                    helperText={t('builder.rowLimitHelper')}
                     slotProps={{ htmlInput: { min: 1, inputMode: 'numeric' } }}
                     sx={{ maxWidth: { xs: '100%', sm: 220 } }}
                   />
@@ -3691,7 +3693,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               >
                 <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <FunctionsIcon fontSize="small" color="success" />
-                  Calculated columns
+                  {t('builder.calculatedColumns')}
                 </Typography>
                 <Button
                   size="small"
@@ -3699,13 +3701,15 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   onClick={addDerivedColumn}
                   sx={{ minHeight: 36 }}
                 >
-                  Add calculated
+                  {t('builder.addCalculated')}
                 </Button>
               </Stack>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Append a database-evaluated expression to the result, e.g. name{' '}
-                <em>&quot;Delta&quot;</em> and expression <em>&quot;AFTER - BEFORE&quot;</em>.
-                The expression becomes <code>expr AS name</code> in the SELECT list.
+                <Trans
+                  i18nKey="builder.calculatedHelp"
+                  ns="workspace"
+                  components={{ em: <em />, code: <code /> }}
+                />
               </Typography>
               <Stack
                 direction="row"
@@ -3714,18 +3718,18 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 sx={{ alignItems: 'center', mb: 1, flexWrap: 'wrap' }}
               >
                 <Button size="small" onClick={() => setShowExprExamples((v) => !v)} sx={{ minHeight: 32, minWidth: 0, p: 0 }}>
-                  {showExprExamples ? 'Hide' : 'Show'} expression examples
+                  {showExprExamples ? t('builder.hideExamples') : t('builder.showExamples')}
                 </Button>
                 <Typography variant="caption" color="text.secondary">
-                  Tap an example to fill the last calculated expression.
+                  {t('builder.examplesHint')}
                 </Typography>
               </Stack>
               {showExprExamples && (
                 <Stack spacing={1.2} useFlexGap sx={{ mb: 1, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
                   {EXPRESSION_EXAMPLES.map((group) => (
-                    <Box key={group.label}>
+                    <Box key={group.labelKey}>
                       <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                        {group.label}
+                        {t(group.labelKey)}
                       </Typography>
                       <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap', mt: 0.5 }}>
                         {group.examples.map((ex) => (
@@ -3754,7 +3758,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   >
                     <TextField
                       size="small"
-                      label="Name (alias)"
+                      label={t('builder.nameAlias')}
                       value={col.name}
                       onChange={(event: ChangeEvent<HTMLInputElement>) =>
                         updateDerivedColumn(col.id, 'name', event.target.value)
@@ -3764,19 +3768,19 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                     />
                     <TextField
                       size="small"
-                      label="Expression (SQL)"
+                      label={t('builder.expressionSql')}
                       value={col.expression}
                       onChange={(event: ChangeEvent<HTMLInputElement>) =>
                         updateDerivedColumn(col.id, 'expression', event.target.value)
                       }
-                      placeholder="e.g. AFTER - BEFORE"
+                      placeholder={t('builder.expressionPlaceholder')}
                       fullWidth
                       sx={{ flexGrow: 1 }}
                     />
                     <IconButton
                       size="small"
                       onClick={() => removeDerivedColumn(col.id)}
-                      aria-label="Remove calculated column"
+                      aria-label={t('builder.removeCalculated')}
                       sx={{ alignSelf: { xs: 'flex-end', sm: 'center' } }}
                     >
                       <CloseIcon fontSize="small" />
@@ -3785,7 +3789,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 ))}
                 {derivedColumns.length === 0 && (
                   <Typography variant="body2" color="text.secondary">
-                    No calculated columns — expressions are appended as-is to the SELECT list.
+                    {t('builder.noCalculated')}
                   </Typography>
                 )}
               </Stack>
@@ -3794,7 +3798,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             {/* Generated SQL preview */}
             <Box>
               <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                Generated SQL (auto)
+                {t('builder.generatedSql')}
               </Typography>
               <TextField
                 fullWidth
@@ -3802,7 +3806,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 minRows={4}
                 maxRows={10}
                 value={previewSql}
-                placeholder="Generated SQL appears here as you define your criteria…"
+                placeholder={t('builder.generatedSqlPlaceholder')}
                 slotProps={{
                   input: {
                     readOnly: true,
@@ -3835,12 +3839,12 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
               >
                 {running
-                  ? 'Running…'
+                  ? t('builder.running')
                   : runFeedback === 'success'
-                    ? 'Done'
+                    ? t('builder.done')
                     : runFeedback === 'error'
-                      ? 'Failed'
-                      : 'Run Query'}
+                      ? t('builder.failed')
+                      : t('builder.run')}
               </Button>
               {running && (
                 <Button
@@ -3852,7 +3856,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   disabled={cancelling}
                   sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
                 >
-                  {cancelling ? 'Cancelling…' : 'Cancel'}
+                  {cancelling ? t('builder.cancelling') : t('builder.cancel')}
                 </Button>
               )}
             </Stack>
@@ -3885,17 +3889,24 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                     sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flexWrap: 'wrap' }}
                   >
                     <FormControl size="small" sx={{ width: { xs: '100%', sm: 320 } }}>
-                      <InputLabel id="sql-connection-label">Connection</InputLabel>
+                      <InputLabel shrink>{t('sqlEditor.connection')}</InputLabel>
                       <Select
-                        labelId="sql-connection-label"
-                        label="Connection"
+                        label={t('sqlEditor.connection')}
                         value={connectionId}
                         onChange={handleConnectionChange}
                         disabled={connections.length === 0}
+                        displayEmpty
+                        renderValue={(v) => {
+                          if (v !== '') {
+                            // The value is the connection id — display its name.
+                            const selected = connections.find((c) => c.id === v)
+                            return selected ? selected.name : v
+                          }
+                          return connections.length === 0
+                            ? t('sqlEditor.noConnections')
+                            : t('sqlEditor.selectConnection')
+                        }}
                       >
-                        <MenuItem value="" disabled>
-                          {connections.length === 0 ? 'No connections — add one first' : 'Select a connection'}
-                        </MenuItem>
                         {connections.map((connection) => (
                           <MenuItem key={connection.id} value={connection.id}>
                             {connection.name}
@@ -3903,27 +3914,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         ))}
                       </Select>
                     </FormControl>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={useTemplate}
-                          onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                            setUseTemplate(event.target.checked)
-                            // Checking "Use template" collapses the raw SQL
-                            // editor; un-checking brings it back.
-                            setEditorExpanded(!event.target.checked)
-                          }}
-                        />
-                      }
-                      label="Use template"
-                      sx={{ mt: { xs: 0, sm: 0.5 }, mr: 0, minHeight: 40 }}
-                    />
-                    {useTemplate && fabTemplates.length > 0 && (
+                    {fabTemplates.length > 0 && (
                       <FormControl size="small" sx={{ width: { xs: '100%', sm: 280 } }}>
-                        <InputLabel id="fab-template-label">Template</InputLabel>
+                        <InputLabel shrink>{t('sqlEditor.template')}</InputLabel>
                         <Select
-                          labelId="fab-template-label"
-                          label="Template"
                           value={fabOption}
                           onChange={(event) => {
                             const nextOption = fabTemplates.find((o) => o.name === event.target.value)
@@ -3935,10 +3929,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                             // A template is now in use — collapse the raw SQL editor.
                             setEditorExpanded(false)
                           }}
+                          label={t('sqlEditor.template')}
+                          displayEmpty
+                          renderValue={(v) => (v !== '' ? v : t('sqlEditor.selectSql'))}
                         >
-                          <MenuItem value="" disabled>
-                            Select a template
-                          </MenuItem>
                           {fabTemplates.map((option) => (
                             <MenuItem key={option.name} value={option.name}>
                               {option.name}
@@ -3948,9 +3942,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       </FormControl>
                     )}
                   </Stack>
-                  <Tooltip title="How to use operators">
+                  <Tooltip title={t('sqlEditor.howToUseOperators')}>
                     <IconButton
-                      aria-label="How to use operators"
+                      aria-label={t('sqlEditor.howToUseOperators')}
                       onClick={() => setCriteriaHelpOpen(true)}
                       sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, minWidth: 40, minHeight: 40 }}
                     >
@@ -3960,7 +3954,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                 </Stack>
 
                 {/* Connection template quick-search (auto-shown for the selected connection) */}
-                {useTemplate && (fabTemplates.length > 0 || fabTemplateError) && (
+                {(fabTemplates.length > 0 || fabTemplateError) && (
                   <>
                     <Divider />
                     <Box>
@@ -3975,7 +3969,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       <>
                         {/* Criteria section header */}
                         <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
-                          Criteria
+                          {t('sqlEditor.criteria')}
                         </Typography>
                         <Stack spacing={{ xs: 1.5, sm: 2 }} sx={{ mt: 1 }}>
                         {chunkFields(selectedFabOption.fields).map((pair) => (
@@ -4023,7 +4017,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                               mt: 2,
                             }}
                           >
-                            <Typography variant="subtitle2">Additional parameters</Typography>
+                            <Typography variant="subtitle2">{t('sqlEditor.additionalParameters')}</Typography>
                             <Stack
                               direction={{ xs: 'column', sm: 'row' }}
                               spacing={1}
@@ -4033,10 +4027,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                               {selectedFabOption?.name === 'Tautona_Test_Result' && (
                                 <>
                                   <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 210 }, minHeight: 40 }}>
-                                    <InputLabel id="saved-component-set-label">Pre-defined components</InputLabel>
+                                    <InputLabel id="saved-component-set-label">{t('sqlEditor.predefinedComponents')}</InputLabel>
                                     <Select
                                       labelId="saved-component-set-label"
-                                      label="Pre-defined components"
+                                      label={t('sqlEditor.predefinedComponents')}
                                       value={selectedComponentSet}
                                       onChange={(event: SelectChangeEvent) => handleComponentSetChange(event.target.value)}
                                       disabled={componentSets.length === 0}
@@ -4045,12 +4039,12 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                           value
                                         ) : (
                                           <Typography component="span" variant="inherit" color="text.secondary">
-                                            Custom components
+                                            {t('sqlEditor.customComponents')}
                                           </Typography>
                                         )
                                       }
                                     >
-                                      <MenuItem value="">— none —</MenuItem>
+                                      <MenuItem value="">{t('sqlEditor.noneOption')}</MenuItem>
                                       {componentSets.map((set) => (
                                         <MenuItem key={set.name} value={set.name}>
                                           {set.name}
@@ -4065,22 +4059,22 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                     onClick={() => setTestComponentsOpen(true)}
                                     sx={{ minHeight: 40, width: { xs: '100%', sm: 'auto' } }}
                                   >
-                                    Test Components
+                                    {t('sqlEditor.testComponents')}
                                   </Button>
                                 </>
                               )}
                               {selectedFabOption?.name === 'Process_Data' && (
                                 <>
                                   <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 210 }, minHeight: 40 }}>
-                                    <InputLabel id="saved-channel-set-label">Pre-defined channels</InputLabel>
+                                    <InputLabel id="saved-channel-set-label">{t('sqlEditor.predefinedChannels')}</InputLabel>
                                     <Select
                                       labelId="saved-channel-set-label"
-                                      label="Pre-defined channels"
+                                      label={t('sqlEditor.predefinedChannels')}
                                       value={selectedChannelSet}
                                       onChange={(event: SelectChangeEvent) => setSelectedChannelSet(event.target.value)}
                                       disabled={visibleChannelSets.length === 0}
                                     >
-                                      <MenuItem value="">— none —</MenuItem>
+                                      <MenuItem value="">{t('sqlEditor.noneOption')}</MenuItem>
                                       {visibleChannelSets.map((set) => (
                                         <MenuItem key={`${set.operation}|${set.name}`} value={set.name}>
                                           {set.name}
@@ -4095,7 +4089,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                     onClick={() => setChannelDialogOpen(true)}
                                     sx={{ minHeight: 40, width: { xs: '100%', sm: 'auto' } }}
                                   >
-                                    Select Channels
+                                    {t('sqlEditor.selectChannels')}
                                   </Button>
                                 </>
                               )}
@@ -4107,17 +4101,17 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                 disabled={fabAvailableColumns.length === 0}
                                 sx={{ minHeight: 40 }}
                               >
-                                Add parameter
+                                {t('sqlEditor.addParameter')}
                               </Button>
                             </Stack>
                           </Stack>
                           {fabColumnsLoading ? (
                             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                              Loading columns… (the base SQL selects all columns of the primary table)
+                              {t('sqlEditor.loadingColumnsStar')}
                             </Typography>
                           ) : fabAvailableColumns.length === 0 ? (
                             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                              No additional columns available — the base SQL selects no explicit columns.
+                              {t('sqlEditor.noAdditionalColumns')}
                             </Typography>
                           ) : (
                             fabExtraFilters.map((filter) => {
@@ -4128,7 +4122,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                               const dataType = filter.dataType ?? 'text'
                               const valueType = valueInputType(dataType)
                               /** Hover hint for the value field, when the active operator needs one. */
-                              const valueTooltip = isLikeOp ? LIKE_TOOLTIP : isInOp ? IN_TOOLTIP : ''
+                              const valueTooltip = isLikeOp ? t('tooltips.likeValue') : isInOp ? t('tooltips.inValue') : ''
                               return (
                                 <Stack
                                   key={filter.id}
@@ -4138,10 +4132,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                   sx={{ mt: 1, alignItems: { xs: 'stretch', sm: 'center' } }}
                                 >
                                   <FormControl size="small" sx={{ width: { xs: '100%', sm: 260 } }}>
-                                    <InputLabel id={`ef-col-${filter.id}`}>Column</InputLabel>
+                                    <InputLabel id={`ef-col-${filter.id}`}>{t('sqlEditor.column')}</InputLabel>
                                     <Select
                                       labelId={`ef-col-${filter.id}`}
-                                      label="Column"
+                                      label={t('sqlEditor.column')}
                                       value={filter.column}
                                       onChange={(event: SelectChangeEvent) =>
                                         updateFabExtraFilter(filter.id, 'column', event.target.value)
@@ -4155,10 +4149,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                     </Select>
                                   </FormControl>
                                   <FormControl size="small" sx={{ width: { xs: '100%', sm: 140 }, flexShrink: 0 }}>
-                                    <InputLabel id={`ef-type-${filter.id}`}>Type</InputLabel>
+                                    <InputLabel id={`ef-type-${filter.id}`}>{t('sqlEditor.type')}</InputLabel>
                                     <Select
                                       labelId={`ef-type-${filter.id}`}
-                                      label="Type"
+                                      label={t('sqlEditor.type')}
                                       value={dataType}
                                       onChange={(event: SelectChangeEvent) =>
                                         updateFabExtraFilter(filter.id, 'dataType', event.target.value)
@@ -4166,16 +4160,16 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                     >
                                       {EXTRA_DATA_TYPES.map((type) => (
                                         <MenuItem key={type.value} value={type.value}>
-                                          {type.label}
+                                          {t(type.labelKey)}
                                         </MenuItem>
                                       ))}
                                     </Select>
                                   </FormControl>
                                   <FormControl size="small" sx={{ width: { xs: '100%', sm: 116 }, flexShrink: 0 }}>
-                                    <InputLabel id={`ef-op-${filter.id}`}>Op</InputLabel>
+                                    <InputLabel id={`ef-op-${filter.id}`}>{t('sqlEditor.op')}</InputLabel>
                                     <Select
                                       labelId={`ef-op-${filter.id}`}
-                                      label="Op"
+                                      label={t('sqlEditor.op')}
                                       value={filter.operator}
                                       onChange={(event: SelectChangeEvent) =>
                                         updateFabExtraFilter(filter.id, 'operator', event.target.value)
@@ -4203,7 +4197,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                       >
                                         <TextField
                                           size="small"
-                                          label="Value"
+                                          label={t('sqlEditor.value')}
                                           type={valueType}
                                           value={filter.value}
                                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -4214,7 +4208,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                         />
                                         <TextField
                                           size="small"
-                                          label="to"
+                                          label={t('sqlEditor.to')}
                                           type={valueType}
                                           value={filter.valueTo}
                                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -4229,7 +4223,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                         <Box sx={{ flexGrow: 1, minWidth: 0, width: { xs: '100%', sm: 'auto' } }}>
                                           <TextField
                                             size="small"
-                                            label="Value"
+                                            label={t('sqlEditor.value')}
                                             type={valueType}
                                             value={filter.value}
                                             onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -4243,7 +4237,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                     ) : (
                                       <TextField
                                         size="small"
-                                        label="Value"
+                                        label={t('sqlEditor.value')}
                                         type={valueType}
                                         value={filter.value}
                                         onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -4257,7 +4251,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                                   <IconButton
                                     size="small"
                                     onClick={() => removeFabExtraFilter(filter.id)}
-                                    aria-label="Remove parameter"
+                                    aria-label={t('sqlEditor.removeParameter')}
                                     sx={{ flexShrink: 0 }}
                                   >
                                     <DeleteIcon />
@@ -4269,7 +4263,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         </>
                       ) : (
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                          No template selected.
+                          {t('sqlEditor.noTemplateSelected')}
                         </Typography>
                       )}
                     </Box>
@@ -4292,7 +4286,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                     userSelect: 'none',
                   }}
                 >
-                  {editorExpanded ? 'Hide query editor' : 'Show query editor'}
+                  {editorExpanded ? t('sqlEditor.hideEditor') : t('sqlEditor.showEditor')}
                 </Link>
                 {editorExpanded ? (
                   <Box>
@@ -4301,10 +4295,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       color="text.secondary"
                       sx={{ display: 'block', mb: 0.5 }}
                     >
-                      SQL (SELECT only — read-only enforced)
+                      {t('sqlEditor.sqlLabel')}
                     </Typography>
                     <CodeEditor
-                      ariaLabel="SQL (SELECT only — read-only enforced)"
+                      ariaLabel={t('sqlEditor.sqlLabel')}
                       language="sql"
                       sqlDialect={completionDbType(selectedConnection)}
                       value={sqlText}
@@ -4316,7 +4310,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   <Box
                     role="button"
                     tabIndex={0}
-                    aria-label="Expand query editor"
+                    aria-label={t('sqlEditor.expandEditor')}
                     onClick={() => setEditorExpanded(true)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
@@ -4343,7 +4337,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       noWrap
                       sx={{ flexGrow: 1, minWidth: 0, fontFamily: 'Consolas, monospace', fontSize: '0.85rem' }}
                     >
-                      {sqlPreviewLine(sqlText) || 'No SQL yet — expand to write a query.'}
+                      {sqlPreviewLine(sqlText) || t('sqlEditor.noSqlYet')}
                     </Typography>
                     <KeyboardArrowDownIcon sx={{ flexShrink: 0, color: 'primary.main', fontSize: '1.4rem' }} />
                   </Box>
@@ -4374,12 +4368,12 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                     sx={{ minHeight: 48 }}
                   >
                     {running
-                      ? 'Running…'
+                      ? t('sqlEditor.running')
                       : runFeedback === 'success'
-                        ? 'Done'
+                        ? t('sqlEditor.done')
                         : runFeedback === 'error'
-                          ? 'Failed'
-                          : 'Run'}
+                          ? t('sqlEditor.failed')
+                          : t('sqlEditor.run')}
                   </Button>
                   {running && (
                     <Button
@@ -4390,10 +4384,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       disabled={cancelling}
                       sx={{ minHeight: 48 }}
                     >
-                      {cancelling ? 'Cancelling…' : 'Cancel'}
+                      {cancelling ? t('sqlEditor.cancelling') : t('sqlEditor.cancel')}
                     </Button>
                   )}
-                  <Tooltip title="Pretty-print the SQL for the selected connection's dialect">
+                  <Tooltip title={t('sqlEditor.formatTooltip')}>
                     <span style={{ display: 'flex' }}>
                       <Button
                         variant="outlined"
@@ -4402,11 +4396,11 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         disabled={!sqlText.trim() || running}
                         sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
                       >
-                        Format
+                        {t('sqlEditor.format')}
                       </Button>
                     </span>
                   </Tooltip>
-                  <Tooltip title="Show your recent SQL runs — click Run or Load to reuse them">
+                  <Tooltip title={t('sqlEditor.recentRunsTooltip')}>
                     <Button
                       variant={historyOpen ? 'contained' : 'outlined'}
                       startIcon={<HistoryIcon />}
@@ -4414,7 +4408,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       disabled={running}
                       sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
                     >
-                      Recent runs
+                      {t('sqlEditor.recentRuns')}
                     </Button>
                   </Tooltip>
                   <Button
@@ -4424,9 +4418,9 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                     disabled={running}
                     sx={{ minHeight: 48 }}
                   >
-                    AI assist
+                    {t('sqlEditor.aiAssist')}
                   </Button>
-                  <Tooltip title="Save the current query as a custom query">
+                  <Tooltip title={t('sqlEditor.saveSqlTooltip')}>
                     <span style={{ display: 'flex' }}>
                       <Button
                         variant="outlined"
@@ -4435,7 +4429,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         disabled={!canSavePredefined || savingQuery}
                         sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
                       >
-                        Save SQL
+                        {t('sqlEditor.saveSql')}
                       </Button>
                     </span>
                   </Tooltip>
@@ -4444,8 +4438,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   <Tooltip
                     title={
                       customQueryCount > 0
-                        ? `Open your ${customQueryCount} saved custom quer${customQueryCount === 1 ? 'y' : 'ies'}`
-                        : 'Open your saved custom queries'
+                        ? t('sqlEditor.openCustomQueries', { count: customQueryCount })
+                        : t('sqlEditor.openCustomQueriesNone')
                     }
                   >
                     <span style={{ display: 'flex' }}>
@@ -4465,7 +4459,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                           onClick={() => setCustomDialogOpen(true)}
                           sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
                         >
-                          Custom
+                          {t('sqlEditor.custom')}
                         </Button>
                       </Badge>
                     </span>
@@ -4499,8 +4493,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
           <LibraryBooksIcon color="primary" />
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>Custom queries</Box>
-          <IconButton onClick={() => setCustomDialogOpen(false)} aria-label="Close custom queries">
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>{t('customQueries.title')}</Box>
+          <IconButton onClick={() => setCustomDialogOpen(false)} aria-label={t('customQueries.close')}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -4518,21 +4512,21 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
 
       {/* Save as pre-defined dialog */}
       <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)}>
-        <DialogTitle>Save as pre-defined</DialogTitle>
+        <DialogTitle>{t('saveDialog.title')}</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={1.5}>
             {mode === 'sql' && (
               <FormControl fullWidth size="small">
-                <InputLabel id="save-sql-select-label">Existing custom SQL (optional)</InputLabel>
+                <InputLabel id="save-sql-select-label">{t('saveDialog.existingSql')}</InputLabel>
                 <Select
                   labelId="save-sql-select-label"
-                  label="Existing custom SQL (optional)"
+                  label={t('saveDialog.existingSql')}
                   value={selectedSqlId}
                   onChange={handleSqlSelectChange}
                   disabled={sqlsLoading}
                 >
                   <MenuItem value="">
-                    <em>None — save as new</em>
+                    <em>{t('saveDialog.noneSaveAsNew')}</em>
                   </MenuItem>
                   {existingSqls.map((q) => (
                     <MenuItem key={q.id} value={q.id}>
@@ -4543,22 +4537,22 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               </FormControl>
             )}
             <TextField
-              label="Query name"
+              label={t('saveDialog.queryName')}
               value={saveName}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setSaveName(event.target.value)}
               fullWidth
               required
               autoFocus
-              placeholder="e.g. Monthly sales by region"
+              placeholder={t('saveDialog.queryNamePlaceholder')}
             />
             <TextField
-              label="Description (optional)"
+              label={t('saveDialog.description')}
               value={saveDescription}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setSaveDescription(event.target.value)}
               fullWidth
               multiline
               minRows={2}
-              placeholder="What this query is for — shown on the pre-defined card."
+              placeholder={t('saveDialog.descriptionPlaceholder')}
             />
             {mode === 'builder' && (
               <Box>
@@ -4566,14 +4560,13 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   direction="row"
                   sx={{ mb: 1, alignItems: 'center', justifyContent: 'space-between' }}
                 >
-                  <Typography variant="subtitle2">Prompts (optional)</Typography>
+                  <Typography variant="subtitle2">{t('saveDialog.prompts')}</Typography>
                   <Button size="small" startIcon={<AddIcon />} onClick={addParameter} sx={{ minHeight: 36 }}>
-                    Add prompt
+                    {t('saveDialog.addPrompt')}
                   </Button>
                 </Stack>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Ask for a value when this saved query is run. Each prompt becomes a filter on the
-                  chosen column.
+                  {t('saveDialog.promptsHelp')}
                 </Typography>
                 <Stack spacing={1}>
                   {saveParameters.map((p) => (
@@ -4586,7 +4579,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                     >
                       <TextField
                         size="small"
-                        label="Label"
+                        label={t('saveDialog.label')}
                         value={p.label}
                         onChange={(event: ChangeEvent<HTMLInputElement>) =>
                           updateParameter(p.id, 'label', event.target.value)
@@ -4602,7 +4595,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                           displayEmpty
                         >
                           <MenuItem value="" disabled>
-                            Column
+                            {t('saveDialog.column')}
                           </MenuItem>
                           {columns.map((column) => (
                             <MenuItem key={column.name} value={column.name}>
@@ -4620,7 +4613,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                         >
                           {OPERATORS.map((op) => (
                             <MenuItem key={op.value} value={op.value}>
-                              {op.label}
+                              {op.labelKey ? t(op.labelKey) : op.label}
                             </MenuItem>
                           ))}
                         </Select>
@@ -4628,7 +4621,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       {!NULL_OPERATORS.has(p.operator) && (
                         <TextField
                           size="small"
-                          label="Default"
+                          label={t('saveDialog.default')}
                           value={p.default}
                           onChange={(event: ChangeEvent<HTMLInputElement>) =>
                             updateParameter(p.id, 'default', event.target.value)
@@ -4639,7 +4632,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                       <IconButton
                         size="small"
                         onClick={() => removeParameter(p.id)}
-                        aria-label="Remove prompt"
+                        aria-label={t('saveDialog.removePrompt')}
                         sx={{ alignSelf: { xs: 'flex-end', sm: 'center' } }}
                       >
                         <CloseIcon fontSize="small" />
@@ -4648,7 +4641,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   ))}
                   {saveParameters.length === 0 && (
                     <Typography variant="body2" color="text.secondary">
-                      No prompts — the saved query runs with its current filters.
+                      {t('saveDialog.noPrompts')}
                     </Typography>
                   )}
                 </Stack>
@@ -4656,8 +4649,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             )}
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
               {mode === 'builder'
-                ? 'Saved to Query → Custom (Builder query).'
-                : 'Saved to Query → Custom (custom SQL).'}
+                ? t('saveDialog.savedToBuilder')
+                : t('saveDialog.savedToSql')}
             </Typography>
           </Stack>
           {saveError && (
@@ -4668,7 +4661,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setSaveDialogOpen(false)} disabled={savingQuery} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('saveDialog.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -4677,7 +4670,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             startIcon={savingQuery ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
             sx={{ minHeight: 44 }}
           >
-            {selectedSqlId ? 'Update' : 'Save'}
+            {selectedSqlId ? t('saveDialog.update') : t('saveDialog.save')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -4710,11 +4703,10 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
 
       {/* Popup reminder when a template's required date criteria are blank */}
       <Dialog open={missingDateReminder !== null} onClose={() => setMissingDateReminder(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Date criteria required</DialogTitle>
+        <DialogTitle>{t('reminders.dateCriteriaTitle')}</DialogTitle>
         <DialogContent dividers>
           <Typography gutterBottom>
-            The date field{missingDateReminder && missingDateReminder.length > 1 ? 's' : ''} below must be
-            specified before the query runs — otherwise it would search the full date range.
+            {t('reminders.dateCriteriaBody', { count: missingDateReminder?.length ?? 0 })}
           </Typography>
           <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
             {missingDateReminder?.map((label) => (
@@ -4730,18 +4722,17 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             onClick={() => setMissingDateReminder(null)}
             sx={{ minHeight: 40, minWidth: 96 }}
           >
-            OK
+            {t('reminders.ok')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Popup reminder when a require_filter template is run with no criterion */}
       <Dialog open={requireFilterReminder} onClose={() => setRequireFilterReminder(false)} fullWidth maxWidth="xs">
-        <DialogTitle>Filter required</DialogTitle>
+        <DialogTitle>{t('reminders.filterRequiredTitle')}</DialogTitle>
         <DialogContent dividers>
           <Typography gutterBottom>
-            Specify at least one parameter before running — otherwise the query would search the
-            entire table.
+            {t('reminders.filterRequiredBody')}
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -4750,7 +4741,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             onClick={() => setRequireFilterReminder(false)}
             sx={{ minHeight: 40, minWidth: 96 }}
           >
-            OK
+            {t('reminders.ok')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -4763,19 +4754,22 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         maxWidth="xs"
         fullScreen={fullScreenDialog}
       >
-        <DialogTitle>Save to warehouse</DialogTitle>
+        <DialogTitle>{t('warehouseDialog.title')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            Copies the current grid (
-            {effectiveResult
-              ? `${effectiveResult.rows.length.toLocaleString()} rows · ${effectiveResult.columns.length.toLocaleString()} columns`
-              : 'no data'}
-            ) into the local SQLite warehouse shown in the Dashboard tab.
+            {t('warehouseDialog.body', {
+              size: effectiveResult
+                ? t('warehouseDialog.size', {
+                    rows: effectiveResult.rows.length.toLocaleString(),
+                    columns: effectiveResult.columns.length.toLocaleString(),
+                  })
+                : t('warehouseDialog.noData'),
+            })}
           </Typography>
           <TextField
             autoFocus
             fullWidth
-            label="Snapshot name"
+            label={t('warehouseDialog.nameLabel')}
             value={warehouseSaveName}
             onChange={(event) => setWarehouseSaveName(event.target.value)}
             onKeyDown={(event) => {
@@ -4791,7 +4785,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setWarehouseSaveOpen(false)} disabled={warehouseSaving} sx={{ minHeight: 40 }}>
-            Cancel
+            {t('warehouseDialog.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -4802,7 +4796,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             disabled={warehouseSaving || !warehouseSaveName.trim()}
             sx={{ minHeight: 40 }}
           >
-            Save
+            {t('warehouseDialog.save')}
           </Button>
         </DialogActions>
       </Dialog>

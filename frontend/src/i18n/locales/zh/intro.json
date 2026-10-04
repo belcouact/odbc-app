@@ -1,0 +1,97 @@
+{
+  "tour": {
+    "progress": "第 {{current}} 步，共 {{total}} 步",
+    "skip": "跳过",
+    "back": "上一步",
+    "next": "下一步",
+    "finish": "完成",
+    "steps": {
+      "connections": {
+        "title": "连接你的数据库",
+        "body": "本应用通过 ODBC 连接你的数据库。点击 <b>添加连接</b> —— 本机已安装的 DSN 会被自动检测并列出。保存后它会作为徽标显示在顶部栏。"
+      },
+      "queryTemplate": {
+        "title": "使用模板查询",
+        "body": "选择你在上方行中保存的连接。当存在现成的快速查询时，会出现 <b>模板</b> 菜单 —— 选择一个，填写条件（带红色 * 的日期为必填），然后点击 <b>运行</b>。SQL 会自动为你生成。"
+      },
+      "scriptTemplate": {
+        "title": "使用模板脚本进行分析",
+        "body": "打开 <b>脚本</b> 标签页，从 <b>模板</b> 菜单选择一个脚本，例如 <i>analyze-mesa-yield</i>：它会加载到编辑器中。点击 <b>运行</b>，图表会在浏览器中打开，文件同时保存到你的“下载”文件夹。"
+      }
+    }
+  },
+  "intro": {
+    "nav": {
+      "query": "查询",
+      "analyze": "分析",
+      "dashboard": "仪表盘",
+      "tools": "工具"
+    },
+    "scenes": {
+      "intro": "开场",
+      "query": "查询",
+      "charts": "图表",
+      "scripts": "脚本",
+      "ai": "AI 助手",
+      "finale": "终章"
+    },
+    "hero": {
+      "query": "查询。",
+      "analyze": "分析。",
+      "dashboard": "仪表盘。",
+      "ask": "提问。",
+      "lead": "一个本地应用，陪你走完 ODBC 数据的每一步 —— 连接、免 SQL 查询、分析、图表，并随时询问内置的 AI 助手。"
+    },
+    "demo": {
+      "run": "运行",
+      "last30Days": "最近 30 天",
+      "charts": {
+        "bar": "柱状图",
+        "trend": "趋势",
+        "pie": "饼图",
+        "scatter": "散点图",
+        "histogram": "直方图",
+        "box": "箱线图"
+      },
+      "aiQuestion": "哪些地区正在落后？",
+      "aiAnswer": "西部比地区平均值低 29%，南部紧随其后。要不要生成一张收入对比平均值的柱状图？",
+      "actions": {
+        "sql": "编写 SQL",
+        "script": "起草脚本",
+        "chart": "生成图表",
+        "explain": "解释结果"
+      }
+    },
+    "captions": {
+      "connect": {
+        "title": "一次连接，免 SQL 查询。",
+        "body": "添加一个 ODBC DSN、连接字符串或 Access 文件，然后运行现成的快速查询 —— 日期、批次、分支 —— SQL 会自动为你生成。更想写原生 SQL？只读的 SELECT 编辑器就在那里，结果会显示在下方的网格中。"
+      },
+      "charts": {
+        "title": "看清数据的形状。",
+        "body": "分析标签页能把结果变成柱状、饼图、趋势、散点、直方图、箱线或 KPI 图表 —— 选好 X 轴和 Y 轴，选项会自动适配。在仪表盘视图中拖动列进行组合，把结果快照进本地仓库，或固定你经常查看的图表。"
+      },
+      "scripts": {
+        "title": "按你的方式分析。",
+        "body": "在分析标签页中编写 Python 或 JavaScript 脚本，对网格中的每一行运行 —— 模板脚本也已内置 —— 并实时查看 stdout 输出。复制结果，或导出为 Excel、CSV 或 SAS XPT。"
+      },
+      "ai": {
+        "title": "让 AI 帮你看一眼。",
+        "body": "AI 助手位于查询和分析标签页，可在 sql、script 或 chart 模式下编写 SQL、起草脚本或构建图表。它可对接任何兼容 OpenAI 的端点 —— 你的密钥保存在 Windows 凭据管理器中。"
+      }
+    },
+    "final": {
+      "data": "你的数据。",
+      "pc": "你的电脑。",
+      "lead": "连接保留在本机，查询默认只读，除非你主动导出，否则任何数据都不会离开你的电脑。无需联网。",
+      "ai": "AI",
+      "export": "导出"
+    },
+    "watchAgain": "再看一遍",
+    "replay": "重播",
+    "aria": {
+      "progress": "开场进度",
+      "closeIntro": "关闭开场介绍"
+    }
+  }
+}

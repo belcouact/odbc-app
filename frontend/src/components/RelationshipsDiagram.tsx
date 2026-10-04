@@ -10,6 +10,7 @@ import Chip from '@mui/material/Chip'
 import Typography from '@mui/material/Typography'
 import LinkIcon from '@mui/icons-material/Link'
 import type { EChartsOption } from 'echarts'
+import { useTranslation } from 'react-i18next'
 import EChart from './EChart'
 import type { SnapshotRelationship } from '../api/client'
 
@@ -36,6 +37,7 @@ interface RelationshipsDiagramProps {
 }
 
 export default function RelationshipsDiagram({ relationships, height = 440 }: RelationshipsDiagramProps) {
+  const { t } = useTranslation('relationships')
   // A relationship between a table and itself draws no edge in ECharts, so it
   // is surfaced as a chip instead of a line.
   const edges = relationships.filter((item) => item.left_snapshot_id !== item.right_snapshot_id)
@@ -60,10 +62,10 @@ export default function RelationshipsDiagram({ relationships, height = 440 }: Re
         }
         if (p.dataType === 'edge') {
           const data = p.data ?? {}
-          return `<strong>${data.relName ?? ''}</strong><br/>${data.lname ?? ''}.${data.lcol ?? ''} = ${data.rname ?? ''}.${data.rcol ?? ''}<br/>${data.jtype ?? ''} join`
+          return `<strong>${data.relName ?? ''}</strong><br/>${data.lname ?? ''}.${data.lcol ?? ''} = ${data.rname ?? ''}.${data.rcol ?? ''}<br/>${data.jtype ? t(`joinTypes.${data.jtype}`) : ''}`
         }
         const count = Number(p.data?.relCount ?? 0)
-        return `<strong>${p.name ?? ''}</strong><br/>${count} relationship${count === 1 ? '' : 's'}`
+        return `<strong>${p.name ?? ''}</strong><br/>${t('diagram.relationshipCount', { count })}`
       },
     },
     series: [
@@ -141,8 +143,8 @@ export default function RelationshipsDiagram({ relationships, height = 440 }: Re
     return (
       <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
         {relationships.length === 0
-          ? 'No relationships to draw yet.'
-          : 'Only same-table relationships exist — they are listed below.'}
+          ? t('diagram.emptyNone')
+          : t('diagram.emptySelfOnly')}
       </Typography>
     )
   }
@@ -157,7 +159,7 @@ export default function RelationshipsDiagram({ relationships, height = 440 }: Re
       {selfJoins.length > 0 && (
         <Box sx={{ mt: 1 }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Same-table relationships (not drawn):
+            {t('diagram.sameTableHeading')}
           </Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
             {selfJoins.map((item) => (
@@ -178,9 +180,10 @@ export default function RelationshipsDiagram({ relationships, height = 440 }: Re
 
 /** Legend explaining the line styles (colors match JOIN_COLORS above). */
 function StackLegend() {
+  const { t } = useTranslation('relationships')
   const entries = [
-    { label: 'Left join — keeps unmatched left rows', color: JOIN_COLORS.left, dashed: false },
-    { label: 'Inner join — matches only', color: JOIN_COLORS.inner, dashed: true },
+    { label: t('diagram.legendLeft'), color: JOIN_COLORS.left, dashed: false },
+    { label: t('diagram.legendInner'), color: JOIN_COLORS.inner, dashed: true },
   ]
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center', mt: 0.5 }}>

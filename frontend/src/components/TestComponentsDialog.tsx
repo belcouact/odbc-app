@@ -24,6 +24,7 @@ import Typography from '@mui/material/Typography'
 import CloseIcon from '@mui/icons-material/Close'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SaveIcon from '@mui/icons-material/Save'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import type { ComponentSet, TestComponent } from '../api/client'
 
@@ -71,6 +72,7 @@ export default function TestComponentsDialog({
   onSaved,
   onNotice,
 }: TestComponentsDialogProps) {
+  const { t } = useTranslation('dialogs')
   const [analyses, setAnalyses] = useState<TestComponent[]>([])
   const [analysesLoading, setAnalysesLoading] = useState(false)
   const [analysesError, setAnalysesError] = useState<string | null>(null)
@@ -115,7 +117,7 @@ export default function TestComponentsDialog({
           setAnalysesFor(target)
         })
         .catch((err) =>
-          setAnalysesError(err instanceof Error ? err.message : 'Failed to load test components'),
+          setAnalysesError(err instanceof Error ? err.message : t('testComponents.loadFailed')),
         )
         .finally(() => setAnalysesLoading(false))
     }
@@ -206,10 +208,10 @@ export default function TestComponentsDialog({
     try {
       await api.saveComponentSet({ name: name.trim(), result_names: selectedResultNames })
       onSaved?.()
-      onNotice?.(`Component set '${name.trim()}' saved.`)
+      onNotice?.(t('testComponents.savedNotice', { name: name.trim() }))
       refreshExistingSets()
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save the component set')
+      setSaveError(err instanceof Error ? err.message : t('testComponents.saveFailed'))
     } finally {
       setBusy(false)
     }
@@ -222,10 +224,10 @@ export default function TestComponentsDialog({
     try {
       await api.saveComponentSet({ name: selectedSetName, result_names: selectedResultNames })
       onSaved?.()
-      onNotice?.(`Component set '${selectedSetName}' updated.`)
+      onNotice?.(t('testComponents.updatedNotice', { name: selectedSetName }))
       refreshExistingSets()
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to update the component set')
+      setSaveError(err instanceof Error ? err.message : t('testComponents.updateFailed'))
     } finally {
       setBusy(false)
     }
@@ -238,12 +240,12 @@ export default function TestComponentsDialog({
     try {
       await api.deleteComponentSet(selectedSetName)
       onSaved?.()
-      onNotice?.(`Component set '${selectedSetName}' deleted.`)
+      onNotice?.(t('testComponents.deletedNotice', { name: selectedSetName }))
       setSelectedSetName('')
       setName('')
       refreshExistingSets()
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to delete the component set')
+      setSaveError(err instanceof Error ? err.message : t('testComponents.deleteFailed'))
     } finally {
       setBusy(false)
     }
@@ -265,9 +267,9 @@ export default function TestComponentsDialog({
       slotProps={{ paper: { sx: { borderRadius: 0 } } }}
     >
       <DialogTitle>
-        Test Components
+        {t('testComponents.title')}
         <IconButton
-          aria-label="close"
+          aria-label={t('testComponents.ariaClose')}
           onClick={onClose}
           sx={{ position: 'absolute', right: 8, top: 8 }}
         >
@@ -281,17 +283,17 @@ export default function TestComponentsDialog({
           <Stack sx={{ alignItems: 'center', py: 4 }}>
             <CircularProgress size={28} />
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Loading test components…
+              {t('testComponents.loading')}
             </Typography>
           </Stack>
         ) : emptyAnalyses ? (
-          <Alert severity="info">No test components found for this connection.</Alert>
+          <Alert severity="info">{t('testComponents.none')}</Alert>
         ) : (
           <Stack spacing={2}>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} useFlexGap>
               <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Test components (ANALYSIS)
+                  {t('testComponents.analysesHeading')}
                 </Typography>
                 <Box
                   sx={{
@@ -338,7 +340,7 @@ export default function TestComponentsDialog({
               </Box>
               <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Components ({selectedResultNames.length} selected)
+                  {t('testComponents.componentsHeading', { count: selectedResultNames.length })}
                 </Typography>
                 <Box
                   sx={{
@@ -353,7 +355,7 @@ export default function TestComponentsDialog({
                   <List dense disablePadding>
                     {candidateComponents.length === 0 ? (
                       <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
-                        Select an analysis on the left to list its components.
+                        {t('testComponents.pickAnalysis')}
                       </Typography>
                     ) : (
                       candidateComponents.map((resultName) => {
@@ -395,15 +397,15 @@ export default function TestComponentsDialog({
               sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}
             >
               <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 240 }, flexGrow: 1 }}>
-                <InputLabel id="existing-component-set-label">Existing set</InputLabel>
+                <InputLabel id="existing-component-set-label">{t('testComponents.existingSet')}</InputLabel>
                 <Select
                   labelId="existing-component-set-label"
-                  label="Existing set"
+                  label={t('testComponents.existingSet')}
                   value={selectedSetName}
                   onChange={(event: SelectChangeEvent) => handleExistingChange(event.target.value)}
                   disabled={existingSetsLoading || existingSets.length === 0}
                 >
-                  <MenuItem value="">— load a saved set —</MenuItem>
+                  <MenuItem value="">{t('testComponents.loadSavedSet')}</MenuItem>
                   {existingSets.map((set) => (
                     <MenuItem key={set.name} value={set.name}>
                       {set.name}
@@ -414,8 +416,8 @@ export default function TestComponentsDialog({
               <TextField
                 size="small"
                 fullWidth
-                label="Set name"
-                placeholder="Name this component set"
+                label={t('testComponents.setName')}
+                placeholder={t('testComponents.setNamePlaceholder')}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 sx={{ flexGrow: 1 }}
@@ -429,7 +431,7 @@ export default function TestComponentsDialog({
                   disabled={!canDelete}
                   sx={{ minHeight: 40 }}
                 >
-                  Delete
+                  {t('actions.delete')}
                 </Button>
                 <Button
                   size="small"
@@ -438,7 +440,7 @@ export default function TestComponentsDialog({
                   disabled={!canUpdate}
                   sx={{ minHeight: 40 }}
                 >
-                  Update
+                  {t('actions.update')}
                 </Button>
                 <Button
                   size="small"
@@ -448,7 +450,7 @@ export default function TestComponentsDialog({
                   disabled={!canSave}
                   sx={{ minHeight: 40 }}
                 >
-                  Save
+                  {t('actions.save')}
                 </Button>
               </Stack>
             </Stack>
@@ -459,7 +461,7 @@ export default function TestComponentsDialog({
               multiline
               minRows={2}
               maxRows={4}
-              placeholder="Selected RESULT_NAMEs appear here — editable before loading"
+              placeholder={t('testComponents.selectionPlaceholder')}
               value={componentValue}
               onChange={(event) => setComponentValue(event.target.value)}
             />
@@ -470,7 +472,7 @@ export default function TestComponentsDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button size="small" variant="outlined" onClick={onClose} sx={{ minHeight: 40 }} disabled={busy}>
-          Close
+          {t('actions.close')}
         </Button>
         <Button
           size="small"
@@ -480,7 +482,7 @@ export default function TestComponentsDialog({
           disabled={busy || selectedResultNames.length === 0}
           sx={{ minHeight: 40 }}
         >
-          Load to RESULT_NAME
+          {t('testComponents.loadToResultName')}
         </Button>
       </DialogActions>
     </Dialog>

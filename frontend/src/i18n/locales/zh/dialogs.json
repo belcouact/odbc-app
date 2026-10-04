@@ -1,0 +1,91 @@
+{
+  "actions": {
+    "cancel": "取消",
+    "close": "关闭",
+    "reuse": "复用",
+    "delete": "删除",
+    "update": "更新",
+    "save": "保存"
+  },
+  "gridTools": {
+    "title": "编辑表格",
+    "ariaClose": "关闭",
+    "tabs": {
+      "ai": "AI 编辑",
+      "types": "数据类型",
+      "add": "添加列"
+    }
+  },
+  "addColumn": {
+    "intro": "用公式创建计算列。用花括号引用列，例如",
+    "introExample": "，也可以组合多列，例如",
+    "introSuffix": "。",
+    "enterFormula": "请输入用于构建该列的公式。",
+    "enterName": "请输入列名。",
+    "nameExists": "已存在同名的新列。",
+    "unknownColumns": "未知的列：{{names}}",
+    "rowsShown": "显示 {{total}} 行中的前 {{n}} 行",
+    "columnName": "列名",
+    "formula": "公式",
+    "columns": "列",
+    "preview": "预览",
+    "add": "添加列"
+  },
+  "aiTransform": {
+    "aiRequestFailed": "AI 请求失败",
+    "transformFailed": "变换失败",
+    "columnPrefix": "列：{{name}}",
+    "gridColumns": "表格列（{{n}}）— 点击可插入",
+    "requirementLabel": "描述要做的修改",
+    "requirementPlaceholder": "例如：新增一列“总计”等于 单价 × 数量，并删除 数量 为 0 的行",
+    "helperText": "会将 {{n}} 行中的 {{sample}} 行作为样本发送给 AI；脚本随后会在所有行上运行。",
+    "recentScripts": "最近的脚本（{{n}}）",
+    "deleteFromHistory": "从历史记录中删除",
+    "deleteScriptAria": "删除脚本",
+    "questionsHeading": "几个需要澄清的问题",
+    "scriptHeading": "生成的脚本",
+    "thinking": "思考中…",
+    "continue": "继续",
+    "generating": "生成中…",
+    "noAnswers": "跳过问题",
+    "generateScript": "生成脚本",
+    "regenerate": "重新生成",
+    "running": "运行中…",
+    "runOnGrid": "在表格上运行"
+  },
+  "columnTypes": {
+    "intro": "选择每一列的处理方式 — 这会影响排序、筛选和显示格式。",
+    "unknownType": "未知",
+    "custom": "自定义",
+    "auto": "自动",
+    "empty": "没有可配置的列。",
+    "kinds": {
+      "number": "数字",
+      "text": "文本",
+      "boolean": "布尔",
+      "date": "日期"
+    }
+  },
+  "testComponents": {
+    "title": "测试组件",
+    "ariaClose": "关闭",
+    "loading": "正在加载测试组件…",
+    "none": "未找到此连接的测试组件。",
+    "analysesHeading": "测试组件（ANALYSIS）",
+    "componentsHeading": "组件（已选 {{count}} 个）",
+    "pickAnalysis": "在左侧选择一个分析，以列出其组件。",
+    "existingSet": "现有组件集",
+    "loadSavedSet": "— 加载已保存的组件集 —",
+    "setName": "组件集名称",
+    "setNamePlaceholder": "为此组件集命名",
+    "selectionPlaceholder": "已选的 RESULT_NAME 会显示在这里 — 加载前可编辑",
+    "loadToResultName": "加载到 RESULT_NAME",
+    "loadFailed": "加载测试组件失败",
+    "saveFailed": "保存组件集失败",
+    "updateFailed": "更新组件集失败",
+    "deleteFailed": "删除组件集失败",
+    "savedNotice": "组件集“{{name}}”已保存。",
+    "updatedNotice": "组件集“{{name}}”已更新。",
+    "deletedNotice": "组件集“{{name}}”已删除。"
+  }
+}

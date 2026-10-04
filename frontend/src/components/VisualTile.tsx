@@ -17,11 +17,11 @@ import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import { useTranslation } from 'react-i18next'
 import EChart from './EChart'
 import KpiCards from './KpiCards'
 import {
   buildVisualChart,
-  VISUAL_SIZE_LABELS,
   VISUAL_SPAN,
   type DashboardVisual,
   type VisualSize,
@@ -65,6 +65,7 @@ export default function VisualTile({
   onResize,
   onRemove,
 }: VisualTileProps) {
+  const { t } = useTranslation('charts')
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const chart = useMemo(() => buildVisualChart(rows, visual.config), [rows, visual.config])
   const isKpi = visual.config.chartType === 'kpi'
@@ -103,10 +104,10 @@ export default function VisualTile({
         >
           {visual.title}
         </Typography>
-        <Tooltip title="Edit in chart builder">
+        <Tooltip title={t('tile.editTooltip')}>
           <IconButton
             size="small"
-            aria-label={`Edit ${visual.title}`}
+            aria-label={t('tile.editAria', { name: visual.title })}
             onClick={(event) => {
               event.stopPropagation()
               onEdit(visual.id)
@@ -115,10 +116,10 @@ export default function VisualTile({
             <EditIcon fontSize="small" />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Tile options">
+        <Tooltip title={t('tile.optionsTooltip')}>
           <IconButton
             size="small"
-            aria-label={`Options for ${visual.title}`}
+            aria-label={t('tile.optionsAria', { name: visual.title })}
             onClick={(event) => setMenuAnchor(event.currentTarget)}
           >
             <MoreVertIcon fontSize="small" />
@@ -129,7 +130,7 @@ export default function VisualTile({
             <ListItemIcon>
               <StraightenIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText primary="Tile size" secondary={VISUAL_SIZE_LABELS[visual.size]} />
+            <ListItemText primary={t('tile.size')} secondary={t(`tileSize.${visual.size}`)} />
           </MenuItem>
           {SIZES.map((size) => (
             <MenuItem
@@ -138,7 +139,7 @@ export default function VisualTile({
               onClick={run(() => onResize(visual.id, size))}
               sx={{ pl: 4 }}
             >
-              {VISUAL_SIZE_LABELS[size]}
+              {t(`tileSize.${size}`)}
             </MenuItem>
           ))}
           <Divider />
@@ -146,26 +147,26 @@ export default function VisualTile({
             <ListItemIcon>
               <ContentCopyIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText primary="Duplicate" />
+            <ListItemText primary={t('tile.duplicate')} />
           </MenuItem>
           <MenuItem disabled={index === 0} onClick={run(() => onMove(visual.id, -1))}>
             <ListItemIcon>
               <ChevronLeftIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText primary="Move earlier" />
+            <ListItemText primary={t('tile.moveEarlier')} />
           </MenuItem>
           <MenuItem disabled={index === count - 1} onClick={run(() => onMove(visual.id, 1))}>
             <ListItemIcon>
               <ChevronRightIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText primary="Move later" />
+            <ListItemText primary={t('tile.moveLater')} />
           </MenuItem>
           <Divider />
           <MenuItem onClick={run(() => onRemove(visual.id))}>
             <ListItemIcon>
               <DeleteOutlinedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText primary="Remove from dashboard" />
+            <ListItemText primary={t('tile.remove')} />
           </MenuItem>
         </Menu>
       </Box>
@@ -178,7 +179,7 @@ export default function VisualTile({
             <KpiCards cards={chart.kpiCards} />
           ) : (
             <Typography variant="body2" color="text.secondary">
-              Select numeric columns to show KPI cards.
+              {t('tile.kpiEmpty')}
             </Typography>
           )
         ) : (
@@ -198,7 +199,7 @@ export default function VisualTile({
                 }}
               >
                 <Typography variant="body2" color="text.secondary">
-                  No data for this visual — edit it to pick different columns.
+                  {t('tile.noData')}
                 </Typography>
               </Box>
             )}

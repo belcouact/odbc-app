@@ -1,6 +1,7 @@
 import Dialog from '@mui/material/Dialog'
 import IconButton from '@mui/material/IconButton'
 import CloseIcon from '@mui/icons-material/Close'
+import { useTranslation } from 'react-i18next'
 import IntroAnimation from './IntroAnimation'
 import { BRAND } from '../theme'
 
@@ -19,6 +20,7 @@ interface IntroDialogProps {
  * top of the animation.
  */
 export default function IntroDialog({ open, onClose }: IntroDialogProps) {
+  const { t } = useTranslation('intro')
   return (
     <Dialog
       open={open}
@@ -28,7 +30,7 @@ export default function IntroDialog({ open, onClose }: IntroDialogProps) {
     >
       <IntroAnimation />
       <IconButton
-        aria-label="Close intro"
+        aria-label={t('intro.aria.closeIntro')}
         onClick={onClose}
         sx={{
           position: 'absolute',

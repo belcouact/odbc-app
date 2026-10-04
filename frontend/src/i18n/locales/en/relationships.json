@@ -1,0 +1,96 @@
+{
+  "actions": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "close": "Close"
+  },
+  "toolbar": {
+    "diagram": "Diagram",
+    "diagramTooltip": "See all relationships in one diagram",
+    "new": "New relationship",
+    "intro": "Link warehouse tables on a shared column, then drill from a row in one table to its rows in another."
+  },
+  "list": {
+    "empty": "No relationships yet — link two snapshots on a shared column (e.g. NAME = NAME).",
+    "exploreTooltip": "Explore — drill into related rows or preview the join",
+    "exploreAria": "Explore {{name}}",
+    "editTooltip": "Edit relationship",
+    "editAria": "Edit {{name}}",
+    "deleteTooltip": "Delete relationship",
+    "deleteAria": "Delete {{name}}"
+  },
+  "editor": {
+    "titleNew": "New relationship",
+    "titleEdit": "Edit relationship",
+    "ariaClose": "Close relationship editor",
+    "name": "Name (optional)",
+    "namePlaceholder": "e.g. Colour readings to LIMS",
+    "leftTable": "Left table",
+    "leftColumn": "Left column",
+    "rightTable": "Right table",
+    "rightColumn": "Right column",
+    "joinType": "Join type",
+    "joinHelper": "Left keeps unmatched rows of the left table; inner keeps only matches.",
+    "saveNew": "Save relationship",
+    "saveEdit": "Save changes"
+  },
+  "delete": {
+    "title": "Delete relationship",
+    "confirm": "Delete “{{name}}”? The snapshots themselves are not touched."
+  },
+  "diagram": {
+    "title": "Relationship diagram",
+    "ariaClose": "Close relationship diagram",
+    "caption": "Every saved relationship as a line between its tables — hover a line for details, scroll to zoom.",
+    "emptyNone": "No relationships to draw yet.",
+    "emptySelfOnly": "Only same-table relationships exist — they are listed below.",
+    "sameTableHeading": "Same-table relationships (not drawn):",
+    "relationshipCount_one": "{{count}} relationship",
+    "relationshipCount_other": "{{count}} relationships",
+    "legendLeft": "Left join — keeps unmatched left rows",
+    "legendInner": "Inner join — matches only"
+  },
+  "explore": {
+    "title": "Explore — {{name}}",
+    "ariaClose": "Close explore",
+    "tabs": {
+      "drill": "Drill down",
+      "join": "Joined view"
+    },
+    "drillHint": "Click a row to see its related rows in the linked tables.",
+    "drillHintTruncated": "Click a row to see its related rows in the linked tables — showing the first {{n}} of {{total}} rows.",
+    "noStoredRows": "This table has no stored rows.",
+    "relatedRowsFor": "Related rows for",
+    "noOutgoing": "No relationships start at this table.",
+    "rowCount_one": "{{count}} row",
+    "rowCount_other": "{{count}} rows",
+    "noMatchingRows": "No matching rows in this table.",
+    "joinSummary": "{{left}} {{join}} {{right}} on {{lcol}} = {{rcol}} — {{total}} rows{{truncated}} · {{matched}} of {{leftRows}} left rows matched.",
+    "joinTruncated": " (first {{n}} shown)",
+    "joinEmpty": "The join produced no rows."
+  },
+  "joinTypes": {
+    "left": "left join",
+    "inner": "inner join"
+  },
+  "joinTypeShort": {
+    "left": "left",
+    "inner": "inner"
+  },
+  "joinTypeNames": {
+    "left": "Left join",
+    "inner": "Inner join"
+  },
+  "notices": {
+    "saved": "Relationship saved",
+    "updated": "Relationship updated",
+    "deleted": "Relationship deleted"
+  },
+  "errors": {
+    "loadList": "Failed to load relationships",
+    "loadTable": "Failed to load the table",
+    "buildJoin": "Failed to build the join",
+    "save": "Failed to save the relationship",
+    "delete": "Failed to delete the relationship"
+  }
+}

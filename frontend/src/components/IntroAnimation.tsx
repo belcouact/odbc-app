@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 import { BRAND } from '../theme'
@@ -26,18 +27,13 @@ import './IntroAnimation.css'
  */
 
 const SCENE_DURATIONS = [5600, 8000, 8200, 7800, 7600, 0]
-const SCENE_LABELS = ['Intro', 'Query', 'Charts', 'Scripts', 'AI assistant', 'Finale']
 
-/** The app's real top-level tabs, mirrored in the mock window. */
-const NAV_TABS = ['Query', 'Analyze', 'Dashboard', 'Tools']
 /** Which nav tab each scene sits under — charts and scripts both live in Analyze. */
 const SCENE_TAB_INDEX: (number | null)[] = [null, 0, 1, 1, 0, null]
 
 const SQL =
   "SELECT region, revenue\nFROM orders\nWHERE status = 'Shipped'\n  AND order_date >= CURRENT_DATE - 30\nORDER BY revenue DESC;"
 const PY = 'df["share"] = df.revenue / df.revenue.sum()\nprint(df.nlargest(3, "revenue"))'
-const AI_TEXT =
-  'West trails the regional average by 29%, and South is next. Want a bar chart of revenue against average?'
 const OUTPUT =
   '  region   revenue  share\n  East       52700  0.253\n  North      48200  0.231\n  Central    41100  0.197'
 
@@ -50,27 +46,6 @@ const PALETTE = {
   sage: BRAND.sage,
 }
 
-const CAPTIONS = [
-  {
-    title: 'Connect once. Query without SQL.',
-    body: 'Add an ODBC DSN, a connection string or an Access file, then run a ready-made quick-search — dates, lots, branches — and the SQL is written for you. Prefer raw SQL? The read-only SELECT editor is right there, and results land in the grid below.',
-  },
-  {
-    title: 'See the shape of it.',
-    body: 'The Analyze tab turns results into bar, pie, trend, scatter, histogram, box or KPI charts — pick an X and a Y axis and the options adapt. Drag columns together in the Dashboard view, snapshot results into the local warehouse, or pin the charts you keep coming back to.',
-  },
-  {
-    title: 'Analyze it your way.',
-    body: 'Write a Python or JavaScript script in the Analyze tab and run it over every row in the grid — template scripts included — and watch stdout stream in live. Copy the output, or export to Excel, CSV or SAS XPT.',
-  },
-  {
-    title: 'Ask for a second pair of eyes.',
-    body: 'The AI assistant sits on the Query and Analyze tabs and writes SQL, drafts scripts or builds charts in sql, script or chart mode. Point it at any OpenAI-compatible endpoint — your key stays in the Windows Credential Manager.',
-  },
-]
-
-const QUERY_CHIPS = ['Sales DSN', 'orders', 'region, revenue', 'status = Shipped', 'Last 30 days']
-const CHART_LABELS = ['Bar', 'Trend', 'Pie', 'Scatter', 'Histogram', 'Box']
 const RESULT_ROWS = [
   { region: 'East', revenue: '52,700' },
   { region: 'North', revenue: '48,200' },
@@ -172,11 +147,64 @@ function useTypewriter(active: boolean, text: string, delayMs: number, speedMs: 
 }
 
 export default function IntroAnimation() {
+  const { t } = useTranslation('intro')
+
   const reduced = useMemo(
     () =>
       typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     [],
   )
+
+  const sceneLabels = useMemo(
+    () => [
+      t('intro.scenes.intro'),
+      t('intro.scenes.query'),
+      t('intro.scenes.charts'),
+      t('intro.scenes.scripts'),
+      t('intro.scenes.ai'),
+      t('intro.scenes.finale'),
+    ],
+    [t],
+  )
+
+  const navTabs = useMemo(
+    () => [
+      t('intro.nav.query'),
+      t('intro.nav.analyze'),
+      t('intro.nav.dashboard'),
+      t('intro.nav.tools'),
+    ],
+    [t],
+  )
+
+  const captions = useMemo(
+    () => [
+      { title: t('intro.captions.connect.title'), body: t('intro.captions.connect.body') },
+      { title: t('intro.captions.charts.title'), body: t('intro.captions.charts.body') },
+      { title: t('intro.captions.scripts.title'), body: t('intro.captions.scripts.body') },
+      { title: t('intro.captions.ai.title'), body: t('intro.captions.ai.body') },
+    ],
+    [t],
+  )
+
+  const chartLabels = useMemo(
+    () => [
+      t('intro.demo.charts.bar'),
+      t('intro.demo.charts.trend'),
+      t('intro.demo.charts.pie'),
+      t('intro.demo.charts.scatter'),
+      t('intro.demo.charts.histogram'),
+      t('intro.demo.charts.box'),
+    ],
+    [t],
+  )
+
+  const queryChips = useMemo(
+    () => ['Sales DSN', 'orders', 'region, revenue', 'status = Shipped', t('intro.demo.last30Days')],
+    [t],
+  )
+
+  const aiText = t('intro.demo.aiAnswer')
 
   const [scene, setScene] = useState(0)
   const [chartKind, setChartKind] = useState<ChartKind>('bar')
@@ -186,7 +214,7 @@ export default function IntroAnimation() {
   const chartElRef = useRef<HTMLDivElement | null>(null)
 
   const go = useCallback((i: number) => {
-    setScene(Math.max(0, Math.min(SCENE_LABELS.length - 1, i)))
+    setScene(Math.max(0, Math.min(SCENE_DURATIONS.length - 1, i)))
   }, [])
 
   // Auto-advance through the scenes (the last one is terminal).
@@ -306,10 +334,10 @@ export default function IntroAnimation() {
 
   const sql = useTypewriter(scene === 1, SQL, 1000, 22, reduced)
   const py = useTypewriter(scene === 3, PY, 600, 26, reduced)
-  const ai = useTypewriter(scene === 4, AI_TEXT, 1500, 24, reduced)
+  const ai = useTypewriter(scene === 4, aiText, 1500, 24, reduced)
 
   const scriptRan = scene === 3 && py === PY
-  const aiRan = scene === 4 && ai === AI_TEXT
+  const aiRan = scene === 4 && ai === aiText
   const chartChipIndex = chartKind === 'bar' ? 0 : chartKind === 'line' ? 1 : 2
   const windowVisible = scene > 0 && scene < 5
 
@@ -327,34 +355,33 @@ export default function IntroAnimation() {
         <section className={`ia-s ${scene === 0 ? 'on' : ''}`} aria-hidden={scene !== 0}>
           <h1>
             <b>
-              <span style={d('.1s')}>Query.</span>
+              <span style={d('.1s')}>{t('intro.hero.query')}</span>
             </b>{' '}
             <b>
               <span className="ia-ol" style={d('.3s')}>
-                Analyze.
+                {t('intro.hero.analyze')}
               </span>
             </b>{' '}
             <b>
               <span className="ia-am" style={d('.5s')}>
-                Dashboard.
+                {t('intro.hero.dashboard')}
               </span>
             </b>{' '}
             <b>
               <span className="ia-bl" style={d('.7s')}>
-                Ask.
+                {t('intro.hero.ask')}
               </span>
             </b>
           </h1>
           <p className="ia-lead ia-up" style={d('1.5s')}>
-            One local app for every step with your ODBC data — connect, query without SQL, analyze,
-            chart and ask the built-in AI assistant.
+            {t('intro.hero.lead')}
           </p>
         </section>
 
         {/* Scenes 1–4 — the app window */}
         <section className={`ia-w ${windowVisible ? 'vis' : ''}`} aria-hidden={!windowVisible}>
           <div className="ia-caps">
-            {CAPTIONS.map((caption, i) => (
+            {captions.map((caption, i) => (
               <div key={caption.title} className={`ia-cp ${scene === i + 1 ? 'on' : ''}`}>
                 <h2 className="ia-up">{caption.title}</h2>
                 <p className="ia-up" style={d('.15s')}>
@@ -369,7 +396,7 @@ export default function IntroAnimation() {
               <i />
               <i />
               <i />
-              {NAV_TABS.map((label, i) => (
+              {navTabs.map((label, i) => (
                 <span key={label} className={`ia-tb ${SCENE_TAB_INDEX[scene] === i ? 'on' : ''}`}>
                   {label}
                 </span>
@@ -380,7 +407,7 @@ export default function IntroAnimation() {
               {/* Query */}
               <div className={`ia-pn ${scene === 1 ? 'on' : ''}`}>
                 <div className="ia-chips">
-                  {QUERY_CHIPS.map((chip, i) => (
+                  {queryChips.map((chip, i) => (
                     <span key={chip} className="ia-up" style={d(`${0.1 + i * 0.15}s`)}>
                       {chip}
                     </span>
@@ -406,7 +433,7 @@ export default function IntroAnimation() {
               {/* Chart */}
               <div className={`ia-pn ${scene === 2 ? 'on' : ''}`}>
                 <div className="ia-chips">
-                  {CHART_LABELS.map((label, i) => (
+                  {chartLabels.map((label, i) => (
                     <span key={label} className={chartChipIndex === i ? 'hot' : ''}>
                       {label}
                     </span>
@@ -418,23 +445,23 @@ export default function IntroAnimation() {
               {/* Script */}
               <div className={`ia-pn ${scene === 3 ? 'on' : ''} ${scriptRan ? 'ran' : ''}`}>
                 <pre className="ia-code">{py}</pre>
-                <span className="ia-run">Run</span>
+                <span className="ia-run">{t('intro.demo.run')}</span>
                 <pre className="ia-out">{OUTPUT}</pre>
               </div>
 
               {/* AI assistant */}
               <div className={`ia-pn ${scene === 4 ? 'on' : ''} ${aiRan ? 'ran' : ''}`}>
                 <div className="ia-b ia-me ia-up" style={d('.2s')}>
-                  Which regions are falling behind?
+                  {t('intro.demo.aiQuestion')}
                 </div>
                 <div className="ia-b ia-ai ia-up" style={d('.9s')}>
                   <span className="ia-ty">{ai}</span>
                 </div>
                 <div className="ia-acts">
-                  <span>Write the SQL</span>
-                  <span>Draft a script</span>
-                  <span>Build a chart</span>
-                  <span>Explain results</span>
+                  <span>{t('intro.demo.actions.sql')}</span>
+                  <span>{t('intro.demo.actions.script')}</span>
+                  <span>{t('intro.demo.actions.chart')}</span>
+                  <span>{t('intro.demo.actions.explain')}</span>
                 </div>
               </div>
             </div>
@@ -445,35 +472,34 @@ export default function IntroAnimation() {
         <section className={`ia-s ${scene === 5 ? 'on' : ''}`} aria-hidden={scene !== 5}>
           <h1>
             <b>
-              <span style={d('.1s')}>Your data.</span>
+              <span style={d('.1s')}>{t('intro.final.data')}</span>
             </b>{' '}
             <b>
               <span className="ia-am" style={d('.35s')}>
-                Your PC.
+                {t('intro.final.pc')}
               </span>
             </b>
           </h1>
           <div className="ia-pills ia-up" style={d('.9s')}>
-            <span>Query</span>
-            <span>Analyze</span>
-            <span>Dashboard</span>
-            <span>Tools</span>
-            <span>AI</span>
-            <span>Export</span>
+            <span>{t('intro.nav.query')}</span>
+            <span>{t('intro.nav.analyze')}</span>
+            <span>{t('intro.nav.dashboard')}</span>
+            <span>{t('intro.nav.tools')}</span>
+            <span>{t('intro.final.ai')}</span>
+            <span>{t('intro.final.export')}</span>
           </div>
           <p className="ia-lead ia-up" style={d('1.2s')}>
-            Connections stay on this machine, queries are read-only by default, and nothing leaves
-            your PC unless you export it. No internet needed.
+            {t('intro.final.lead')}
           </p>
           <button type="button" className="ia-go ia-up" style={d('1.5s')} onClick={() => go(0)}>
-            Watch again
+            {t('intro.watchAgain')}
           </button>
         </section>
       </main>
 
-      <nav className="ia-bar" aria-label="Intro progress">
+      <nav className="ia-bar" aria-label={t('intro.aria.progress')}>
         <div className="ia-segs">
-          {SCENE_LABELS.map((label, i) => {
+          {sceneLabels.map((label, i) => {
             const isCurrent = i === scene && SCENE_DURATIONS[i] > 0
             const isDone = i < scene || (i === scene && SCENE_DURATIONS[i] === 0)
             return (
@@ -490,7 +516,7 @@ export default function IntroAnimation() {
           })}
         </div>
         <button type="button" className="ia-rp" onClick={() => go(0)}>
-          Replay
+          {t('intro.replay')}
         </button>
       </nav>
     </div>

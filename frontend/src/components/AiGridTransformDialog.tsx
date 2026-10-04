@@ -16,6 +16,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import DeleteIcon from '@mui/icons-material/Delete'
 import ReplayIcon from '@mui/icons-material/Replay'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import type { GridScriptHistoryEntry } from '../api/client'
 import type { QueryResult } from '../types'
@@ -46,6 +47,7 @@ export default function AiTransformPanel({
   onClose,
   onApply,
 }: AiTransformPanelProps) {
+  const { t } = useTranslation('dialogs')
   const [step, setStep] = useState<Step>('requirement')
   const [requirement, setRequirement] = useState('')
   const [questions, setQuestions] = useState<string[]>([])
@@ -92,7 +94,7 @@ export default function AiTransformPanel({
         await generate([])
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI request failed')
+      setError(err instanceof Error ? err.message : t('aiTransform.aiRequestFailed'))
     } finally {
       setBusy('')
     }
@@ -122,7 +124,7 @@ export default function AiTransformPanel({
       setHistory((prev) => [entry, ...prev.filter((e) => e.script !== response.script)])
       void api.addGridScriptHistory({ requirement: entry.requirement, script: response.script })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI request failed')
+      setError(err instanceof Error ? err.message : t('aiTransform.aiRequestFailed'))
     } finally {
       setBusy('')
     }
@@ -156,7 +158,7 @@ export default function AiTransformPanel({
       })
       onApply(response.rows, response.columns, response.stdout)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transform failed')
+      setError(err instanceof Error ? err.message : t('aiTransform.transformFailed'))
     } finally {
       setBusy('')
     }
@@ -169,7 +171,9 @@ export default function AiTransformPanel({
     if (step !== 'requirement' || working) return
     setRequirement((prev) => {
       const sep = prev.trim() && !prev.trimEnd().endsWith('\n') ? '\n' : ''
-      return prev.trim() ? `${prev.trimEnd()}${sep}Column: ${name}` : `Column: ${name}`
+      return prev.trim()
+        ? `${prev.trimEnd()}${sep}${t('aiTransform.columnPrefix', { name })}`
+        : t('aiTransform.columnPrefix', { name })
     })
   }
 
@@ -182,7 +186,7 @@ export default function AiTransformPanel({
           {result.columns.length > 0 && (
             <Box>
               <Typography variant="caption" color="text.secondary">
-                Grid columns ({result.columns.length}) — click one to insert its name
+                {t('aiTransform.gridColumns', { n: result.columns.length })}
               </Typography>
               <Stack
                 direction="row"
@@ -205,15 +209,18 @@ export default function AiTransformPanel({
 
           {/* Step 1: requirement */}
           <TextField
-            label="What should be changed in the grid?"
-            placeholder="e.g. Normalize the Yield column to percent, and add a flag column for rows below 95%"
+            label={t('aiTransform.requirementLabel')}
+            placeholder={t('aiTransform.requirementPlaceholder')}
             value={requirement}
             onChange={(e) => setRequirement(e.target.value)}
             multiline
             minRows={6}
             fullWidth
             disabled={working || step !== 'requirement'}
-            helperText={`A Python script will be generated and run on the current ${result.row_count.toLocaleString()} row(s). The AI sees the column names and the first ${SAMPLE_ROWS} rows only.`}
+            helperText={t('aiTransform.helperText', {
+              n: result.row_count.toLocaleString(),
+              sample: SAMPLE_ROWS,
+            })}
           />
 
           {/* Recent scripts for re-use */}
@@ -221,7 +228,7 @@ export default function AiTransformPanel({
             <Box>
               <Divider sx={{ mb: 1 }} />
               <Typography variant="caption" color="text.secondary">
-                Recent scripts ({history.length}) — click "Reuse" to run one again
+                {t('aiTransform.recentScripts', { n: history.length })}
               </Typography>
               <List dense disablePadding sx={{ maxHeight: 200, overflowY: 'auto', mt: 0.5 }}>
                 {history.map((entry) => (
@@ -231,12 +238,12 @@ export default function AiTransformPanel({
                     secondaryAction={
                       <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
                         <Button size="small" onClick={() => reuseEntry(entry)} sx={{ minHeight: 36 }}>
-                          Reuse
+                          {t('actions.reuse')}
                         </Button>
-                        <Tooltip title="Delete from history">
+                        <Tooltip title={t('aiTransform.deleteFromHistory')}>
                           <IconButton
                             size="small"
-                            aria-label="Delete script"
+                            aria-label={t('aiTransform.deleteScriptAria')}
                             onClick={() => void deleteEntry(entry.id)}
                             sx={{ minHeight: 36, minWidth: 36 }}
                           >
@@ -273,7 +280,7 @@ export default function AiTransformPanel({
           {/* Step 2: clarifying questions (kept visible after answering) */}
           {step !== 'requirement' && questions.length > 0 && (
             <Stack spacing={1.5}>
-              <Typography variant="subtitle2">A few questions before scripting</Typography>
+              <Typography variant="subtitle2">{t('aiTransform.questionsHeading')}</Typography>
               {questions.map((question, index) => (
                 <TextField
                   key={index}
@@ -294,7 +301,7 @@ export default function AiTransformPanel({
           {step === 'script' && (
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                Generated script — review before running
+                {t('aiTransform.scriptHeading')}
               </Typography>
               <Box
                 component="pre"
@@ -324,7 +331,7 @@ export default function AiTransformPanel({
         {step === 'requirement' && (
           <>
             <Button onClick={onClose} disabled={working} sx={{ minHeight: 44 }}>
-              Cancel
+              {t('actions.cancel')}
             </Button>
             <Button
               variant="contained"
@@ -339,14 +346,14 @@ export default function AiTransformPanel({
               disabled={working || !requirement.trim()}
               sx={{ minHeight: 44 }}
             >
-              {busy === 'clarify' || busy === 'script' ? 'Thinking…' : 'Continue'}
+              {busy === 'clarify' || busy === 'script' ? t('aiTransform.thinking') : t('aiTransform.continue')}
             </Button>
           </>
         )}
         {step === 'clarify' && (
           <>
             <Button onClick={() => void generate(answers)} disabled={busy !== ''} sx={{ minHeight: 44 }}>
-              {busy === 'script' ? 'Generating…' : 'No answers — continue'}
+              {busy === 'script' ? t('aiTransform.generating') : t('aiTransform.noAnswers')}
             </Button>
             <Button
               variant="contained"
@@ -355,7 +362,7 @@ export default function AiTransformPanel({
               startIcon={busy === 'script' ? <CircularProgress size={16} color="inherit" /> : undefined}
               sx={{ minHeight: 44 }}
             >
-              Generate script
+              {t('aiTransform.generateScript')}
             </Button>
           </>
         )}
@@ -367,10 +374,10 @@ export default function AiTransformPanel({
               disabled={busy !== ''}
               sx={{ minHeight: 44 }}
             >
-              Regenerate
+              {t('aiTransform.regenerate')}
             </Button>
             <Button onClick={onClose} disabled={busy !== ''} sx={{ minHeight: 44 }}>
-              Close
+              {t('actions.close')}
             </Button>
             <Button
               variant="contained"
@@ -380,7 +387,7 @@ export default function AiTransformPanel({
               disabled={busy !== ''}
               sx={{ minHeight: 44 }}
             >
-              {busy === 'run' ? 'Running…' : 'Run on grid'}
+              {busy === 'run' ? t('aiTransform.running') : t('aiTransform.runOnGrid')}
             </Button>
           </>
         )}

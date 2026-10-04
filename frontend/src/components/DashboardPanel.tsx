@@ -6,6 +6,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import { useTranslation } from 'react-i18next'
 import VisualTile from './VisualTile'
 import type { DashboardVisual, VisualSize } from '../utils/visual'
 
@@ -41,6 +42,7 @@ export default function DashboardPanel({
   onResize,
   onRemove,
 }: DashboardPanelProps) {
+  const { t } = useTranslation('charts')
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
@@ -64,13 +66,12 @@ export default function DashboardPanel({
         }}
       >
         <DashboardCustomizeIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
-        <Typography variant="h6">This dashboard is empty</Typography>
+        <Typography variant="h6">{t('dashboard.emptyTitle')}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420 }}>
-          Describe the dashboard you want and the AI designs several charts for it. Preview them,
-          then pin the ones you like here — they all read this snapshot’s data.
+          {t('dashboard.emptyBody')}
         </Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd} sx={{ minHeight: 48, mt: 0.5 }}>
-          Build with AI
+          {t('dashboard.buildWithAi')}
         </Button>
       </Paper>
     )
@@ -80,7 +81,7 @@ export default function DashboardPanel({
     <Stack spacing={1.5}>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-          {visuals.length} visual{visuals.length === 1 ? '' : 's'}
+          {t('dashboard.visualCount', { count: visuals.length })}
         </Typography>
         <Button
           variant="outlined"
@@ -89,7 +90,7 @@ export default function DashboardPanel({
           onClick={onAdd}
           sx={{ minHeight: { xs: 48, sm: 40 } }}
         >
-          Add chart
+          {t('dashboard.addChart')}
         </Button>
       </Stack>
 

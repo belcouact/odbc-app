@@ -27,6 +27,8 @@ import Skeleton from '@mui/material/Skeleton'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { alpha } from '@mui/material/styles'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { api } from '../api/client'
 import type { UpdateStatus, VersionHistoryEntry } from '../api/client'
 import ConnectionsPage from './ConnectionsPage'
@@ -56,19 +58,19 @@ interface SettingsPageProps {
   onRequestShutdown?: () => void
 }
 
-const SECTIONS: { value: SettingsSection; label: string; icon: ReactElement }[] = [
-  { value: 'connections', label: 'Connections', icon: <StorageIcon color="primary" /> },
-  { value: 'ai', label: 'AI Assistant', icon: <AutoAwesomeIcon color="secondary" /> },
+const SECTIONS: { value: SettingsSection; labelKey: string; icon: ReactElement }[] = [
+  { value: 'connections', labelKey: 'sections.connections', icon: <StorageIcon color="primary" /> },
+  { value: 'ai', labelKey: 'sections.ai', icon: <AutoAwesomeIcon color="secondary" /> },
 
-  { value: 'about', label: 'About', icon: <InfoIcon color="info" /> },
+  { value: 'about', labelKey: 'sections.about', icon: <InfoIcon color="info" /> },
 ]
 
-const APP_INFO: { label: string; value: string }[] = [
-  { label: 'Copyright / License', value: '© 2026 Alex Luo · Gore internal use' },
-  { label: 'Development Platform', value: 'Trae CN · Deepseek/GLM flash model' },
-  { label: 'Frontend Stack', value: 'React 19 · MUI · AG Grid · ECharts' },
-  { label: 'Backend Stack', value: 'Python · FastAPI · pyodbc · pandas' },
-  { label: 'Build Version', value: '1.0' },
+const APP_INFO: { id: string; labelKey: string; valueKey?: string }[] = [
+  { id: 'copyright', labelKey: 'appInfo.copyrightLabel', valueKey: 'appInfo.copyrightValue' },
+  { id: 'platform', labelKey: 'appInfo.platformLabel', valueKey: 'appInfo.platformValue' },
+  { id: 'frontend', labelKey: 'appInfo.frontendLabel', valueKey: 'appInfo.frontendValue' },
+  { id: 'backend', labelKey: 'appInfo.backendLabel', valueKey: 'appInfo.backendValue' },
+  { id: 'version', labelKey: 'appInfo.versionLabel' },
 ]
 
 /** How many releases About lists; older ones stay in version_history.json. */
@@ -77,84 +79,76 @@ const HISTORY_LIMIT = 5
 /** Feature showcase palette — one accent per card so the grid stays scannable. */
 type FeatureColor = 'primary' | 'info' | 'success' | 'warning' | 'secondary'
 
-const KEY_FEATURES: { title: string; description: string; icon: ReactElement; color: FeatureColor }[] = [
+const KEY_FEATURES: { titleKey: string; descriptionKey: string; icon: ReactElement; color: FeatureColor }[] = [
   {
-    title: 'ODBC Connections',
+    titleKey: 'features.odbc.title',
     icon: <StorageIcon />,
     color: 'primary',
-    description:
-      'Save any ODBC data source as a reusable profile: pick a driver, fill in the settings and test the connection before you query. Switch databases from the picker in the Query tab.',
+    descriptionKey: 'features.odbc.description',
   },
   {
-    title: 'Visual Builder & SQL Editor',
+    titleKey: 'features.builder.title',
     icon: <CodeIcon />,
     color: 'info',
-    description:
-      'Build a query without SQL — choose tables or views, then add filters, pick columns, set a date range and a row limit. Prefer raw SQL? Write it with dialect-aware formatting, or load a connection template to fill in the boilerplate.',
+    descriptionKey: 'features.builder.description',
   },
   {
-    title: 'Charts & KPIs',
+    titleKey: 'features.charts.title',
     icon: <BarChartIcon />,
     color: 'warning',
-    description:
-      'Turn the current result set into 20 chart types — bar, line, area, pie, scatter, histogram, box, waterfall, heatmap and more — or KPI cards. Pick X / Y / colour fields and tune operations, sorting and Top-N.',
+    descriptionKey: 'features.charts.description',
   },
   {
-    title: 'Python Scripting',
+    titleKey: 'features.scripting.title',
     icon: <TerminalIcon />,
     color: 'secondary',
-    description:
-      'Run a Python script against every row in the grid, with live stdout/stderr you can copy out. Five ready-made examples and saveable custom scripts cover the common analysis steps.',
+    descriptionKey: 'features.scripting.description',
   },
   {
-    title: 'Custom Queries & Run History',
+    titleKey: 'features.queries.title',
     icon: <HistoryIcon />,
     color: 'info',
-    description:
-      'Save Builder or SQL queries as reusable custom queries — with value prompts and Excel reports — and reopen any of the last 20 runs, complete with its connection, row count, timing and SQL.',
+    descriptionKey: 'features.queries.description',
   },
   {
-    title: 'Tools & Integrations',
+    titleKey: 'features.tools.title',
     icon: <AccountTreeIcon />,
     color: 'success',
-    description:
-      'Three embedded workspaces open in place: FlowDiagram for AI-assisted architecture diagrams, Project for Gantt-style timelines and ProblemSolving for metric-bowler breakdowns.',
+    descriptionKey: 'features.tools.description',
   },
   {
-    title: 'AI Assistant',
+    titleKey: 'features.ai.title',
     icon: <AutoAwesomeIcon />,
     color: 'primary',
-    description:
-      'A docked assistant with SQL, script and chart modes: explain or optimise a query, draft a Python script, or describe a chart — then apply the answer straight into the editor, script or chart tab.',
+    descriptionKey: 'features.ai.description',
   },
   {
-    title: 'Automatic Updates',
+    titleKey: 'features.updates.title',
     icon: <SystemUpdateAltIcon />,
     color: 'secondary',
-    description:
-      'The app checks for a newer build in the background every hour and, when one is found, downloads, checksum-verifies, swaps and restarts itself on request. Settings → About keeps the release notes and full version history.',
+    descriptionKey: 'features.updates.description',
   },
 ]
 
 /** Third-party apps embedded by the Tools tabs, credited to their authors. */
-const ACKNOWLEDGEMENTS: { tab: string; name: string; href: string; description: string }[] = [
+const ACKNOWLEDGEMENTS: { tab: string; name: string; href: string; descriptionKey: string }[] = [
   {
     tab: 'FlowDiagram',
     name: 'next-ai-draw-io',
     href: 'https://github.com/DayuanJiang/next-ai-draw-io',
-    description: 'AI-assisted draw.io diagrams, courtesy of DayuanJiang’s GitHub repository.',
+    descriptionKey: 'ack.flowdiagram',
   },
   {
     tab: 'Project',
     name: 'light-gantt',
     href: 'https://study-llm.me/apps/light-gantt/',
-    description: 'a Gantt-style timeline planner hosted at study-llm.me.',
+    descriptionKey: 'ack.project',
   },
   {
     tab: 'ProblemSolving',
     name: 'metric-bowler',
     href: 'https://study-llm.me/apps/a3-bowler/metric-bowler',
-    description: 'a metric-bowler breakdown workspace hosted at study-llm.me.',
+    descriptionKey: 'ack.problemsolving',
   },
 ]
 
@@ -164,20 +158,22 @@ const UPDATE_BUSY = ['checking', 'downloading', 'verifying', 'waiting_idle', 're
 /** The subset of those states that belong to an install, so they spin "Update now". */
 const UPDATE_INSTALLING = ['downloading', 'verifying', 'waiting_idle', 'restarting']
 
-function updateSummary(status: UpdateStatus | null): string {
-  if (!status) return 'Loading update status…'
-  if (status.state === 'error') return `Update check failed: ${status.error || status.message}`
+function updateSummary(status: UpdateStatus | null, t: TFunction): string {
+  if (!status) return t('updates.loading')
+  if (status.state === 'error') return t('updates.checkFailed', { error: status.error || status.message })
   if (status.available)
-    return `Update available: v${status.latest_version} (you are on v${status.current_version})${
-      status.forced ? ' — required' : ''
-    }`
-  if (UPDATE_BUSY.includes(status.state)) return status.message || 'Update in progress…'
-  if (!status.source) return 'No update source configured — automatic update checks are off.'
+    return `${t('updates.available', {
+      version: status.latest_version,
+      current: status.current_version,
+    })}${status.forced ? t('updates.required') : ''}`
+  if (UPDATE_BUSY.includes(status.state)) return status.message || t('updates.inProgress')
+  if (!status.source) return t('updates.noSource')
   if (status.checked_at)
-    return `Up to date (v${status.current_version}) · last checked ${new Date(
-      status.checked_at * 1000,
-    ).toLocaleString()}`
-  return `Up to date (v${status.current_version}).`
+    return t('updates.upToDateChecked', {
+      current: status.current_version,
+      checked: new Date(status.checked_at * 1000).toLocaleString(),
+    })
+  return t('updates.upToDate', { current: status.current_version })
 }
 
 /** Roll duration of the Build Version odometer (mirrors the KPI cards' feel). */
@@ -245,6 +241,7 @@ function AboutSection({
    */
   expandUpdates?: number
 }) {
+  const { t } = useTranslation('settings')
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
   const [updateBusy, setUpdateBusy] = useState(false)
   // Release history bundled with this build; null while loading, [] when the
@@ -281,13 +278,13 @@ function AboutSection({
     } catch (err) {
       setUpdateStatus((prev) =>
         prev
-          ? { ...prev, state: 'error', error: err instanceof Error ? err.message : 'Check failed' }
+          ? { ...prev, state: 'error', error: err instanceof Error ? err.message : t('updates.checkFailedShort') }
           : prev,
       )
     } finally {
       setUpdateBusy(false)
     }
-  }, [])
+  }, [t])
 
   // A check spins "Check now"; an install spins "Update now", so progress always
   // sits in the button that was pressed. Either one locks both buttons.
@@ -356,7 +353,7 @@ function AboutSection({
           <Box
             component="img"
             src="/alex.ico"
-            alt="ODBC Query App logo"
+            alt={t('about.logoAlt')}
             sx={{
               width: { xs: 44, sm: 52 },
               height: { xs: 44, sm: 52 },
@@ -369,19 +366,19 @@ function AboutSection({
             }}
           />
           <Box>
-            <Typography variant="h6">ODBC Query App</Typography>
+            <Typography variant="h6">{t('about.appName')}</Typography>
             <Typography variant="body2" color="text.secondary">
-              A desktop SQL query, analysis, and scripting workspace.
+              {t('about.tagline')}
             </Typography>
           </Box>
         </Box>
 
         <Grid container spacing={{ xs: 1, sm: 2 }}>
           {APP_INFO.map((entry) => {
-            const isVersion = entry.label === 'Build Version'
+            const isVersion = entry.id === 'version'
             const version = updateStatus?.current_version ?? '—'
             return (
-              <Grid size={{ xs: 12, sm: 4 }} key={entry.label}>
+              <Grid size={{ xs: 12, sm: 4 }} key={entry.id}>
                 <Paper
                   variant="outlined"
                   sx={{
@@ -415,7 +412,7 @@ function AboutSection({
                       textTransform: 'uppercase',
                     }}
                   >
-                    {entry.label}
+                    {t(entry.labelKey)}
                   </Typography>
                   {isVersion ? (
                     <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.5, color: 'primary.main' }}>
@@ -423,7 +420,7 @@ function AboutSection({
                     </Typography>
                   ) : (
                     <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.5, color: 'primary.main' }}>
-                      {entry.value}
+                      {entry.valueKey ? t(entry.valueKey) : ''}
                     </Typography>
                   )}
                 </Paper>
@@ -449,7 +446,7 @@ function AboutSection({
             <SystemUpdateAltIcon fontSize="small" />
           </Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            Updates
+            {t('about.updates')}
           </Typography>
         </Box>
         <Typography
@@ -459,12 +456,11 @@ function AboutSection({
           aria-live="polite"
           sx={{ mb: 2 }}
         >
-          {updateSummary(updateStatus)}
+          {updateSummary(updateStatus, t)}
         </Typography>
         {!updateStatus?.supported && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Automatic self-update is only available in the packaged desktop app. To update a
-            development checkout, stop the server, replace the files and start it again.
+            {t('updates.unsupported')}
           </Typography>
         )}
         <Box
@@ -482,7 +478,7 @@ function AboutSection({
             disabled={busy}
             sx={{ minHeight: 48, minWidth: { xs: '100%', sm: 132 } }}
           >
-            Check now
+            {t('about.checkNow')}
           </Button>
           <Button
             variant="outlined"
@@ -494,7 +490,7 @@ function AboutSection({
             disabled={busy || !updateStatus?.available || !updateStatus?.supported}
             sx={{ minHeight: 48, minWidth: { xs: '100%', sm: 160 } }}
           >
-            Update now
+            {t('about.updateNow')}
           </Button>
         </Box>
 
@@ -526,7 +522,7 @@ function AboutSection({
               '&:hover': { bgcolor: 'action.hover' },
             }}
           >
-            What’s new &amp; version history
+            {t('about.whatsNewToggle')}
           </Button>
           <Collapse in={detailsOpen} timeout={prefersReducedMotion ? 0 : 240}>
             <Box id="settings-version-details" sx={{ pt: 2 }}>
@@ -544,7 +540,7 @@ function AboutSection({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
                     <SystemUpdateAltIcon fontSize="small" color="primary" />
                     <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      What’s new in v{whatsNew.version}
+                      {t('about.whatsNewIn', { version: whatsNew.version })}
                     </Typography>
                   </Box>
                   <Typography
@@ -571,7 +567,7 @@ function AboutSection({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.5 }}>
                     <HistoryIcon fontSize="small" sx={{ color: 'text.secondary' }} />
                     <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      Version history
+                      {t('about.versionHistory')}
                     </Typography>
                   </Box>
                   {visibleHistory.map((entry, index) => {
@@ -632,7 +628,7 @@ function AboutSection({
                             </Typography>
                             {current && (
                               <Chip
-                                label="this build"
+                                label={t('about.thisBuild')}
                                 size="small"
                                 color="primary"
                                 sx={{ height: 20 }}
@@ -664,7 +660,7 @@ function AboutSection({
                 >
                   <InfoIcon fontSize="small" />
                   <Typography variant="body2">
-                    Release notes aren’t available in this build.
+                    {t('about.notesUnavailable')}
                   </Typography>
                 </Box>
               ) : null}
@@ -674,11 +670,11 @@ function AboutSection({
       </Paper>
 
       <Typography variant="h6" sx={{ mb: 1 }}>
-        Key Functions &amp; Features
+        {t('about.featuresHeading')}
       </Typography>
       <Grid container spacing={{ xs: 1, sm: 2 }}>
         {KEY_FEATURES.map((feature) => (
-          <Grid size={{ xs: 12, sm: 6 }} key={feature.title}>
+          <Grid size={{ xs: 12, sm: 6 }} key={feature.titleKey}>
             <Paper
               variant="outlined"
               sx={{
@@ -714,10 +710,10 @@ function AboutSection({
               </Box>
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
-                  {feature.title}
+                  {t(feature.titleKey)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  {feature.description}
+                  {t(feature.descriptionKey)}
                 </Typography>
               </Box>
             </Paper>
@@ -726,11 +722,11 @@ function AboutSection({
       </Grid>
 
       <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
-        Acknowledgements
+        {t('about.ackHeading')}
       </Typography>
       <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          The Tools tabs embed third-party apps. Credit belongs to their authors:
+          {t('about.ackIntro')}
         </Typography>
         <Box sx={{ display: 'grid', gap: 1.5 }}>
           {ACKNOWLEDGEMENTS.map((entry) => (
@@ -739,7 +735,7 @@ function AboutSection({
                 {entry.tab}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                Embeds{' '}
+                {t('about.embeds')}{' '}
                 <Box
                   component="a"
                   href={entry.href}
@@ -749,7 +745,7 @@ function AboutSection({
                 >
                   {entry.name}
                 </Box>{' '}
-                — {entry.description}
+                — {t(entry.descriptionKey)}
               </Typography>
             </Box>
           ))}
@@ -765,6 +761,7 @@ function SettingsPage({
   onSectionChange,
   expandUpdates,
 }: SettingsPageProps) {
+  const { t } = useTranslation('settings')
   const [internalSection, setInternalSection] = useState<SettingsSection>('connections')
   // Controlled when the app shell drives the section (AppBar badge click).
   const section = sectionProp ?? internalSection
@@ -776,10 +773,9 @@ function SettingsPage({
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', width: '100%' }}>
       <Box sx={{ mb: 2 }}>
-        <Typography variant="h5">Settings</Typography>
+        <Typography variant="h5">{t('page.title')}</Typography>
         <Typography variant="body2" color="text.secondary">
-          Configure connections and the AI assistant, and view
-          app information.
+          {t('page.subtitle')}
         </Typography>
       </Box>
 
@@ -798,7 +794,7 @@ function SettingsPage({
                 sx={{ borderRadius: 1, minHeight: 48 }}
               >
                 <ListItemIcon sx={{ minWidth: 36 }}>{entry.icon}</ListItemIcon>
-                <ListItemText primary={entry.label} />
+                <ListItemText primary={t(entry.labelKey)} />
               </ListItemButton>
             ))}
           </List>

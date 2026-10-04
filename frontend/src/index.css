@@ -145,7 +145,8 @@ textarea.code {
   --ag-accent-color: #d97757;
   --ag-even-row-background-color: #ffffff;
   --ag-odd-row-background-color: #fcfbf8;
-  --ag-font-family: 'Lora', Georgia, 'Times New Roman', serif;
+  --ag-font-family: 'Lora', 'LXGW WenKai Screen', 'Kaiti SC', STKaiti, KaiTi, '楷体', Georgia,
+    'Times New Roman', serif;
 }
 
 /* Respect users who prefer reduced motion: collapse all transitions/animations. */

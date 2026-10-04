@@ -2,6 +2,7 @@ import Box from '@mui/material/Box'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Typography from '@mui/material/Typography'
+import { useTranslation } from 'react-i18next'
 import type { QueryResult } from '../types'
 import {
   COLUMN_KIND_OPTIONS,
@@ -39,11 +40,11 @@ export default function ColumnTypesPanel({
   kinds,
   onKindChange,
 }: ColumnTypesPanelProps) {
+  const { t } = useTranslation('dialogs')
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
       <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
-        Choose how each column is treated in the grid (sorting, filters, formatting). Kinds are
-        auto-detected from the database type; override any column here.
+        {t('columnTypes.intro')}
       </Typography>
       <Box
         sx={{
@@ -91,7 +92,8 @@ export default function ColumnTypesPanel({
                   noWrap
                   sx={{ display: 'block', lineHeight: 1.2 }}
                 >
-                  {column.type || 'unknown type'} · {overridden ? 'custom' : 'auto'}
+                  {column.type || t('columnTypes.unknownType')} ·{' '}
+                  {overridden ? t('columnTypes.custom') : t('columnTypes.auto')}
                 </Typography>
               </Box>
               <Select
@@ -106,7 +108,7 @@ export default function ColumnTypesPanel({
                     value={option.value}
                     sx={{ fontSize: '0.8125rem' }}
                   >
-                    {option.label}
+                    {t(`columnTypes.kinds.${option.value}`)}
                   </MenuItem>
                 ))}
               </Select>
@@ -116,7 +118,7 @@ export default function ColumnTypesPanel({
       </Box>
       {columns.length === 0 && (
         <Typography variant="body2" color="text.secondary">
-          No columns to show.
+          {t('columnTypes.empty')}
         </Typography>
       )}
     </Box>

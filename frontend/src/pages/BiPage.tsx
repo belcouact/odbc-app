@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, memo } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import type { Ref } from 'react'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import BarChartIcon from '@mui/icons-material/BarChart'
@@ -126,7 +127,10 @@ function columnNames(detail: SnapshotDetail): string[] {
   return Object.keys(detail.rows[0] ?? {})
 }
 
+type Notice = { message: string; severity: 'success' | 'error' }
+
 function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
+  const { t } = useTranslation('bi')
   const isCompact = useMediaQuery('(max-width:700px)')
 
   /** How-to pop-up for this page (opened from the help icon). */
@@ -205,7 +209,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
   /** Whether the combined warehouse section shows its body. */
   const [warehouseExpanded, setWarehouseExpanded] = useState(true)
 
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState<Notice | null>(null)
 
   const loadList = useCallback(async () => {
     // Event-driven refresh (button, tab activation): setstate is fine here.
@@ -215,11 +219,11 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       setSnapshots(list)
       setListError('')
     } catch (err) {
-      setListError(err instanceof Error ? err.message : 'Failed to load the warehouse')
+      setListError(err instanceof Error ? err.message : t('messages.loadWarehouseFailed'))
     } finally {
       setListLoading(false)
     }
-  }, [])
+  }, [t])
 
   // Initial load — promise callbacks keep state updates off the effect's
   // synchronous path (lint: react/set-state-in-effect).
@@ -235,7 +239,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setListError(err instanceof Error ? err.message : 'Failed to load the warehouse')
+          setListError(err instanceof Error ? err.message : t('messages.loadWarehouseFailed'))
         }
       })
       .finally(() => {
@@ -244,7 +248,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [t])
 
   const refresh = useCallback(() => {
     setWorkspace(getWorkspaceSnapshot())
@@ -293,13 +297,16 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       // user still has to build one, so open the chart builder.
       setTab(dashboard.visuals.length > 0 ? 'dashboard' : 'chart')
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Failed to open the snapshot')
+      setNotice({
+        message: err instanceof Error ? err.message : t('messages.openSnapshotFailed'),
+        severity: 'error',
+      })
       setSelectedId(null)
     } finally {
       setDetailLoading(false)
       setDashboardLoading(false)
     }
-  }, [])
+  }, [t])
 
   // ---- Refresh an existing snapshot from the grid ----
   // The snapshot keeps its id, name and dashboard, so its charts survive a
@@ -328,16 +335,23 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
         setJoinData(null)
       }
       setUpdateTarget(null)
-      setNotice(
-        `Updated "${updated.name}" with ${formatCount(updated.row_count)} rows from the grid`,
-      )
+      setNotice({
+        message: t('messages.updateSuccess', {
+          name: updated.name,
+          rows: formatCount(updated.row_count),
+        }),
+        severity: 'success',
+      })
       await loadList()
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Failed to update the snapshot')
+      setNotice({
+        message: err instanceof Error ? err.message : t('messages.updateFailed'),
+        severity: 'error',
+      })
     } finally {
       setUpdateBusy(false)
     }
-  }, [updateTarget, canUpdateFromGrid, workspace, selectedId, loadList])
+  }, [updateTarget, canUpdateFromGrid, workspace, selectedId, loadList, t])
 
   // ---- Load a snapshot back into the Query grid ----
   // The rows travel through the editor bus (App switches to the Query view);
@@ -353,14 +367,20 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
           columns: detail.columns,
           rows: detail.rows,
         })
-        setNotice(`Loaded "${detail.name}" into the grid`)
+        setNotice({
+          message: t('messages.loadSuccess', { name: detail.name }),
+          severity: 'success',
+        })
       } catch (err) {
-        setNotice(err instanceof Error ? err.message : 'Failed to load the snapshot')
+        setNotice({
+          message: err instanceof Error ? err.message : t('messages.loadFailed'),
+          severity: 'error',
+        })
       } finally {
         setLoadBusyId(null)
       }
     },
-    [onLoadToGrid, loadBusyId],
+    [onLoadToGrid, loadBusyId, t],
   )
 
   // ---- Rename ----
@@ -379,13 +399,19 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       setSnapshots((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
       setDetail((prev) => (prev && prev.id === updated.id ? { ...prev, name: updated.name } : prev))
       setRenameTarget(null)
-      setNotice(`Renamed to "${updated.name}"`)
+      setNotice({
+        message: t('messages.renameSuccess', { name: updated.name }),
+        severity: 'success',
+      })
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Failed to rename the snapshot')
+      setNotice({
+        message: err instanceof Error ? err.message : t('messages.renameFailed'),
+        severity: 'error',
+      })
     } finally {
       setRenameBusy(false)
     }
-  }, [renameTarget, renameValue])
+  }, [renameTarget, renameValue, t])
 
   // ---- Delete ----
   const handleDelete = useCallback(async () => {
@@ -401,14 +427,17 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
         setAiOpen(false)
       }
       setDeleteTarget(null)
-      setNotice('Snapshot deleted')
+      setNotice({ message: t('messages.deleteSuccess'), severity: 'success' })
       await loadList()
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Failed to delete the snapshot')
+      setNotice({
+        message: err instanceof Error ? err.message : t('messages.deleteFailed'),
+        severity: 'error',
+      })
     } finally {
       setDeleteBusy(false)
     }
-  }, [deleteTarget, selectedId, loadList])
+  }, [deleteTarget, selectedId, loadList, t])
 
   // ---- Chart / data views for the opened snapshot ----
   // ChartsPanel aggregates client-side from result.rows and needs no query
@@ -484,14 +513,14 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
         if (!cancelled) {
           setJoinError({
             id: chartJoinId,
-            message: err instanceof Error ? err.message : 'Failed to build the joined table',
+            message: err instanceof Error ? err.message : t('messages.joinFailed'),
           })
         }
       })
     return () => {
       cancelled = true
     }
-  }, [chartJoinId])
+  }, [chartJoinId, t])
 
   /** True once the preview for the current selection has arrived. */
   const joinActive = Boolean(chartJoinId) && joinData?.id === chartJoinId
@@ -539,15 +568,18 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       try {
         const saved = await api.saveDashboard(selectedId, next)
         setVisuals(saved.visuals)
-        setNotice(message)
+        setNotice({ message, severity: 'success' })
       } catch (err) {
         setVisuals(previous)
-        setNotice(err instanceof Error ? err.message : 'Failed to save the dashboard')
+        setNotice({
+          message: err instanceof Error ? err.message : t('messages.saveDashboardFailed'),
+          severity: 'error',
+        })
       } finally {
         setDashboardSaving(false)
       }
     },
-    [selectedId, visuals],
+    [selectedId, visuals, t],
   )
 
   /** Ask the AI to design charts for the description in the pop-up. */
@@ -568,11 +600,11 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
     } catch (err) {
       setAiCharts([])
       setAiPicked([])
-      setAiError(err instanceof Error ? err.message : 'The AI request failed. Please try again.')
+      setAiError(err instanceof Error ? err.message : t('messages.aiFailed'))
     } finally {
       setAiBusy(false)
     }
-  }, [aiPrompt, aiBusy, activeColumns, activeRows])
+  }, [aiPrompt, aiBusy, activeColumns, activeRows, t])
 
   /** Tick or untick a designed chart for pinning. */
   const togglePick = useCallback((index: number) => {
@@ -603,7 +635,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       for (const config of rest) {
         next.push({ id: newVisualId(), title: visualTitle(config), size: 'medium', config })
       }
-      void persistVisuals(next, 'Visual updated')
+      void persistVisuals(next, t('messages.visualUpdated'))
     } else {
       const added: DashboardVisual[] = configs.map((config) => ({
         id: newVisualId(),
@@ -613,7 +645,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       }))
       void persistVisuals(
         [...visuals, ...added],
-        `Added ${added.length} visual${added.length === 1 ? '' : 's'} to the dashboard`,
+        t('messages.addedVisuals', { count: added.length }),
       )
     }
     setEditingVisualId(null)
@@ -622,7 +654,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
     setAiCharts([])
     setAiPicked([])
     setTab('dashboard')
-  }, [aiPicked, aiCharts, editingVisualId, visuals, persistVisuals])
+  }, [aiPicked, aiCharts, editingVisualId, visuals, persistVisuals, t])
 
   /**
    * Pin a manually built chart config from the Chart tab: replace the tile being
@@ -637,19 +669,19 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
               ? { ...visual, title: visualTitle(config), config }
               : visual,
           ),
-          'Visual updated',
+          t('messages.visualUpdated'),
         )
       } else {
         void persistVisuals(
           [...visuals, { id: newVisualId(), title: visualTitle(config), size: 'medium', config }],
-          'Added 1 visual to the dashboard',
+          t('messages.addedVisuals', { count: 1 }),
         )
       }
       setEditingVisualId(null)
       setEditingPreset(null)
       setTab('dashboard')
     },
-    [editingVisualId, visuals, persistVisuals],
+    [editingVisualId, visuals, persistVisuals, t],
   )
 
   /** Load an existing tile's config into the Chart tab's builder for editing. */
@@ -671,14 +703,14 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       const copy: DashboardVisual = {
         ...visual,
         id: newVisualId(),
-        title: `${visual.title} (copy)`,
+        title: `${visual.title}${t('messages.copySuffix')}`,
       }
       const index = visuals.findIndex((item) => item.id === id)
       const next = [...visuals]
       next.splice(index + 1, 0, copy)
-      void persistVisuals(next, 'Visual duplicated')
+      void persistVisuals(next, t('messages.visualDuplicated'))
     },
-    [visuals, persistVisuals],
+    [visuals, persistVisuals, t],
   )
 
   const handleMoveVisual = useCallback(
@@ -688,19 +720,19 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       if (index < 0 || target < 0 || target >= visuals.length) return
       const next = [...visuals]
       ;[next[index], next[target]] = [next[target], next[index]]
-      void persistVisuals(next, 'Visual moved')
+      void persistVisuals(next, t('messages.visualMoved'))
     },
-    [visuals, persistVisuals],
+    [visuals, persistVisuals, t],
   )
 
   const handleResizeVisual = useCallback(
     (id: string, size: VisualSize) => {
       void persistVisuals(
         visuals.map((visual) => (visual.id === id ? { ...visual, size } : visual)),
-        'Tile resized',
+        t('messages.tileResized'),
       )
     },
-    [visuals, persistVisuals],
+    [visuals, persistVisuals, t],
   )
 
   const handleRemoveVisual = useCallback(
@@ -710,10 +742,10 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       }
       void persistVisuals(
         visuals.filter((visual) => visual.id !== id),
-        'Visual removed from the dashboard',
+        t('messages.visualRemoved'),
       )
     },
-    [visuals, editingVisualId, persistVisuals],
+    [visuals, editingVisualId, persistVisuals, t],
   )
 
   /** Open the AI dashboard builder for a brand-new build (dashboard tab). */
@@ -767,10 +799,10 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
             useFlexGap
             sx={{ alignItems: 'center', justifyContent: 'space-between' }}
           >
-            <Typography variant="h5">Dashboard</Typography>
-            <Tooltip title="How to use this page">
+            <Typography variant="h5">{t('title')}</Typography>
+            <Tooltip title={t('help.tooltip')}>
               <IconButton
-                aria-label="How to use this page"
+                aria-label={t('help.aria')}
                 onClick={() => setHelpOpen(true)}
                 // The 48px touch target would otherwise inflate the title row
                 // (32px line -> 48px) and push the subtitle down; the negative
@@ -783,8 +815,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
             </Tooltip>
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            Save queried data to a local SQLite warehouse, then build a dashboard from it or
-            inspect the rows.
+            {t('subtitle')}
           </Typography>
           {warehouse && (
             <Typography
@@ -792,9 +823,12 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
               color="text.secondary"
               sx={{ display: 'block', mt: 0.5, wordBreak: 'break-all' }}
             >
-              {formatCount(warehouse.snapshot_count)} snapshots ·{' '}
-              {formatCount(warehouse.row_count)} rows · {formatBytes(warehouse.size_bytes)} —{' '}
-              {warehouse.path}
+              {t('warehouse.summary', {
+                snapshots: formatCount(warehouse.snapshot_count),
+                rows: formatCount(warehouse.row_count),
+                size: formatBytes(warehouse.size_bytes),
+                path: warehouse.path,
+              })}
             </Typography>
           )}
         </Box>
@@ -806,19 +840,19 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <BookmarksIcon fontSize="small" color="primary" />
             <Typography variant="subtitle1" sx={{ fontWeight: 600, flexGrow: 1 }}>
-              Warehouse
+              {t('warehouse.title')}
             </Typography>
-            <Tooltip title="Reload the snapshot list">
+            <Tooltip title={t('warehouse.reloadTooltip')}>
               <span>
-                <IconButton onClick={() => void loadList()} disabled={listLoading} aria-label="Reload snapshots">
+                <IconButton onClick={() => void loadList()} disabled={listLoading} aria-label={t('warehouse.reloadAria')}>
                   {listLoading ? <CircularProgress size={20} /> : <RefreshIcon />}
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title={warehouseExpanded ? 'Collapse section' : 'Expand section'}>
+            <Tooltip title={warehouseExpanded ? t('warehouse.collapse') : t('warehouse.expand')}>
               <IconButton
                 aria-expanded={warehouseExpanded}
-                aria-label={warehouseExpanded ? 'Collapse warehouse section' : 'Expand warehouse section'}
+                aria-label={warehouseExpanded ? t('warehouse.collapseAria') : t('warehouse.expandAria')}
                 onClick={() => setWarehouseExpanded((v) => !v)}
                 sx={{
                   transform: warehouseExpanded ? 'rotate(180deg)' : 'none',
@@ -837,16 +871,14 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                 onChange={(_, next: 'snapshots' | 'relationships') => setWarehouseTab(next)}
                 sx={{ borderBottom: 1, borderColor: 'divider', mb: 1.5 }}
               >
-                <Tab value="snapshots" label={`Snapshots (${snapshots.length})`} />
-                <Tab value="relationships" label={`Relationships (${relationships.length})`} />
+                <Tab value="snapshots" label={t('tabs.snapshots', { n: snapshots.length })} />
+                <Tab value="relationships" label={t('tabs.relationships', { n: relationships.length })} />
               </Tabs>
 
               {warehouseTab === 'snapshots' &&
                 (snapshots.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-                    {listLoading
-                      ? 'Loading…'
-                      : 'Nothing stored yet — save a result grid from the Query tab.'}
+                    {listLoading ? t('warehouse.loading') : t('warehouse.empty')}
                   </Typography>
                 ) : isCompact ? (
             /* Mobile: one card per snapshot — no horizontal scrolling. */
@@ -870,8 +902,8 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                       </Typography>
                       <Stack direction="row" spacing={0.75} sx={{ mt: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
                         <Chip label={snapshot.source} size="small" />
-                        <Chip label={`${formatCount(snapshot.row_count)} rows`} size="small" variant="outlined" />
-                        <Chip label={`${formatCount(snapshot.columns.length)} columns`} size="small" variant="outlined" />
+                        <Chip label={t('warehouse.rowsChip', { n: formatCount(snapshot.row_count) })} size="small" variant="outlined" />
+                        <Chip label={t('warehouse.columnsChip', { n: formatCount(snapshot.columns.length) })} size="small" variant="outlined" />
                       </Stack>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                         {formatWhen(snapshot.created_at)}
@@ -880,14 +912,14 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                     <Tooltip
                       title={
                         onLoadToGrid
-                          ? 'Load these rows into the Query grid'
-                          : 'Loading into the grid is unavailable'
+                          ? t('warehouse.loadTooltip')
+                          : t('warehouse.loadTooltipDisabled')
                       }
                     >
                       <span>
                         <IconButton
                           size="small"
-                          aria-label={`Load ${snapshot.name} into the grid`}
+                          aria-label={t('warehouse.loadAria', { name: snapshot.name })}
                           disabled={!onLoadToGrid || loadBusyId === snapshot.id}
                           onClick={(event) => {
                             event.stopPropagation()
@@ -906,14 +938,14 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                     <Tooltip
                       title={
                         canUpdateFromGrid
-                          ? 'Replace the stored rows with the current grid data'
-                          : 'No grid data to update from'
+                          ? t('warehouse.updateTooltip')
+                          : t('warehouse.updateTooltipDisabled')
                       }
                     >
                       <span>
                         <IconButton
                           size="small"
-                          aria-label={`Update ${snapshot.name} from the grid`}
+                          aria-label={t('warehouse.updateAria', { name: snapshot.name })}
                           disabled={!canUpdateFromGrid}
                           onClick={(event) => {
                             event.stopPropagation()
@@ -927,7 +959,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                     </Tooltip>
                     <IconButton
                       size="small"
-                      aria-label="Rename snapshot"
+                      aria-label={t('warehouse.renameAria')}
                       onClick={(event) => { event.stopPropagation(); openRename(snapshot) }}
                       sx={{ minWidth: 48, minHeight: 48 }}
                     >
@@ -935,7 +967,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                     </IconButton>
                     <IconButton
                       size="small"
-                      aria-label="Delete snapshot"
+                      aria-label={t('warehouse.deleteAria')}
                       onClick={(event) => { event.stopPropagation(); setDeleteTarget(snapshot) }}
                       sx={{ minWidth: 48, minHeight: 48 }}
                     >
@@ -950,12 +982,12 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Source</TableCell>
-                    <TableCell align="right">Rows</TableCell>
-                    <TableCell align="right">Columns</TableCell>
-                    <TableCell>Created</TableCell>
-                    <TableCell align="right">Actions</TableCell>
+                    <TableCell>{t('table.name')}</TableCell>
+                    <TableCell>{t('table.source')}</TableCell>
+                    <TableCell align="right">{t('table.rows')}</TableCell>
+                    <TableCell align="right">{t('table.columns')}</TableCell>
+                    <TableCell>{t('table.created')}</TableCell>
+                    <TableCell align="right">{t('table.actions')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -982,14 +1014,14 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                         <Tooltip
                           title={
                             onLoadToGrid
-                              ? 'Load these rows into the Query grid'
-                              : 'Loading into the grid is unavailable'
+                              ? t('warehouse.loadTooltip')
+                              : t('warehouse.loadTooltipDisabled')
                           }
                         >
                           <span>
                             <IconButton
                               size="small"
-                              aria-label={`Load ${snapshot.name} into the grid`}
+                              aria-label={t('warehouse.loadAria', { name: snapshot.name })}
                               disabled={!onLoadToGrid || loadBusyId === snapshot.id}
                               onClick={(event) => {
                                 event.stopPropagation()
@@ -1007,14 +1039,14 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                         <Tooltip
                           title={
                             canUpdateFromGrid
-                              ? 'Replace the stored rows with the current grid data'
-                              : 'No grid data to update from'
+                              ? t('warehouse.updateTooltip')
+                              : t('warehouse.updateTooltipDisabled')
                           }
                         >
                           <span>
                             <IconButton
                               size="small"
-                              aria-label={`Update ${snapshot.name} from the grid`}
+                              aria-label={t('warehouse.updateAria', { name: snapshot.name })}
                               disabled={!canUpdateFromGrid}
                               onClick={(event) => {
                                 event.stopPropagation()
@@ -1025,10 +1057,10 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                             </IconButton>
                           </span>
                         </Tooltip>
-                        <IconButton size="small" aria-label="Rename snapshot" onClick={(event) => { event.stopPropagation(); openRename(snapshot) }}>
+                        <IconButton size="small" aria-label={t('warehouse.renameAria')} onClick={(event) => { event.stopPropagation(); openRename(snapshot) }}>
                           <EditIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" aria-label="Delete snapshot" onClick={(event) => { event.stopPropagation(); setDeleteTarget(snapshot) }}>
+                        <IconButton size="small" aria-label={t('warehouse.deleteAria')} onClick={(event) => { event.stopPropagation(); setDeleteTarget(snapshot) }}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </TableCell>
@@ -1042,7 +1074,12 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
               {warehouseTab === 'relationships' && (
                 <RelationshipsPanel
                   snapshots={snapshots}
-                  onNotice={setNotice}
+                  onNotice={(message) =>
+                    setNotice({
+                      message,
+                      severity: message.startsWith('Failed') ? 'error' : 'success',
+                    })
+                  }
                   onChanged={() => setRelationshipsVersion((v) => v + 1)}
                 />
               )}
@@ -1063,8 +1100,11 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
               {detail.name}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {formatCount(detail.row_count)} rows · {formatCount(columnNames(detail).length)} columns ·{' '}
-              {formatWhen(detail.created_at)}
+              {t('detail.meta', {
+                rows: formatCount(detail.row_count),
+                columns: formatCount(columnNames(detail).length),
+                when: formatWhen(detail.created_at),
+              })}
               {detail.sql_text ? ` · ${detail.sql_text.split('\n')[0].trim().slice(0, 80)}` : ''}
             </Typography>
 
@@ -1081,19 +1121,19 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                   value="dashboard"
                   icon={<SpaceDashboardIcon fontSize="small" />}
                   iconPosition="start"
-                  label={`Dashboard (${visuals.length})`}
+                  label={t('tabs.dashboard', { n: visuals.length })}
                 />
                 <Tab
                   value="chart"
                   icon={<BarChartIcon fontSize="small" />}
                   iconPosition="start"
-                  label="Chart"
+                  label={t('tabs.chart')}
                 />
                 <Tab
                   value="data"
                   icon={<TableChartIcon fontSize="small" />}
                   iconPosition="start"
-                  label="Data"
+                  label={t('tabs.data')}
                 />
               </Tabs>
               {dashboardSaving && <CircularProgress size={18} />}
@@ -1121,18 +1161,18 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                   aiOption={aiOption}
                   onClearAi={() => setAiOption(null)}
                   onAiChart={editingVisualId ? handleRedesignWithAi : handleBuildChart}
-                  aiLabel={editingVisualId ? 'Redesign with AI' : 'Open AI chart builder'}
+                  aiLabel={editingVisualId ? t('chart.aiLabelRedesign') : t('chart.aiLabelOpen')}
                   onAddToDashboard={handlePinConfig}
-                  addLabel={editingVisualId ? 'Update visual' : 'Add to dashboard'}
+                  addLabel={editingVisualId ? t('chart.addLabelUpdate') : t('chart.addLabelAdd')}
                 />
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-                  This snapshot has no rows to chart.
+                  {t('detail.noRowsToChart')}
                 </Typography>
               )
             ) : previewColumns.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-                This snapshot has no stored rows.
+                {t('detail.noStoredRows')}
               </Typography>
             ) : (
               <>
@@ -1165,8 +1205,10 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                 </TableContainer>
                 {detail.rows.length > previewRows.length && (
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                    Showing the first {formatCount(previewRows.length)} of{' '}
-                    {formatCount(detail.rows.length)} rows.
+                    {t('detail.showingFirst', {
+                      shown: formatCount(previewRows.length),
+                      total: formatCount(detail.rows.length),
+                    })}
                   </Typography>
                 )}
               </>
@@ -1186,9 +1228,9 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <HelpOutlineOutlinedIcon fontSize="small" />
-          How to use this page
+          {t('help.title')}
           <IconButton
-            aria-label="Close help"
+            aria-label={t('help.close')}
             onClick={() => setHelpOpen(false)}
             sx={{ ml: 'auto', minWidth: 48, minHeight: 48 }}
           >
@@ -1197,50 +1239,45 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            This page keeps your query results as <strong>snapshots</strong> in a local SQLite
-            warehouse on this machine, so you can chart them later without re-running the query.
+            <Trans t={t} i18nKey="help.intro" components={{ strong: <strong /> }} />
           </Typography>
           <Box component="ol" sx={{ m: 0, p: 0, pl: 2.5, '& li': { mb: 1, typography: 'body2', pl: 0.5 } }}>
             <li>
-              <strong>Save the current grid</strong> — run a query (or upload a file) in the Query
-              tab, then press <em>Save data</em> in the results toolbar. The rows are copied into the
-              local warehouse, so later re-queries do not change saved data.
+              <Trans t={t} i18nKey="help.saveGrid" components={{ strong: <strong />, em: <em /> }} />
             </li>
             <li>
-              <strong>Manage snapshots</strong> — click a row in the list to open it. Use{' '}
-              <InputIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to load a
-              snapshot's rows back into the Query grid,{' '}
-              <SyncIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to update a
-              snapshot from the current result grid (existing visuals are kept),{' '}
-              <EditIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to rename, and{' '}
-              <DeleteIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} /> to delete.
+              <Trans
+                t={t}
+                i18nKey="help.manage"
+                components={{
+                  strong: <strong />,
+                  inputIcon: <InputIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} />,
+                  syncIcon: <SyncIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} />,
+                  editIcon: <EditIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} />,
+                  deleteIcon: <DeleteIcon fontSize="inherit" sx={{ verticalAlign: 'text-bottom' }} />,
+                }}
+              />
             </li>
             <li>
-              <strong>Relationships</strong> — link two snapshots on a shared column (e.g. NAME =
-              NAME), then use <em>Explore</em> to drill from a row in one table to its related rows
-              in the other, or to preview the flat joined table. Relationships are saved in the
-              warehouse and can be edited or deleted at any time.
+              <Trans t={t} i18nKey="help.relationships" components={{ strong: <strong />, em: <em /> }} />
             </li>
             <li>
-              <strong>Dashboard tab</strong> — persistent visuals saved with the snapshot: add
-              charts/tables, then edit, duplicate, move, resize or remove each tile.
+              <Trans t={t} i18nKey="help.dashboardTab" components={{ strong: <strong /> }} />
             </li>
             <li>
-              <strong>Chart tab</strong> — describe the dashboard you want in plain language; the AI
-              reads this snapshot's column names and designs several charts. Preview each one, untick
-              the ones you do not want, then pin the rest to the dashboard.
+              <Trans t={t} i18nKey="help.chartTab" components={{ strong: <strong /> }} />
             </li>
             <li>
-              <strong>Data tab</strong> — inspect the stored rows (first 200 shown).
+              <Trans t={t} i18nKey="help.dataTab" components={{ strong: <strong /> }} />
             </li>
           </Box>
           <Divider sx={{ my: 2 }} />
           <Typography variant="body2" color="text.secondary">
-            All snapshots are stored per-machine under{' '}
-            <Box component="code" sx={{ wordBreak: 'break-all' }}>
-              %APPDATA%\ODBCQueryApp\data\
-            </Box>{' '}
-            — nothing is uploaded to a server.
+            <Trans
+              t={t}
+              i18nKey="help.storage"
+              components={{ storagePath: <Box component="code" sx={{ wordBreak: 'break-all' }} /> }}
+            />
           </Typography>
         </DialogContent>
       </Dialog>
@@ -1256,9 +1293,9 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <AutoAwesomeIcon fontSize="small" color="primary" />
-          {editingVisualId ? 'Redesign a dashboard chart' : 'AI dashboard builder'}
+          {editingVisualId ? t('ai.titleRedesign') : t('ai.titleBuilder')}
           <IconButton
-            aria-label="Close AI chart builder"
+            aria-label={t('ai.closeAria')}
             onClick={() => setAiOpen(false)}
             sx={{ ml: 'auto', minWidth: 48, minHeight: 48 }}
           >
@@ -1271,18 +1308,17 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
               select
               fullWidth
               size="small"
-              label="Chart data"
+              label={t('ai.dataLabel')}
               value={chartJoinId}
               onChange={(event) => setChartJoinId(event.target.value)}
-              helperText={
-                joinSelected
-                  ? 'The AI charts the joined table — pinning to the dashboard works from the plain table only.'
-                  : 'Pick a relationship to let the AI chart across the linked table.'
-              }
+              helperText={joinSelected ? t('ai.helperJoined') : t('ai.helperPlain')}
               sx={{ mb: 2 }}
             >
               <MenuItem value="">
-                This table — {detail?.name ?? 'current data'} ({formatCount(detail?.row_count ?? 0)} rows)
+                {t('ai.thisTable', {
+                  name: detail?.name ?? t('ai.currentData'),
+                  n: formatCount(detail?.row_count ?? 0),
+                })}
               </MenuItem>
               {chartJoins.map((rel) => (
                 <MenuItem key={rel.id} value={rel.id} sx={{ display: 'block', py: 0.75 }}>
@@ -1290,7 +1326,11 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                     {rel.name}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    via {rel.left_column} = {rel.right_column} · {rel.join_type} join
+                    {t('ai.viaJoin', {
+                      left: rel.left_column,
+                      right: rel.right_column,
+                      joinType: rel.join_type,
+                    })}
                   </Typography>
                 </MenuItem>
               ))}
@@ -1300,7 +1340,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
               <CircularProgress size={18} />
               <Typography variant="caption" color="text.secondary">
-                Building the joined table…
+                {t('ai.buildingJoin')}
               </Typography>
             </Stack>
           )}
@@ -1338,7 +1378,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
               }}
             >
               <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                Columns in this data ({formatCount(activeColumns.length)})
+                {t('ai.columnsHeading', { n: formatCount(activeColumns.length) })}
               </Typography>
               <ExpandMoreIcon
                 fontSize="small"
@@ -1362,7 +1402,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                   color="text.secondary"
                   sx={{ display: { xs: 'none', sm: 'block' }, mr: 0.5 }}
                 >
-                  Try an example:
+                  {t('ai.tryExample')}
                 </Typography>
                 {aiExamples.map((example) => (
                   <Button
@@ -1402,7 +1442,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
             multiline
             minRows={3}
             maxRows={8}
-            label="Describe the dashboard you want"
+            label={t('ai.describeLabel')}
             placeholder={aiExample}
             value={aiPrompt}
             onChange={(event) => setAiPrompt(event.target.value)}
@@ -1419,11 +1459,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
               disabled={aiBusy || aiPrompt.trim().length === 0}
               sx={{ minHeight: 48 }}
             >
-              {aiBusy
-                ? 'Designing charts…'
-                : aiCharts.length > 0
-                  ? 'Regenerate charts'
-                  : 'Generate charts'}
+              {aiBusy ? t('ai.busy') : aiCharts.length > 0 ? t('ai.regenerate') : t('ai.generate')}
             </Button>
           </Stack>
 
@@ -1437,7 +1473,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
             <>
               <Divider sx={{ my: 2 }} />
               <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                Suggested charts — untick any you do not want
+                {t('ai.suggested')}
               </Typography>
               <Box
                 sx={{
@@ -1464,7 +1500,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                         <Checkbox
                           checked={picked}
                           onChange={() => togglePick(index)}
-                          slotProps={{ input: { 'aria-label': `Include ${visualTitle(config)}` } }}
+                          slotProps={{ input: { 'aria-label': t('ai.includeAria', { title: visualTitle(config) }) } }}
                         />
                         <Box sx={{ minWidth: 0 }}>
                           <Typography variant="subtitle2" noWrap sx={{ fontWeight: 600 }}>
@@ -1488,7 +1524,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                             <KpiCards cards={chart.kpiCards} />
                           ) : (
                             <Typography variant="caption" color="text.secondary">
-                              No numeric columns for KPI cards.
+                              {t('ai.noKpiColumns')}
                             </Typography>
                           )
                         ) : (
@@ -1508,7 +1544,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                                 }}
                               >
                                 <Typography variant="caption" color="text.secondary">
-                                  No data for this chart — try rephrasing your description.
+                                  {t('ai.noChartData')}
                                 </Typography>
                               </Box>
                             )}
@@ -1524,16 +1560,10 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => setAiOpen(false)} sx={{ minHeight: 44, minWidth: 48 }}>
-            Close
+            {t('ai.close')}
           </Button>
           <Box sx={{ flexGrow: 1 }} />
-          <Tooltip
-            title={
-              joinSelected
-                ? 'Pinning works from the plain table — switch "Chart data" back to this table first.'
-                : ''
-            }
-          >
+          <Tooltip title={joinSelected ? t('ai.pinTooltip') : ''}>
             <span>
               <Button
                 variant="contained"
@@ -1542,10 +1572,10 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
                 sx={{ minHeight: 44 }}
               >
                 {editingVisualId
-                  ? 'Update visual'
+                  ? t('chart.addLabelUpdate')
                   : aiPicked.length > 0
-                    ? `Add ${aiPicked.length} to dashboard`
-                    : 'Add to dashboard'}
+                    ? t('ai.addCount', { n: aiPicked.length })
+                    : t('chart.addLabelAdd')}
               </Button>
             </span>
           </Tooltip>
@@ -1554,12 +1584,12 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
 
       {/* ---- Rename dialog ---- */}
       <Dialog open={Boolean(renameTarget)} onClose={() => setRenameTarget(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Rename snapshot</DialogTitle>
+        <DialogTitle>{t('dialogs.renameTitle')}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
             fullWidth
-            label="Name"
+            label={t('dialogs.nameLabel')}
             value={renameValue}
             onChange={(event) => setRenameValue(event.target.value)}
             sx={{ mt: 1 }}
@@ -1567,48 +1597,55 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setRenameTarget(null)} disabled={renameBusy}>
-            Cancel
+            {t('dialogs.cancel')}
           </Button>
           <Button
             variant="contained"
             onClick={() => void handleRename()}
             disabled={renameBusy || renameValue.trim().length === 0}
           >
-            Save
+            {t('dialogs.save')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* ---- Delete confirmation ---- */}
       <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Delete snapshot</DialogTitle>
+        <DialogTitle>{t('dialogs.deleteTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Delete “{deleteTarget?.name}” and its {formatCount(deleteTarget?.row_count ?? 0)} stored rows?
-            This cannot be undone.
+            {t('dialogs.deleteBody', {
+              name: deleteTarget?.name ?? '',
+              rows: formatCount(deleteTarget?.row_count ?? 0),
+            })}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>
-            Cancel
+            {t('dialogs.cancel')}
           </Button>
           <Button color="error" variant="contained" onClick={() => void handleDelete()} disabled={deleteBusy}>
-            Delete
+            {t('dialogs.delete')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* ---- Update-from-grid confirmation ---- */}
       <Dialog open={Boolean(updateTarget)} onClose={() => setUpdateTarget(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Update snapshot from grid</DialogTitle>
+        <DialogTitle>{t('dialogs.updateTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            {`Replace the ${formatCount(updateTarget?.row_count ?? 0)} stored rows in “${updateTarget?.name}” with the current grid data (${formatCount(workspace.rows.length)} rows · ${formatCount(workspace.columns.length)} columns)? The snapshot's charts and dashboard are kept.`}
+            {t('dialogs.updateBody', {
+              stored: formatCount(updateTarget?.row_count ?? 0),
+              name: updateTarget?.name ?? '',
+              rows: formatCount(workspace.rows.length),
+              columns: formatCount(workspace.columns.length),
+            })}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setUpdateTarget(null)} disabled={updateBusy}>
-            Cancel
+            {t('dialogs.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -1616,7 +1653,7 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
             disabled={updateBusy || !canUpdateFromGrid}
             startIcon={updateBusy ? <CircularProgress size={18} color="inherit" /> : <SyncIcon />}
           >
-            Update
+            {t('dialogs.update')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1624,15 +1661,15 @@ function BiPage({ ref, onLoadToGrid }: BiPageProps = {}) {
       <Snackbar
         open={Boolean(notice)}
         autoHideDuration={5000}
-        onClose={() => setNotice('')}
+        onClose={() => setNotice(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
-          severity={notice.startsWith('Failed') ? 'error' : 'success'}
+          severity={notice?.severity ?? 'success'}
           variant="filled"
-          onClose={() => setNotice('')}
+          onClose={() => setNotice(null)}
         >
-          {notice}
+          {notice?.message}
         </Alert>
       </Snackbar>
     </Box>

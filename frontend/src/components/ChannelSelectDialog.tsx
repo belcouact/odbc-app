@@ -20,8 +20,10 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import CloseIcon from '@mui/icons-material/Close'
 import SaveIcon from '@mui/icons-material/Save'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import type { ChannelRow, ChannelSet } from '../api/client'
+import { AG_GRID_LOCALE_ZH } from '../i18n/agGridZh'
 
 const DISPLAY_FIELDS: (keyof ChannelRow)[] = [
   'operation',
@@ -130,6 +132,9 @@ export default function ChannelSelectDialog({
   onNotice,
 }: ChannelSelectDialogProps) {
   const gridRef = useRef<AgGridReact<ChannelRow>>(null)
+  // Subscribes to language changes so the grid rebuilds with the matching
+  // AG Grid localeText (localeText is read once, at grid creation).
+  const { i18n } = useTranslation()
 
   const [operations, setOperations] = useState<string[]>([])
   const [operationsLoading, setOperationsLoading] = useState(false)
@@ -461,6 +466,10 @@ export default function ChannelSelectDialog({
                     }}
                   >
                     <AgGridReact<ChannelRow>
+                      // Rebuilding on a language change re-reads localeText,
+                      // which is otherwise captured once at grid creation.
+                      key={i18n.language}
+                      localeText={i18n.language.startsWith('zh') ? AG_GRID_LOCALE_ZH : undefined}
                       ref={gridRef}
                       rowData={rows}
                       columnDefs={columnDefs}

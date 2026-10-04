@@ -1,0 +1,124 @@
+{
+  "page": {
+    "title": "Connections",
+    "subtitle": "Manage ODBC data sources used by the query builder."
+  },
+  "actions": {
+    "detectDsns": "Detect ODBC DSNs",
+    "addConnection": "Add connection",
+    "retry": "Retry",
+    "test": "Test",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "saveChanges": "Save changes",
+    "edit": "Edit"
+  },
+  "databaseType": {
+    "autoDetect": "Auto (detect)",
+    "auto": "Auto",
+    "sqlserver": "SQL Server",
+    "oracle": "Oracle",
+    "mysql": "MySQL",
+    "postgresql": "PostgreSQL",
+    "jet": "Access / Excel (Jet)",
+    "other": "Other"
+  },
+  "detail": {
+    "file": "File: {{path}}",
+    "link": "Link: {{url}}",
+    "dsn": "DSN: {{dsn}}",
+    "driver": "Driver: {{driver}}",
+    "server": "Server: {{server}}",
+    "database": "Database: {{database}}",
+    "directConnection": "Direct connection"
+  },
+  "validation": {
+    "nameRequired": "Please enter a connection name.",
+    "accessRequired": "Provide a SharePoint link or a local file path.",
+    "dsnRequired": "Please enter the ODBC DSN name.",
+    "stringRequired": "Provide a connection string, or at least a driver and server."
+  },
+  "empty": {
+    "title": "No connections yet",
+    "body": "Add an ODBC DSN or a direct connection string to start querying your databases.",
+    "action": "Add your first connection"
+  },
+  "list": {
+    "aria": "Saved connections",
+    "name": "Name",
+    "details": "Details",
+    "username": "Username",
+    "serverType": "Server type",
+    "added": "Added",
+    "actions": "Actions",
+    "usernameInline": "Username: {{value}}",
+    "typeInline": "Type: {{value}}",
+    "addedInline": "Added {{date}}",
+    "editAria": "Edit {{name}}",
+    "deleteAria": "Delete {{name}}"
+  },
+  "dialog": {
+    "editTitle": "Edit connection",
+    "addTitle": "Add connection",
+    "nameLabel": "Connection name",
+    "namePlaceholder": "e.g. Production SQL Server",
+    "nameHelperEdit": "The name is only a label — you can rename it at any time. It won't affect templates, scripts or channel operations.",
+    "typeCaption": "Connection type",
+    "typeDsn": "ODBC DSN",
+    "typeString": "Connection String",
+    "typeAccess": "Access File",
+    "sharepointLabel": "SharePoint link",
+    "sharepointHelper": "Paste the shared link to download the .mdb/.accdb file automatically. Internal sites often require a sign-in.",
+    "orDivider": "— or —",
+    "localPathLabel": "Local file path",
+    "localPathHelper": "Use a OneDrive-synced folder or a browser download. The local path is preferred when both are given.",
+    "databaseTypeLabel": "Database type",
+    "dsnLabel": "DSN name",
+    "dsnPlaceholder": "e.g. SQLServerNative",
+    "dsnHelperEdit": "The DSN links templates, scripts & channel operations, so it can't be changed after creation.",
+    "trustedAuth": "Use trusted (Windows) authentication",
+    "usernameLabel": "Username",
+    "passwordLabel": "Password",
+    "driverLabel": "Driver",
+    "driverPlaceholder": "e.g. ODBC Driver 17 for SQL Server",
+    "serverLabel": "Server",
+    "serverPlaceholder": "e.g. localhost\\SQLEXPRESS",
+    "databaseLabel": "Database",
+    "stringDivider": "or provide a full connection string",
+    "connectionStringLabel": "Connection string"
+  },
+  "deleteDialog": {
+    "title": "Delete connection?",
+    "body": "“{{name}}” will be removed from this app. Saved queries that use it may no longer run."
+  },
+  "detect": {
+    "title": "Detect ODBC DSNs",
+    "scanning": "Scanning the Windows ODBC registry…",
+    "none": "No ODBC DSNs found on this PC",
+    "selectAll": "Select all",
+    "selectedOf": "{{selected}} of {{total}} selectable",
+    "selectDsn": "Select {{dsn}}",
+    "unknownDriver": "Unknown driver",
+    "saved": "Saved",
+    "scopeSystem": "System",
+    "scopeUser": "User",
+    "scopeBits": "{{scope}} {{bits}}-bit",
+    "addSelected": "Add selected ({{count}})"
+  },
+  "messages": {
+    "loadFailed": "Failed to load connections",
+    "updated": "Connection \"{{name}}\" updated.",
+    "saved": "Connection \"{{name}}\" saved.",
+    "saveFailed": "Failed to save connection",
+    "connectionSuccessful": "Connection successful.",
+    "connectionFailed": "Connection failed.",
+    "testFailed": "Connection test failed.",
+    "testFailedShort": "Test failed.",
+    "deleted": "Connection \"{{name}}\" deleted.",
+    "deleteFailed": "Failed to delete connection",
+    "detectFailed": "Failed to detect ODBC DSNs",
+    "addedConnections_one": "Added {{count}} connection",
+    "addedConnections_other": "Added {{count}} connections",
+    "addFailed": "Failed to add connections"
+  }
+}

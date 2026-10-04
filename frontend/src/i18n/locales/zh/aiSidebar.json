@@ -1,0 +1,73 @@
+{
+  "title": "AI 助手",
+  "clear": "清空",
+  "send": "发送",
+  "thinking": "思考中…",
+  "aria": {
+    "close": "关闭 AI 助手"
+  },
+  "modes": {
+    "chat": {
+      "label": "对话",
+      "hint": "随意提问 — 一般问题、概念解释、计算方法或本应用的使用方式。"
+    },
+    "sql": {
+      "label": "SQL",
+      "hint": "解释、调试或编写只读 SQL，并将生成的 SQL 直接应用到编辑器。"
+    },
+    "script": {
+      "label": "分析",
+      "hint": "生成或完善用于处理查询结果的 Python/JavaScript 脚本。"
+    },
+    "chart": {
+      "label": "图表",
+      "hint": "描述一个图表（ECharts）并应用到分析页，也可以随意提问，可在多轮对话中逐步完善。"
+    }
+  },
+  "context": {
+    "gridData": "网格数据：",
+    "columns_other": "{{count}} 列",
+    "noColumns": "无列",
+    "rows_other": " · {{n}} 行",
+    "noRows": " · 无行",
+    "connected": " · 已建立连接"
+  },
+  "empty": {
+    "chat": "随意提问，例如：“这个应用能做什么？”、“解释一下标准差”或“用通俗的话总结这些数据”。",
+    "sql": "例如：“解释这段 SQL 的作用”、“修复这个错误：…”或“为……编写一个查询”。",
+    "script": "例如：“编写一个 Python 脚本，按地区对行分组并打印每个地区的总金额。”",
+    "chart": "例如：“按地区统计总金额的柱状图，标题为“按地区销售额”，蓝色柱子。” — 也可以直接提问，例如“哪种图表类型适合这些数据？”"
+  },
+  "apply": {
+    "sql": "应用到 SQL 编辑器",
+    "script": "插入到分析编辑器",
+    "chart": "应用图表"
+  },
+  "quickActions": {
+    "explain": "解释",
+    "optimize": "优化"
+  },
+  "input": {
+    "message": "消息"
+  },
+  "placeholder": {
+    "chat": "随意提问…",
+    "chart": "随意提问，或描述你想要的图表…",
+    "sqlScript": "随意提问，或请求 SQL / 脚本…"
+  },
+  "notices": {
+    "sqlApplied": "SQL 已应用到 SQL 编辑器。",
+    "scriptInserted": "脚本已插入分析编辑器。",
+    "chartAppliedScript": "图表已应用到分析页。",
+    "chartAppliedBi": "图表已应用到仪表盘的图表构建器。"
+  },
+  "errors": {
+    "scriptEmpty": "脚本为空 — 没有可应用的内容。",
+    "noOption": "脚本没有生成 ECharts 的 `option` 对象。",
+    "sqlEditorEmpty": "SQL 编辑器为空 — 请先编写或加载查询。",
+    "emptyResponse": "AI 返回了空响应，请重试。",
+    "aiRequestFailed": "AI 请求失败",
+    "notConfigured": "AI 尚未配置 — 请在 AI 设置页中进行设置。",
+    "parseChartFailed": "解析图表脚本失败"
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "tabs": {
+    "query": "Query",
+    "analyze": "Analyze",
+    "dashboard": "Dashboard",
+    "flowDiagram": "FlowDiagram",
+    "project": "Project",
+    "problemSolving": "ProblemSolving",
+    "settings": "Settings",
+    "tools": "Tools"
+  },
+  "bar": {
+    "appTitle": "ODBC Query",
+    "enlargeAlex": "Enlarge the Alex icon",
+    "watchIntro": "Watch the intro",
+    "aiAssistant": "Open AI assistant",
+    "connections": "Open Connections settings",
+    "feedbackUnread_one": "Feedback — {{count}} unread post",
+    "feedbackUnread_other": "Feedback — {{count}} unread posts",
+    "feedbackIdle": "Feedback — report a problem or suggest an idea",
+    "openFeedbackUnread_one": "Open feedback, {{count}} unread",
+    "openFeedbackUnread_other": "Open feedback, {{count}} unread",
+    "openFeedback": "Open feedback",
+    "howToUse": "How to use this app",
+    "updates": "Open updates in Settings",
+    "feedbackBoard": "Feedback",
+    "language": "Switch to Chinese / 切换到中文"
+  },
+  "help": {
+    "title": "How to use this app",
+    "close": "Close",
+    "firstRunTitle": "First-run guide",
+    "firstRunHint": "Walk through ODBC detection, template queries, and template scripts step by step.",
+    "replay": "Replay guide"
+  },
+  "connection": {
+    "reconnecting": "Reconnecting…",
+    "retryNow": "Retry now",
+    "retrying": "Reconnecting to the local server… testing the connection now.",
+    "retried": "Reconnected — the local server is answering again. Carry on; no refresh needed.",
+    "failed": "Retry failed — the local server is still not answering. It may still be starting up; try again in a moment.",
+    "offline": "Lost connection to the local server. Your work is safe in this tab. It usually comes back on its own within a minute; if not, launch ODBCQueryApp.exe again — the page will reconnect without a refresh.",
+    "reconnectedToast": "Connected to the local server."
+  },
+  "update": {
+    "now": "Update now",
+    "later": "Later",
+    "dismiss": "Dismiss",
+    "checking": "Checking for updates…",
+    "downloading": "Downloading version {{version}}…{{percentSuffix}}{{rateText}}",
+    "verifying": "Verifying the download…",
+    "waitingIdle": "Waiting for running queries to finish…",
+    "restarting": "Installing the update and restarting — this tab reconnects automatically.",
+    "available": "A new version ({{latest}}) is available — you are on {{current}}.",
+    "stalledRestarting": "Still restarting — this page reconnects on its own. If nothing happens within a minute, close it and start the app again; the update is already installed.",
+    "stalledLost": "Lost contact with the app during the update — it should come back on its own. If it stays quiet, restart the app and run the update again.",
+    "unsupported": "This copy of the app cannot update itself. Close it and open the newest ODBCQueryApp.exe ({{latest}}) to upgrade.",
+    "startFailed": "Update could not be started.",
+    "installFailed": "Update could not be installed.",
+    "updatedToast": "Updated to version {{version}} — refreshing to load the new interface…",
+    "requiredTitle": "Update required",
+    "requiredText": "This version ({{current}}) is no longer supported. Version <strong>{{latest}}</strong> is required to continue.",
+    "requiredAuto": "“Update now” downloads the new build, waits for running queries to finish, then restarts the app automatically — this tab reconnects on its own.",
+    "requiredManual": "Automatic update is not available in this environment. Please close the app and copy the latest ODBCQueryApp.exe from your IT team's share folder."
+  },
+  "shutdown": {
+    "title": "Shut down server",
+    "confirm": "This stops the embedded ODBCQueryApp server and disconnects any connected users. You can close this tab afterwards. Continue?",
+    "stopping": "Stopping the server…",
+    "stopped": "The server has been stopped. You can now close this tab.",
+    "failed": "Could not stop the server: {{error}}",
+    "cancel": "Cancel",
+    "close": "Close",
+    "unexpected": "Unexpected error"
+  }
+}

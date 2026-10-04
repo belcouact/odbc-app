@@ -1,2 +1,6 @@
-1. Updates no longer start by themselves: checking for updates (on startup, via "Check now", or the automatic background check) now only shows the update banner and the About card. The download and install begin only when you click "Update now" — in the top banner, under Settings → About, or in the "Update required" dialog — so an update can never interrupt queries, uploads or other work in progress.
-2. Removed the small reconnect button in the top-right corner of the title bar. The app reconnects to its local server automatically (it keeps probing every few seconds while offline and the moment you return to the tab), and the "Lost connection" banner at the top still offers a manual "Retry now". The red/green icon had become redundant clutter.
+1. The interface is now fully bilingual: a one-tap EN / 中 switch in the top bar translates the whole app. It starts in English and remembers your choice for next time.
+2. The top bar was reorganised so the language switch and the How-to-use button come first.
+3. Fixed the feedback board overlay sometimes staying on top of the page when you reopened a view it was already showing.
+4. Fixed the feedback board header showing a placeholder instead of the total post count.
+5. Widened the All / Tables / Views switch so its labels no longer wrap.
+6. The Chinese mottos in the Alex window are no longer bold, and the app title now reads "ODBC查询" in Chinese.

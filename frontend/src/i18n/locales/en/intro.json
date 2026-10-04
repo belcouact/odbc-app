@@ -1,0 +1,97 @@
+{
+  "tour": {
+    "progress": "Step {{current}} of {{total}}",
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Finish",
+    "steps": {
+      "connections": {
+        "title": "Connect your database",
+        "body": "This app talks to your databases over ODBC. Click <b>Add connection</b> — DSNs already installed on this PC are detected automatically and listed for you. Save one and it appears as a badge in the top bar."
+      },
+      "queryTemplate": {
+        "title": "Query with a template",
+        "body": "Pick the connection you saved in the row above. A <b>Template</b> menu appears when ready-made quick-searches exist for it — choose one, fill the criteria (dates with a red * are required), then press <b>Run</b>. The SQL is generated for you."
+      },
+      "scriptTemplate": {
+        "title": "Analyze with a template script",
+        "body": "Open the <b>Script</b> tab and pick a script such as <i>analyze-mesa-yield</i> from the <b>Template</b> menu: it loads into the editor. Hit <b>Run</b> and the charts open in your browser, with the file saved to your Downloads folder."
+      }
+    }
+  },
+  "intro": {
+    "nav": {
+      "query": "Query",
+      "analyze": "Analyze",
+      "dashboard": "Dashboard",
+      "tools": "Tools"
+    },
+    "scenes": {
+      "intro": "Intro",
+      "query": "Query",
+      "charts": "Charts",
+      "scripts": "Scripts",
+      "ai": "AI assistant",
+      "finale": "Finale"
+    },
+    "hero": {
+      "query": "Query.",
+      "analyze": "Analyze.",
+      "dashboard": "Dashboard.",
+      "ask": "Ask.",
+      "lead": "One local app for every step with your ODBC data — connect, query without SQL, analyze, chart and ask the built-in AI assistant."
+    },
+    "demo": {
+      "run": "Run",
+      "last30Days": "Last 30 days",
+      "charts": {
+        "bar": "Bar",
+        "trend": "Trend",
+        "pie": "Pie",
+        "scatter": "Scatter",
+        "histogram": "Histogram",
+        "box": "Box"
+      },
+      "aiQuestion": "Which regions are falling behind?",
+      "aiAnswer": "West trails the regional average by 29%, and South is next. Want a bar chart of revenue against average?",
+      "actions": {
+        "sql": "Write the SQL",
+        "script": "Draft a script",
+        "chart": "Build a chart",
+        "explain": "Explain results"
+      }
+    },
+    "captions": {
+      "connect": {
+        "title": "Connect once. Query without SQL.",
+        "body": "Add an ODBC DSN, a connection string or an Access file, then run a ready-made quick-search — dates, lots, branches — and the SQL is written for you. Prefer raw SQL? The read-only SELECT editor is right there, and results land in the grid below."
+      },
+      "charts": {
+        "title": "See the shape of it.",
+        "body": "The Analyze tab turns results into bar, pie, trend, scatter, histogram, box or KPI charts — pick an X and a Y axis and the options adapt. Drag columns together in the Dashboard view, snapshot results into the local warehouse, or pin the charts you keep coming back to."
+      },
+      "scripts": {
+        "title": "Analyze it your way.",
+        "body": "Write a Python or JavaScript script in the Analyze tab and run it over every row in the grid — template scripts included — and watch stdout stream in live. Copy the output, or export to Excel, CSV or SAS XPT."
+      },
+      "ai": {
+        "title": "Ask for a second pair of eyes.",
+        "body": "The AI assistant sits on the Query and Analyze tabs and writes SQL, drafts scripts or builds charts in sql, script or chart mode. Point it at any OpenAI-compatible endpoint — your key stays in the Windows Credential Manager."
+      }
+    },
+    "final": {
+      "data": "Your data.",
+      "pc": "Your PC.",
+      "lead": "Connections stay on this machine, queries are read-only by default, and nothing leaves your PC unless you export it. No internet needed.",
+      "ai": "AI",
+      "export": "Export"
+    },
+    "watchAgain": "Watch again",
+    "replay": "Replay",
+    "aria": {
+      "progress": "Intro progress",
+      "closeIntro": "Close intro"
+    }
+  }
+}

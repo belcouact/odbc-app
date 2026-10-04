@@ -37,7 +37,10 @@ const LIGHT_GRAY = '#e8e6dc'
 // One family for the whole app (headings, controls and body copy): the same
 // humanist serif stack the body text uses. Georgia renders wherever the Lora
 // webfont is unavailable, so every surface stays visually identical.
-const BODY_FONT = '"Lora", Georgia, "Times New Roman", serif'
+// Lora covers Latin only; Chinese glyphs fall through to LXGW WenKai Screen
+// (Kai style, bundled above), then to whatever Kai the OS ships.
+const BODY_FONT =
+  '"Lora", "LXGW WenKai Screen", "Kaiti SC", STKaiti, KaiTi, "楷体", Georgia, "Times New Roman", serif'
 const DISPLAY_FONT = BODY_FONT
 const MONO_FONT =
   "'IBM Plex Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Code', Menlo, Consolas, monospace"

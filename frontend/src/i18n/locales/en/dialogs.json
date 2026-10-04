@@ -1,0 +1,91 @@
+{
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "reuse": "Reuse",
+    "delete": "Delete",
+    "update": "Update",
+    "save": "Save"
+  },
+  "gridTools": {
+    "title": "Edit grid",
+    "ariaClose": "Close",
+    "tabs": {
+      "ai": "AI edit",
+      "types": "Data types",
+      "add": "Add column"
+    }
+  },
+  "addColumn": {
+    "intro": "Build a calculated column from a formula. Reference a column in braces, e.g.",
+    "introExample": " — or combine several, e.g.",
+    "introSuffix": ".",
+    "enterFormula": "Enter a formula to build the column.",
+    "enterName": "Enter a name for the column.",
+    "nameExists": "A column with this name already exists.",
+    "unknownColumns": "Unknown column(s): {{names}}",
+    "rowsShown": "Showing {{n}} of {{total}} rows",
+    "columnName": "Column name",
+    "formula": "Formula",
+    "columns": "Columns",
+    "preview": "Preview",
+    "add": "Add column"
+  },
+  "aiTransform": {
+    "aiRequestFailed": "AI request failed",
+    "transformFailed": "Transform failed",
+    "columnPrefix": "Column: {{name}}",
+    "gridColumns": "Grid columns ({{n}}) — click to insert",
+    "requirementLabel": "Describe the change",
+    "requirementPlaceholder": "e.g. Add a 'Total' column equal to Price × Qty, and drop rows where Qty is 0",
+    "helperText": "Sends {{sample}} of {{n}} rows to the AI as a sample; the script then runs on every row.",
+    "recentScripts": "Recent scripts ({{n}})",
+    "deleteFromHistory": "Delete from history",
+    "deleteScriptAria": "Delete script",
+    "questionsHeading": "A few clarifying questions",
+    "scriptHeading": "Generated script",
+    "thinking": "Thinking…",
+    "continue": "Continue",
+    "generating": "Generating…",
+    "noAnswers": "Skip questions",
+    "generateScript": "Generate script",
+    "regenerate": "Regenerate",
+    "running": "Running…",
+    "runOnGrid": "Run on grid"
+  },
+  "columnTypes": {
+    "intro": "Choose how each column is treated — this affects sorting, filters and formatting.",
+    "unknownType": "unknown",
+    "custom": "custom",
+    "auto": "auto",
+    "empty": "No columns to configure.",
+    "kinds": {
+      "number": "Number",
+      "text": "Text",
+      "boolean": "Boolean",
+      "date": "Date"
+    }
+  },
+  "testComponents": {
+    "title": "Test Components",
+    "ariaClose": "Close",
+    "loading": "Loading test components…",
+    "none": "No test components found for this connection.",
+    "analysesHeading": "Test components (ANALYSIS)",
+    "componentsHeading": "Components ({{count}} selected)",
+    "pickAnalysis": "Select an analysis on the left to list its components.",
+    "existingSet": "Existing set",
+    "loadSavedSet": "— load a saved set —",
+    "setName": "Set name",
+    "setNamePlaceholder": "Name this component set",
+    "selectionPlaceholder": "Selected RESULT_NAMEs appear here — editable before loading",
+    "loadToResultName": "Load to RESULT_NAME",
+    "loadFailed": "Failed to load test components",
+    "saveFailed": "Failed to save the component set",
+    "updateFailed": "Failed to update the component set",
+    "deleteFailed": "Failed to delete the component set",
+    "savedNotice": "Component set '{{name}}' saved.",
+    "updatedNotice": "Component set '{{name}}' updated.",
+    "deletedNotice": "Component set '{{name}}' deleted."
+  }
+}

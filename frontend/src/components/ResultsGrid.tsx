@@ -62,7 +62,9 @@ import TuneIcon from '@mui/icons-material/Tune'
 import UndoIcon from '@mui/icons-material/Undo'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
+import { useTranslation } from 'react-i18next'
 import type { GridDrillFilter, QueryResult } from '../types'
+import { AG_GRID_LOCALE_ZH } from '../i18n/agGridZh'
 import { formatCellValue } from '../utils/format'
 import { detectColumnKind, groupingKey, type ColumnKind } from '../utils/columns'
 import type { ComputedColumn } from '../utils/formula'
@@ -300,6 +302,7 @@ function EditableHeader({
   onRenameHeader,
   api,
 }: EditableHeaderProps) {
+  const { t } = useTranslation('grid')
   const containerRef = useRef<HTMLSpanElement | null>(null)
   /** Set while cancelling, so the blur that follows does not commit the draft. */
   const skipCommitRef = useRef(false)
@@ -387,7 +390,7 @@ function EditableHeader({
   return (
     <span
       ref={containerRef}
-      title={renameHeaderKey ? `${displayName} — double-click to rename` : displayName}
+      title={renameHeaderKey ? t('header.renameTooltip', { name: displayName }) : displayName}
       style={{
         display: 'block',
         width: '100%',
@@ -401,7 +404,7 @@ function EditableHeader({
       {editing ? (
         <input
           autoFocus
-          aria-label={`Rename column ${displayName}`}
+          aria-label={t('header.renameAria', { name: displayName })}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
@@ -497,6 +500,9 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
   ref,
 ) {
   const gridRef = useRef<AgGridReact>(null)
+  // Subscribes to language changes so the grid rebuilds with the matching
+  // AG Grid localeText (localeText is read once, at grid creation).
+  const { t, i18n } = useTranslation('grid')
   /** Wrapper around the grid; used to capture the right-click position early. */
   const gridWrapRef = useRef<HTMLDivElement | null>(null)
   /** Last result object the entrance effect saw; reference-equality is the
@@ -765,7 +771,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         block = block.filter((row) => row.some((cell) => cell.trim() !== ''))
       }
       if (block.length === 0) {
-        if (emptySkipped > 0) showPasteNotice('Nothing to paste — every row was empty.')
+        if (emptySkipped > 0) showPasteNotice(t('paste.nothingEmpty'))
         return
       }
 
@@ -781,8 +787,8 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         if (width === 0 || freshRows.length === 0) {
           showPasteNotice(
             width === 0
-              ? 'Nothing to paste — no columns found.'
-              : 'Only a header row was pasted — add some data rows below it.',
+              ? t('paste.noColumns')
+              : t('paste.headerOnlyAddRows'),
           )
           return
         }
@@ -807,10 +813,10 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         )
         onRowsPasted(rows, columns)
         const parts = [
-          `Pasted ${rows.length} row(s) · ${columns.length} column(s)`,
-          ...(emptySkipped > 0 ? [`${emptySkipped} empty skipped`] : []),
+          t('paste.rowsColumns', { rows: rows.length, columns: columns.length }),
+          ...(emptySkipped > 0 ? [t('paste.emptySkipped', { count: emptySkipped })] : []),
         ]
-        showPasteNotice(`${parts.join(' · ')} — new table created.`)
+        showPasteNotice(t('paste.resultNewTable', { summary: parts.join(' · ') }))
         return
       }
 
@@ -901,7 +907,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
       const skipHeader = options?.skipHeader ?? looksLikeHeader
       const dataRows = skipHeader ? block.slice(1) : block
       if (dataRows.length === 0) {
-        showPasteNotice('Only a header row was pasted — nothing to add.')
+        showPasteNotice(t('paste.headerOnlyNothing'))
         return
       }
 
@@ -941,10 +947,10 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         )
         onRowsPasted(rows, columns)
         const parts = [
-          `Pasted ${rows.length} row(s) · ${columns.length} column(s)`,
-          ...(emptySkipped > 0 ? [`${emptySkipped} empty skipped`] : []),
+          t('paste.rowsColumns', { rows: rows.length, columns: columns.length }),
+          ...(emptySkipped > 0 ? [t('paste.emptySkipped', { count: emptySkipped })] : []),
         ]
-        showPasteNotice(`${parts.join(' · ')} — table replaced.`)
+        showPasteNotice(t('paste.resultTableReplaced', { summary: parts.join(' · ') }))
         return
       }
 
@@ -990,14 +996,14 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
       }
 
       onRowsPasted(builtRows)
-      const parts = [`Pasted ${dataRows.length} row(s)`]
-      if (replaceMode) parts.push('table replaced')
-      else if (appended > 0) parts.push(`${appended} new`)
-      if (emptySkipped > 0) parts.push(`${emptySkipped} empty skipped`)
-      if (skippedCols > 0) parts.push(`${skippedCols} column(s) beyond the table skipped`)
+      const parts = [t('paste.rowsPasted', { count: dataRows.length })]
+      if (replaceMode) parts.push(t('paste.tableReplaced'))
+      else if (appended > 0) parts.push(t('paste.newAppended', { count: appended }))
+      if (emptySkipped > 0) parts.push(t('paste.emptySkipped', { count: emptySkipped }))
+      if (skippedCols > 0) parts.push(t('paste.beyondTable', { count: skippedCols }))
       showPasteNotice(parts.join(' · '))
     },
-    [result, columnKinds, columnLabels, onRowsPasted, showPasteNotice],
+    [result, columnKinds, columnLabels, onRowsPasted, showPasteNotice, t],
   )
 
   // Ctrl+V anywhere in the grid pastes straight from the clipboard: the paste
@@ -1189,16 +1195,10 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
   // brand-new table). Rendered in both the empty and the grid states.
   const pasteDialog = (
     <Dialog open={pasteOpen} onClose={() => setPasteOpen(false)} fullWidth maxWidth="sm">
-      <DialogTitle>Paste from clipboard</DialogTitle>
+      <DialogTitle>{t('paste.dialogTitle')}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Copy cells in Excel (or anywhere) and paste below — Ctrl+V on desktop, or long-press →
-          Paste on touch. On the grid itself, Ctrl+V pastes Excel-style from the focused cell. A
-          paste here
-          {result
-            ? ' replaces the whole table — pasted headers (when included) become the column headers'
-            : ' creates a brand-new table from the block'}
-          ; blank rows are dropped.
+          {result ? t('paste.introWithGrid') : t('paste.introNoGrid')}
         </Typography>
         <TextField
           autoFocus
@@ -1206,7 +1206,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           minRows={6}
           maxRows={14}
           fullWidth
-          placeholder={'column A\tcolumn B\nvalue\tvalue'}
+          placeholder={t('paste.placeholder')}
           value={pasteDraft}
           onChange={(event) => handlePasteDraftChange(event.target.value)}
         />
@@ -1224,15 +1224,15 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           }
           label={
             result
-              ? 'First row contains column headers — skip it'
-              : 'First row contains column headers — name the new columns'
+              ? t('paste.headerLabelWithGrid')
+              : t('paste.headerLabelNoGrid')
           }
           slotProps={{ typography: { variant: 'body2' } }}
         />
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setPasteOpen(false)} sx={{ minHeight: 40 }}>
-          Cancel
+          {t('paste.cancel')}
         </Button>
         <Button
           variant="contained"
@@ -1245,7 +1245,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           }}
           sx={{ minHeight: 40 }}
         >
-          {result ? 'Paste into grid' : 'Paste as new table'}
+          {result ? t('paste.pasteIntoGrid') : t('paste.pasteAsNewTable')}
         </Button>
       </DialogActions>
     </Dialog>
@@ -1256,7 +1256,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
       <>
         <Box sx={{ textAlign: 'center', py: { xs: 5, md: 8 } }}>
           <Typography color="text.secondary">
-            Run a query, upload a file, or paste data to see results here.
+            {t('empty.noResult')}
           </Typography>
         </Box>
         {pasteDialog}
@@ -1272,8 +1272,14 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Typography variant="body2" color="text.secondary">
             {drillFilters.length > 0
-              ? `${drilledCount.toLocaleString()} of ${result.row_count.toLocaleString()} rows`
-              : `${result.row_count.toLocaleString()} row${result.row_count === 1 ? '' : 's'}`}{' '}
+              ? t('rows.drilled', {
+                  drilled: drilledCount.toLocaleString(),
+                  total: result.row_count.toLocaleString(),
+                })
+              : t('rows.count', {
+                  count: result.row_count,
+                  value: result.row_count.toLocaleString(),
+                })}{' '}
             · {result.elapsed_ms.toLocaleString()} ms
           </Typography>
           {pasteNotice && (
@@ -1284,7 +1290,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         </Stack>
         <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           {onRevertGrid && (
-            <Tooltip title="Restore the grid to the state before the last AI edit or paste">
+            <Tooltip title={t('revert.tooltip')}>
               <Button
                 size="small"
                 variant="outlined"
@@ -1293,7 +1299,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
                 onClick={onRevertGrid}
                 sx={{ minHeight: 40 }}
               >
-                Revert
+                {t('revert.button')}
               </Button>
             </Tooltip>
           )}
@@ -1313,18 +1319,18 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
                 onClick={onClearDrill}
                 sx={{ minHeight: 40 }}
               >
-                Clear
+                {t('drill.clear')}
               </Button>
             )
           }
         >
           <Stack direction="row" spacing={0.75} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <Typography variant="body2">Drill-through:</Typography>
+            <Typography variant="body2">{t('drill.label')}</Typography>
             {drillFilters.map((filter) => (
               <Chip
                 key={filter.column}
                 size="small"
-                label={`${filter.column} = ${filter.values.map((v) => (v === '' ? '(blank)' : v)).join(', ')}`}
+                label={`${filter.column} = ${filter.values.map((v) => (v === '' ? t('drill.blank') : v)).join(', ')}`}
               />
             ))}
           </Stack>
@@ -1333,7 +1339,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
 
       {empty ? (
         <Box sx={{ textAlign: 'center', py: { xs: 5, md: 8 } }}>
-          <Typography color="text.secondary">The query returned no rows.</Typography>
+          <Typography color="text.secondary">{t('empty.noRows')}</Typography>
         </Box>
       ) : (
         <Box
@@ -1342,6 +1348,10 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           sx={{ height: { xs: 420, md: 560 }, width: '100%' }}
         >
           <AgGridReact
+            // Rebuilding on a language change re-reads localeText, which is
+            // otherwise captured once at grid creation.
+            key={i18n.language}
+            localeText={i18n.language.startsWith('zh') ? AG_GRID_LOCALE_ZH : undefined}
             ref={gridRef}
             rowData={result.rows}
             columnDefs={columnDefs}
@@ -1398,14 +1408,14 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         {menu?.scope === 'cell' && (
           <ActionItem
             icon={<ContentCopyIcon fontSize="small" />}
-            label="Copy cell"
+            label={t('menu.copyCell')}
             onClick={() => void runMenuAction('copyCell')}
           />
         )}
         {menu?.scope === 'cell' && (
           <ActionItem
             icon={<ContentCopyIcon fontSize="small" />}
-            label="Copy row"
+            label={t('menu.copyRow')}
             onClick={() => void runMenuAction('copyRow')}
           />
         )}
@@ -1414,8 +1424,8 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
             icon={<ContentCopyIcon fontSize="small" />}
             label={
               menu && menu.facts.selectedCount > 1
-                ? `Copy ${menu.facts.selectedCount} selected rows`
-                : 'Copy selected rows'
+                ? t('menu.copySelectedCount', { count: menu.facts.selectedCount })
+                : t('menu.copySelected')
             }
             disabled={!menu || menu.facts.selectedCount === 0}
             onClick={() => void runMenuAction('copySelected')}
@@ -1425,96 +1435,96 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
         {menu?.scope === 'cell' && (
           <ActionItem
             icon={<FilterAltIcon fontSize="small" />}
-            label="Filter by this value"
+            label={t('menu.filterBy')}
             onClick={() => void runMenuAction('filterBy')}
           />
         )}
         {menu?.scope === 'cell' && (
           <ActionItem
             icon={<FilterAltOffIcon fontSize="small" />}
-            label="Filter out this value"
+            label={t('menu.filterOut')}
             onClick={() => void runMenuAction('filterOut')}
           />
         )}
         <ActionItem
           icon={<FilterAltIcon fontSize="small" />}
-          label="Open filter"
+          label={t('menu.openFilter')}
           onClick={() => void runMenuAction('openFilter')}
         />
         <ActionItem
           icon={<FilterAltOffIcon fontSize="small" />}
-          label="Clear this column's filter"
+          label={t('menu.clearFilter')}
           disabled={!menu?.facts.filtered}
           onClick={() => void runMenuAction('clearFilter')}
         />
         <ActionItem
           icon={<ClearAllIcon fontSize="small" />}
-          label="Clear all filters"
+          label={t('menu.clearAllFilters')}
           disabled={!menu?.facts.anyFilter}
           onClick={() => void runMenuAction('clearAllFilters')}
         />
         <MenuDivider />
         <ActionItem
           icon={<ArrowUpwardIcon fontSize="small" />}
-          label="Sort ascending"
+          label={t('menu.sortAsc')}
           onClick={() => void runMenuAction('sortAsc')}
         />
         <ActionItem
           icon={<ArrowDownwardIcon fontSize="small" />}
-          label="Sort descending"
+          label={t('menu.sortDesc')}
           onClick={() => void runMenuAction('sortDesc')}
         />
         <ActionItem
           icon={<SwapVertIcon fontSize="small" />}
-          label="Clear sort"
+          label={t('menu.clearSort')}
           disabled={!menu?.facts.sorted}
           onClick={() => void runMenuAction('clearSort')}
         />
         <MenuDivider />
         <ActionItem
           icon={<PushPinIcon fontSize="small" />}
-          label="Pin column left"
+          label={t('menu.pinLeft')}
           disabled={menu?.facts.pinned === 'left'}
           onClick={() => void runMenuAction('pinLeft')}
         />
         <ActionItem
           icon={<PushPinIcon fontSize="small" sx={{ transform: 'scaleX(-1)' }} />}
-          label="Pin column right"
+          label={t('menu.pinRight')}
           disabled={menu?.facts.pinned === 'right'}
           onClick={() => void runMenuAction('pinRight')}
         />
         <ActionItem
           icon={<BlockIcon fontSize="small" />}
-          label="Unpin column"
+          label={t('menu.unpin')}
           disabled={!menu?.facts.pinned}
           onClick={() => void runMenuAction('unpin')}
         />
         <MenuDivider />
         <ActionItem
           icon={<StraightenIcon fontSize="small" />}
-          label="Autosize this column"
+          label={t('menu.autosizeThis')}
           onClick={() => void runMenuAction('autosizeThis')}
         />
         <ActionItem
           icon={<StraightenIcon fontSize="small" />}
-          label="Autosize all columns"
+          label={t('menu.autosizeAll')}
           onClick={() => void runMenuAction('autosizeAll')}
         />
         <ActionItem
           icon={<RestartAltIcon fontSize="small" />}
-          label="Reset columns"
+          label={t('menu.resetColumns')}
           onClick={() => void runMenuAction('resetColumns')}
         />
         <MenuDivider />
         <ActionItem
           icon={<VisibilityOffIcon fontSize="small" />}
-          label="Hide this column"
+          label={t('menu.hideColumn')}
           disabled={!menu?.facts.canHide}
           onClick={() => void runMenuAction('hideColumn')}
         />
         <ActionItem
           icon={<VisibilityIcon fontSize="small" />}
-          label="Show all columns"
+          label={t('menu.showAllColumns')}
           disabled={!menu?.facts.canShowAll}
           onClick={() => void runMenuAction('showAllColumns')}
         />
@@ -1532,70 +1542,70 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
       >
         <Stack spacing={1.25}>
           <Box>
-            <Typography variant="subtitle2">Everything this table can do</Typography>
+            <Typography variant="subtitle2">{t('help.title')}</Typography>
             <Typography variant="caption" color="text.secondary">
-              Right-click a cell or a column header for the full menu.
+              {t('help.subtitle')}
             </Typography>
           </Box>
           <Divider />
           <HelpRow
             icon={<ContentCopyIcon fontSize="small" />}
-            title="Copy"
-            detail="Copy cell / row / selected rows from the right-click menu. The Copy button copies the rows you selected, or the whole result when nothing is selected — paste it straight into Excel."
+            title={t('help.copy.title')}
+            detail={t('help.copy.detail')}
           />
           <HelpRow
             icon={<ContentPasteIcon fontSize="small" />}
-            title="Paste"
-            detail="Press Ctrl+V on the grid for an Excel-style fill, or use the Paste button in the results header: the dialog paste clears the current rows and replaces the table with the block (or creates a new table before any query has run). The header row is auto-detected or toggle it with the checkbox, blank rows are dropped, numbers land as numbers, and Revert undoes the paste."
+            title={t('help.paste.title')}
+            detail={t('help.paste.detail')}
           />
           <HelpRow
             icon={<SwapVertIcon fontSize="small" />}
-            title="Sort"
-            detail="Click a header to sort, or use Sort ascending / descending / Clear sort in the right-click menu."
+            title={t('help.sort.title')}
+            detail={t('help.sort.detail')}
           />
           <HelpRow
             icon={<LowPriorityIcon fontSize="small" />}
-            title="Sort by several columns"
-            detail="Hold Shift and click more headers to add them to the sort. Numbered badges on the headers show the order; click a header again to flip or extend its direction."
+            title={t('help.multiSort.title')}
+            detail={t('help.multiSort.detail')}
           />
           <HelpRow
             icon={<FilterAltIcon fontSize="small" />}
-            title="Filter"
-            detail="Filter by or out a single value, open the filter, or clear one / all filters from the right-click menu."
+            title={t('help.filter.title')}
+            detail={t('help.filter.detail')}
           />
           <HelpRow
             icon={<PushPinIcon fontSize="small" />}
-            title="Columns"
-            detail="Pin left or right, autosize one or all columns, reset columns, and hide or show columns — all from the right-click menu. Drag between headers to resize or reorder."
+            title={t('help.columns.title')}
+            detail={t('help.columns.detail')}
           />
           <HelpRow
             icon={<TuneIcon fontSize="small" />}
-            title="Rename a column"
-            detail="Double-click any column header."
+            title={t('help.rename.title')}
+            detail={t('help.rename.detail')}
           />
           <HelpRow
             icon={<EditIcon fontSize="small" />}
-            title="Edit grid"
-            detail="One window, three tabs: AI edit (describe a change and AI writes a Python script for the table), Data types (switch a column between text, number and date) and Add column (build a calculated column with a formula)."
+            title={t('help.editGrid.title')}
+            detail={t('help.editGrid.detail')}
           />
           {onSaveToWarehouse && (
             <HelpRow
               icon={<SaveIcon fontSize="small" />}
-              title="Save data"
-              detail="Store the grid as a snapshot in the Dashboard warehouse (the Dashboard tab) so you can chart or inspect it later without re-running the query."
+              title={t('help.save.title')}
+              detail={t('help.save.detail')}
             />
           )}
           {onRevertGrid && (
             <HelpRow
               icon={<UndoIcon fontSize="small" />}
-              title="Revert"
-              detail="Undo the last AI edit or paste and restore the previous table."
+              title={t('help.revert.title')}
+              detail={t('help.revert.detail')}
             />
           )}
           <HelpRow
             icon={<HelpOutlinedIcon fontSize="small" />}
-            title="Selection"
-            detail="Click a row to select it; ctrl/cmd-click or drag to select several, then copy them in one go."
+            title={t('help.selection.title')}
+            detail={t('help.selection.detail')}
           />
         </Stack>
       </Popover>

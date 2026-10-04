@@ -23,6 +23,8 @@ import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import type { EChartsOption } from 'echarts'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import { emit } from '../editorBus'
 import type { AiMode } from '../types'
@@ -45,31 +47,11 @@ interface AiSidebarProps {
   onOpenBi?: () => void
 }
 
-const MODES: { value: AiMode; label: string; icon: ReactElement; hint: string }[] = [
-  {
-    value: 'chat',
-    label: 'Chat',
-    icon: <ChatIcon fontSize="small" />,
-    hint: 'Ask anything — general questions, explanations, calculations or how to use this app.',
-  },
-  {
-    value: 'sql',
-    label: 'SQL',
-    icon: <CodeIcon fontSize="small" />,
-    hint: 'Explain, debug or write read-only SQL. Apply generated SQL straight to the editor.',
-  },
-  {
-    value: 'script',
-    label: 'Analyze',
-    icon: <TerminalIcon fontSize="small" />,
-    hint: 'Generate or refine a Python/JavaScript script that processes the queried rows.',
-  },
-  {
-    value: 'chart',
-    label: 'Chart',
-    icon: <ShowChartIcon fontSize="small" />,
-    hint: 'Describe a chart (ECharts) to apply to the Analyze tab, or just ask anything. Refine it over several turns.',
-  },
+const MODES: { value: AiMode; icon: ReactElement }[] = [
+  { value: 'chat', icon: <ChatIcon fontSize="small" /> },
+  { value: 'sql', icon: <CodeIcon fontSize="small" /> },
+  { value: 'script', icon: <TerminalIcon fontSize="small" /> },
+  { value: 'chart', icon: <ShowChartIcon fontSize="small" /> },
 ]
 
 /** Predefined quick actions shown under the SQL tab (sent as-is to the AI). */
@@ -94,9 +76,9 @@ function extractCodeBlock(text: string): string | null {
  * current grid rows are exposed as a global named ``rows`` (keyed by column
  * header name) so the script builds data by mapping over column names.
  */
-function parseEchartScript(script: string, rows: Record<string, unknown>[]): EChartsOption {
+function parseEchartScript(script: string, rows: Record<string, unknown>[], t: TFunction): EChartsOption {
   const trimmed = script.trim()
-  if (!trimmed) throw new Error('The script is empty — nothing to apply.')
+  if (!trimmed) throw new Error(t('errors.scriptEmpty'))
   // Assignment style: `option = { ... }`
   try {
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
@@ -111,7 +93,7 @@ function parseEchartScript(script: string, rows: Record<string, unknown>[]): ECh
   const fn = new Function('rows', `${trimmed}\n;return typeof option !== 'undefined' ? option : null;`)
   const value = fn(rows)
   if (value && typeof value === 'object') return value as EChartsOption
-  throw new Error('The script did not produce an ECharts `option` object.')
+  throw new Error(t('errors.noOption'))
 }
 
 const EMPTY = { chat: [], sql: [], script: [], chart: [] } as Record<AiMode, ChatMessage[]>
@@ -156,6 +138,7 @@ export default function AiSidebar({
   chartTarget = 'script',
   onOpenBi,
 }: AiSidebarProps) {
+  const { t } = useTranslation('aiSidebar')
   // Each mode keeps its own conversation so switching tabs never loses
   // context. Conversations are persisted so they survive app restarts.
   const [messages, setMessages] = useState<Record<AiMode, ChatMessage[]>>(loadStoredMessages)
@@ -234,7 +217,7 @@ export default function AiSidebar({
     if (promptOverride && mode === 'sql' && !getWorkspaceSnapshot().sqlText.trim()) {
       setErrors((prev) => ({
         ...prev,
-        [mode]: 'The SQL editor is empty — write or load a query first.',
+        [mode]: t('errors.sqlEditorEmpty'),
       }))
       return
     }
@@ -277,18 +260,18 @@ export default function AiSidebar({
         appendDelta,
       )
       if (!reply.trim()) {
-        throw new Error('The AI returned an empty response. Please try again.')
+        throw new Error(t('errors.emptyResponse'))
       }
       setMessages((prev) => ({
         ...prev,
         [mode]: [...conversation, { role: 'assistant', content: reply }],
       }))
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'AI request failed'
+      const message = err instanceof Error ? err.message : t('errors.aiRequestFailed')
       setErrors((prev) => ({
         ...prev,
         [mode]: message.includes('not configured')
-          ? 'AI is not configured — set it up in the AI Setting tab.'
+          ? t('errors.notConfigured')
           : message,
       }))
       // Drop the placeholder when nothing streamed; keep partial output otherwise.
@@ -311,7 +294,7 @@ export default function AiSidebar({
     const snapshotNow = getWorkspaceSnapshot()
     if (mode === 'sql') {
       emit({ type: 'load-sql', sql: code, connectionId: snapshotNow.connectionId || undefined })
-      showNotice('SQL applied to the SQL editor.')
+      showNotice(t('notices.sqlApplied'))
       onOpenEditor?.()
     } else if (mode === 'script') {
       const builder = snapshotNow.builderQuery
@@ -331,20 +314,20 @@ export default function AiSidebar({
         },
         source,
       })
-      showNotice('Script inserted into the Analyze editor.')
+      showNotice(t('notices.scriptInserted'))
       onOpenScript?.()
     } else if (mode === 'chart') {
       try {
-        const option = parseEchartScript(code, snapshotNow.rows)
+        const option = parseEchartScript(code, snapshotNow.rows, t)
         const toBi = chartTarget === 'bi'
         emit({ type: 'apply-chart', option, target: toBi ? 'bi' : 'script' })
-        showNotice(toBi ? 'Chart applied to the Dashboard chart builder.' : 'Chart applied to the Analyze tab.')
+        showNotice(toBi ? t('notices.chartAppliedBi') : t('notices.chartAppliedScript'))
         if (toBi) onOpenBi?.()
         else onOpenScript?.()
       } catch (err) {
         setErrors((prev) => ({
           ...prev,
-          chart: err instanceof Error ? err.message : 'Failed to parse the chart script',
+          chart: err instanceof Error ? err.message : t('errors.parseChartFailed'),
         }))
       }
     }
@@ -403,13 +386,13 @@ export default function AiSidebar({
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <AutoAwesomeIcon color="primary" />
-            <Typography variant="h6">AI Assistant</Typography>
+            <Typography variant="h6">{t('title')}</Typography>
           </Stack>
           <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
             <Button size="small" onClick={clearConversation} disabled={currentMessages.length === 0}>
-              Clear
+              {t('clear')}
             </Button>
-            <IconButton onClick={onClose} aria-label="Close AI assistant" size="small">
+            <IconButton onClick={onClose} aria-label={t('aria.close')} size="small">
               <CloseIcon />
             </IconButton>
           </Stack>
@@ -428,13 +411,13 @@ export default function AiSidebar({
               value={m.value}
               icon={m.icon}
               iconPosition="start"
-              label={m.label}
+              label={t(`modes.${m.value}.label`)}
               sx={{ minHeight: 44 }}
             />
           ))}
         </Tabs>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pt: 0.5 }}>
-          {currentMode.hint}
+          {t(`modes.${currentMode.value}.hint`)}
         </Typography>
       </Box>
 
@@ -442,11 +425,14 @@ export default function AiSidebar({
       <Box sx={{ px: 1.5, pb: 1, flexShrink: 0 }}>
         <Paper variant="outlined" sx={{ px: 1.25, py: 0.75, bgcolor: 'action.hover' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            Grid data: {snapshot.columns.length > 0 ? `${snapshot.columns.length} column${snapshot.columns.length === 1 ? '' : 's'}` : 'no columns'}
+            {t('context.gridData')}
+            {snapshot.columns.length > 0
+              ? t('context.columns', { count: snapshot.columns.length })
+              : t('context.noColumns')}
             {snapshot.rows.length > 0
-              ? ` · ${snapshot.rows.length.toLocaleString()} row${snapshot.rows.length === 1 ? '' : 's'}`
-              : ' · no rows'}
-            {snapshot.connectionId ? ' · connection connected' : ''}
+              ? t('context.rows', { count: snapshot.rows.length, n: snapshot.rows.length.toLocaleString() })
+              : t('context.noRows')}
+            {snapshot.connectionId ? t('context.connected') : ''}
           </Typography>
         </Paper>
       </Box>
@@ -466,14 +452,10 @@ export default function AiSidebar({
       >
         {currentMessages.length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            {mode === 'chat' &&
-              'Ask anything — e.g. “What does this app do?”, “Explain standard deviation”, or “Summarize this data in plain words”.'}
-            {mode === 'sql' &&
-              'e.g. “Explain what this SQL does”, “Fix the error: …”, or “Write a query for …”.'}
-            {mode === 'script' &&
-              'e.g. “Write a Python script that groups rows by region and prints the total amount per region.”'}
-            {mode === 'chart' &&
-              'e.g. “A bar chart of total amount per region, title “Sales by region”, blue bars.” — or just ask, e.g. “What chart type fits this data?”'}
+            {mode === 'chat' && t('empty.chat')}
+            {mode === 'sql' && t('empty.sql')}
+            {mode === 'script' && t('empty.script')}
+            {mode === 'chart' && t('empty.chart')}
           </Typography>
         )}
         {currentMessages.map((message, index) =>
@@ -604,9 +586,9 @@ export default function AiSidebar({
                 onClick={() => handleApply(message.content)}
                 sx={{ mt: 1, minHeight: 40 }}
               >
-                {mode === 'sql' && 'Apply to SQL editor'}
-                {mode === 'script' && 'Insert into script editor'}
-                {mode === 'chart' && 'Apply chart'}
+                {mode === 'sql' && t('apply.sql')}
+                {mode === 'script' && t('apply.script')}
+                {mode === 'chart' && t('apply.chart')}
               </Button>
             )}
             </Paper>
@@ -616,7 +598,7 @@ export default function AiSidebar({
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <CircularProgress size={18} />
             <Typography variant="body2" color="text.secondary">
-              Thinking…
+              {t('thinking')}
             </Typography>
           </Stack>
         )}
@@ -645,7 +627,7 @@ export default function AiSidebar({
               disabled={loadingMode !== null || !snapshot.sqlText.trim()}
               sx={{ minHeight: 48 }}
             >
-              Explain
+              {t('quickActions.explain')}
             </Button>
             <Button
               size="small"
@@ -655,13 +637,13 @@ export default function AiSidebar({
               disabled={loadingMode !== null || !snapshot.sqlText.trim()}
               sx={{ minHeight: 48 }}
             >
-              Optimize
+              {t('quickActions.optimize')}
             </Button>
           </Stack>
         )}
         <Stack direction="row" spacing={1} useFlexGap>
           <TextField
-            label="Message"
+            label={t('input.message')}
             value={currentInput}
             onChange={(event: ChangeEvent<HTMLInputElement>) =>
               setInputs((prev) => ({ ...prev, [mode]: event.target.value }))
@@ -677,10 +659,10 @@ export default function AiSidebar({
             minRows={2}
             placeholder={
               mode === 'chat'
-                ? 'Ask anything…'
+                ? t('placeholder.chat')
                 : mode === 'chart'
-                  ? 'Ask anything, or describe the chart you want…'
-                  : 'Ask anything or request SQL / a script…'
+                  ? t('placeholder.chart')
+                  : t('placeholder.sqlScript')
             }
           />
           <Button
@@ -692,7 +674,7 @@ export default function AiSidebar({
             }
             sx={{ minHeight: 48, alignSelf: 'flex-end' }}
           >
-            Send
+            {t('send')}
           </Button>
         </Stack>
       </Box>

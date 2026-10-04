@@ -1,5 +1,15 @@
 [
   {
+    "version": "2.4.0",
+    "date": "2026-10-04",
+    "notes": "1. The interface is now fully bilingual: a one-tap EN / 中 switch in the top bar translates the whole app. It starts in English and remembers your choice for next time.\n2. The top bar was reorganised so the language switch and the How-to-use button come first.\n3. Fixed the feedback board overlay sometimes staying on top of the page when you reopened a view it was already showing.\n4. Fixed the feedback board header showing a placeholder instead of the total post count.\n5. Widened the All / Tables / Views switch so its labels no longer wrap.\n6. The Chinese mottos in the Alex window are no longer bold, and the app title now reads \"ODBC查询\" in Chinese."
+  },
+  {
+    "version": "2.3.2",
+    "date": "2026-10-04",
+    "notes": "1. Template pickers are simpler: the Script page always shows the Template dropdown (the \"Use template\" checkbox is gone), and on the Query tab the Template dropdown appears automatically whenever the selected connection has quick-search templates — no checkbox needed. The connection picker shows \"Select connection\" and the template picker shows \"Select SQL\" directly in the closed dropdown, with rows at equal height.\n2. The Alex window got a refresh: the portrait now sits beside the mottos (stacked on phones), and each line pairs its English text with a bold Chinese rendering."
+  },
+  {
     "version": "2.3.1",
     "date": "2026-10-04",
     "notes": "1. Updates no longer start by themselves: checking for updates (on startup, via \"Check now\", or the automatic background check) now only shows the update banner and the About card. The download and install begin only when you click \"Update now\" — in the top banner, under Settings → About, or in the \"Update required\" dialog — so an update can never interrupt queries, uploads or other work in progress.\n2. Removed the small reconnect button in the top-right corner of the title bar. The app reconnects to its local server automatically (it keeps probing every few seconds while offline and the moment you return to the tab), and the \"Lost connection\" banner at the top still offers a manual \"Retry now\". The red/green icon had become redundant clutter."
@@ -13,15 +23,5 @@
     "version": "2.2.9",
     "date": "2026-10-04",
     "notes": "1. Fixed losing the app after briefly visiting another website: navigating away used to be mistaken for closing the app, so the background server shut down after about 10 seconds and coming back showed a \"Lost connection\" banner whose \"Retry now\" button could not help. The server now waits up to 2 minutes before treating a goodbye as a real quit — returning within that window brings the app back instantly with all work intact. If you stay away longer, launching ODBCQueryApp.exe again reconnects the open page without a refresh."
-  },
-  {
-    "version": "2.2.8",
-    "date": "2026-10-04",
-    "notes": "1. Fixed an issue where, right after installing a new version, the app could keep showing the previous version (\"you are on X\"). The launcher now checks the version of an already-running instance: a matching or newer instance is reused as before, but an older one left running from before the install is stopped and replaced by the freshly installed build."
-  },
-  {
-    "version": "2.2.7",
-    "date": "2026-10-03",
-    "notes": "1. Opening the app from the shortcut now shows a small \"Starting ODBC Query App…\" window straight away, so the launch no longer looks frozen for a couple of seconds while it boots. The window closes on its own as soon as the browser opens.\n2. Startup is quicker: the backend now prepares its secure credential store in the background instead of holding up the first screen, and it notices the app is ready sooner."
   }
 ]

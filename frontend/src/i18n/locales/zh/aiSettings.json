@@ -1,0 +1,74 @@
+{
+  "page": {
+    "title": "AI 设置",
+    "subtitle": "配置用于自然语言转 SQL 和 AI 摘要的 OpenAI 兼容 LLM 端点。"
+  },
+  "actions": {
+    "retry": "重试",
+    "save": "保存",
+    "testConnection": "测试连接",
+    "cancel": "取消",
+    "delete": "删除"
+  },
+  "form": {
+    "enableLabel": "启用 AI（LLM）",
+    "savedSettingsLabel": "已保存的设置",
+    "loadSavedPlaceholder": "加载已保存的设置…",
+    "noSavedSettings": "暂无已保存的设置 —— 点击「保存」后它们会出现在这里",
+    "presetLabel": "快速配置预设",
+    "customPreset": "自定义（编辑下方字段）",
+    "providerLabel": "供应商协议",
+    "providerOpenai": "OpenAI 兼容（chat/completions）",
+    "providerAnthropic": "Anthropic（Messages API）",
+    "baseUrlLabel": "API 基础 URL（完整端点）",
+    "baseUrlHelper": "按原样使用 —— 不会追加任何内容。本地存储在 %APPDATA% 中。",
+    "applyForKey": "申请 {{brand}} API 密钥",
+    "apiKeyLabel": "API 密钥",
+    "apiKeyPlaceholder": "sk-…（可选）",
+    "apiKeyHelperRestore": "模型切换后已清空 —— 为 {{label}} 保存的密钥仍在文件中。",
+    "apiKeyHelper": "可选 —— 对于本地 Ollama 等无需密钥的端点可留空。",
+    "hideApiKey": "隐藏 API 密钥",
+    "showApiKey": "显示 API 密钥",
+    "useSavedKey": "使用已保存的 API 密钥 —— {{label}}",
+    "modelLabel": "模型",
+    "modelPlaceholder": "gpt-5.6-luna",
+    "modelHelper": "自由文本 —— 可输入任意模型名称，包括预设中未列出的模型。",
+    "temperature": "温度"
+  },
+  "profile": {
+    "savedAt": " · 保存于 {{date}}",
+    "deleteAria": "删除已保存的设置 {{label}}",
+    "deleteTitle": "删除已保存的设置「{{label}}」"
+  },
+  "presets": {
+    "openai": "OpenAI",
+    "qwen": "Qwen（阿里 · DashScope）",
+    "kimi": "Kimi（Moonshot · 中国）",
+    "deepseek": "DeepSeek",
+    "glm": "GLM（智谱）",
+    "volcengine": "火山引擎（豆包 · ARK）",
+    "mimo": "MiMo（小米）",
+    "claude": "Claude（Anthropic）",
+    "ollama": "Ollama（本地，无需 API 密钥）"
+  },
+  "fallback": {
+    "customEndpoint": "自定义端点",
+    "unknownModel": "未知模型"
+  },
+  "alerts": {
+    "disabled": "AI 已禁用 —— 在你启用并保存之前，「询问 AI」（自然语言转 SQL）和 AI 摘要均不可用。",
+    "connected": "已连接 —— 模型回复：{{message}}"
+  },
+  "deleteDialog": {
+    "title": "删除已保存的设置？",
+    "body": "将从「已保存的设置」下拉列表中移除。其 API 密钥会保留在文件中，因此重新保存相同的端点配置即可恢复。"
+  },
+  "messages": {
+    "loadFailed": "加载 AI 设置失败",
+    "profileDeleted": "已删除保存的设置「{{label}}」。",
+    "deleteFailed": "删除已保存的设置失败",
+    "saved": "AI 设置已保存 —— 助手将在你下次发送消息时使用它们。",
+    "saveFailed": "保存 AI 设置失败",
+    "testFailed": "连接测试失败"
+  }
+}

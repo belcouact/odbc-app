@@ -1,0 +1,94 @@
+{
+  "actions": {
+    "cancel": "取消",
+    "delete": "删除",
+    "close": "关闭"
+  },
+  "toolbar": {
+    "diagram": "关系图",
+    "diagramTooltip": "在一张图中查看所有关系",
+    "new": "新建关系",
+    "intro": "在共享列上关联仓库表，即可从一张表中的某一行下钻查看它在另一张表中的相关行。"
+  },
+  "list": {
+    "empty": "还没有关系 — 请在共享列上关联两个快照（例如 NAME = NAME）。",
+    "exploreTooltip": "浏览 — 下钻查看相关行或预览连接结果",
+    "exploreAria": "浏览 {{name}}",
+    "editTooltip": "编辑关系",
+    "editAria": "编辑 {{name}}",
+    "deleteTooltip": "删除关系",
+    "deleteAria": "删除 {{name}}"
+  },
+  "editor": {
+    "titleNew": "新建关系",
+    "titleEdit": "编辑关系",
+    "ariaClose": "关闭关系编辑器",
+    "name": "名称（可选）",
+    "namePlaceholder": "例如：颜色读数到 LIMS",
+    "leftTable": "左表",
+    "leftColumn": "左列",
+    "rightTable": "右表",
+    "rightColumn": "右列",
+    "joinType": "连接类型",
+    "joinHelper": "左连接保留左表未匹配的行；内连接仅保留匹配的行。",
+    "saveNew": "保存关系",
+    "saveEdit": "保存更改"
+  },
+  "delete": {
+    "title": "删除关系",
+    "confirm": "删除“{{name}}”？快照本身不会被改动。"
+  },
+  "diagram": {
+    "title": "关系图",
+    "ariaClose": "关闭关系图",
+    "caption": "每条已保存的关系显示为其两张表之间的一条连线 — 悬停连线可查看详情，滚动可缩放。",
+    "emptyNone": "暂无可绘制的关系。",
+    "emptySelfOnly": "仅存在同表关系 — 它们已列在下方。",
+    "sameTableHeading": "同表关系（未绘制）：",
+    "relationshipCount_other": "{{count}} 条关系",
+    "legendLeft": "左连接 — 保留左表未匹配的行",
+    "legendInner": "内连接 — 仅保留匹配的行"
+  },
+  "explore": {
+    "title": "浏览 — {{name}}",
+    "ariaClose": "关闭浏览",
+    "tabs": {
+      "drill": "下钻",
+      "join": "连接预览"
+    },
+    "drillHint": "点击某一行，查看它在关联表中的相关行。",
+    "drillHintTruncated": "点击某一行，查看它在关联表中的相关行 — 仅显示前 {{n}} 行（共 {{total}} 行）。",
+    "noStoredRows": "该表没有存储的行。",
+    "relatedRowsFor": "相关行：",
+    "noOutgoing": "没有从此表出发的关系。",
+    "rowCount_other": "{{count}} 行",
+    "noMatchingRows": "该表中没有匹配的行。",
+    "joinSummary": "{{left}} {{join}} {{right}}，连接条件 {{lcol}} = {{rcol}}，共 {{total}} 行{{truncated}} · 左表 {{leftRows}} 行中有 {{matched}} 行匹配。",
+    "joinTruncated": "（仅显示前 {{n}} 行）",
+    "joinEmpty": "连接未产生任何行。"
+  },
+  "joinTypes": {
+    "left": "左连接",
+    "inner": "内连接"
+  },
+  "joinTypeShort": {
+    "left": "左连接",
+    "inner": "内连接"
+  },
+  "joinTypeNames": {
+    "left": "左连接",
+    "inner": "内连接"
+  },
+  "notices": {
+    "saved": "关系已保存",
+    "updated": "关系已更新",
+    "deleted": "关系已删除"
+  },
+  "errors": {
+    "loadList": "加载关系失败",
+    "loadTable": "加载表失败",
+    "buildJoin": "构建连接失败",
+    "save": "保存关系失败",
+    "delete": "删除关系失败"
+  }
+}

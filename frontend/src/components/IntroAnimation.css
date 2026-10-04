@@ -29,7 +29,8 @@
   overflow: hidden;
   box-sizing: border-box;
   color: var(--ia-ink);
-  font-family: 'Lora', Georgia, 'Times New Roman', serif;
+  font-family: 'Lora', 'LXGW WenKai Screen', 'Kaiti SC', STKaiti, KaiTi, '楷体', Georgia,
+    'Times New Roman', serif;
   background-color: var(--ia-bg);
   /* Same warm wash the app shell uses, so the intro reads as part of the app. */
   background-image:

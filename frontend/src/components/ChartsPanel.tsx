@@ -63,9 +63,10 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import { useTranslation } from 'react-i18next'
 import type { QueryResult, QuerySource } from '../types'
 import { type ChartDataResponse, type ChartOperation, type ChartType } from '../api/client'
-import { COLUMN_KIND_LABELS, detectColumnKind, type ColumnKind } from '../utils/columns'
+import { detectColumnKind, type ColumnKind } from '../utils/columns'
 import {
   autoPickAxes,
   axisFits,
@@ -98,32 +99,32 @@ import KpiCards from './KpiCards'
 import type { VisualConfig } from '../utils/visual'
 
 /** Every chart family the builder can render, shown as a colored icon + tooltip. */
-const CHART_TYPES: { value: ChartType; label: string; icon: ReactElement; color: string }[] = [
-  { value: 'bar', label: 'Bar', color: '#1e88e5', icon: <BarChartIcon /> },
-  { value: 'stackbar', label: 'Stacked bar', color: '#1565c0', icon: <StackedBarChartIcon /> },
-  { value: 'trend', label: 'Line', color: '#00897b', icon: <ShowChartIcon /> },
-  { value: 'stepline', label: 'Step line', color: '#26c6da', icon: <TimelineIcon /> },
-  { value: 'area', label: 'Area', color: '#43a047', icon: <AreaChartIcon /> },
-  { value: 'stackarea', label: 'Stacked area', color: '#2e7d32', icon: <StackedLineChartIcon /> },
-  { value: 'combo', label: 'Combo (bar + line)', color: '#5e35b1', icon: <MultilineChartIcon /> },
-  { value: 'pie', label: 'Pie', color: '#fb8c00', icon: <PieChartIcon /> },
-  { value: 'doughnut', label: 'Doughnut', color: '#f4511e', icon: <DonutLargeIcon /> },
-  { value: 'rose', label: 'Rose', color: '#e53935', icon: <DataUsageIcon /> },
-  { value: 'radar', label: 'Radar', color: '#d81b60', icon: <RadarIcon /> },
-  { value: 'pareto', label: 'Pareto', color: '#8e24aa', icon: <AlignVerticalBottomIcon /> },
-  { value: 'waterfall', label: 'Waterfall', color: '#00838f', icon: <WaterfallChartIcon /> },
-  { value: 'funnel', label: 'Funnel', color: '#f9a825', icon: <FilterAltIcon /> },
-  { value: 'treemap', label: 'Treemap', color: '#6d4c41', icon: <AccountTreeIcon /> },
-  { value: 'heatmap', label: 'Heatmap', color: '#ef6c00', icon: <GridViewIcon /> },
-  { value: 'histogram', label: 'Histogram', color: '#3949ab', icon: <SignalCellularAltIcon /> },
-  { value: 'box', label: 'Box plot', color: '#546e7a', icon: <CandlestickChartIcon /> },
-  { value: 'scatter', label: 'Scatter', color: '#7cb342', icon: <ScatterPlotIcon /> },
-  { value: 'bubble', label: 'Bubble', color: '#00acc1', icon: <BubbleChartIcon /> },
-  { value: 'trendline', label: 'Scatter + trendline', color: '#9e9d24', icon: <InsightsIcon /> },
-  { value: 'errorbar', label: 'Error bars', color: '#455a64', icon: <HeightIcon /> },
-  { value: 'spc', label: 'Control chart (SPC)', color: '#c62828', icon: <QueryStatsIcon /> },
-  { value: 'sankey', label: 'Sankey', color: '#0277bd', icon: <HubIcon /> },
-  { value: 'gauge', label: 'Gauge', color: '#0288d1', icon: <SpeedIcon /> },
+const CHART_TYPES: { value: ChartType; icon: ReactElement; color: string }[] = [
+  { value: 'bar', color: '#1e88e5', icon: <BarChartIcon /> },
+  { value: 'stackbar', color: '#1565c0', icon: <StackedBarChartIcon /> },
+  { value: 'trend', color: '#00897b', icon: <ShowChartIcon /> },
+  { value: 'stepline', color: '#26c6da', icon: <TimelineIcon /> },
+  { value: 'area', color: '#43a047', icon: <AreaChartIcon /> },
+  { value: 'stackarea', color: '#2e7d32', icon: <StackedLineChartIcon /> },
+  { value: 'combo', color: '#5e35b1', icon: <MultilineChartIcon /> },
+  { value: 'pie', color: '#fb8c00', icon: <PieChartIcon /> },
+  { value: 'doughnut', color: '#f4511e', icon: <DonutLargeIcon /> },
+  { value: 'rose', color: '#e53935', icon: <DataUsageIcon /> },
+  { value: 'radar', color: '#d81b60', icon: <RadarIcon /> },
+  { value: 'pareto', color: '#8e24aa', icon: <AlignVerticalBottomIcon /> },
+  { value: 'waterfall', color: '#00838f', icon: <WaterfallChartIcon /> },
+  { value: 'funnel', color: '#f9a825', icon: <FilterAltIcon /> },
+  { value: 'treemap', color: '#6d4c41', icon: <AccountTreeIcon /> },
+  { value: 'heatmap', color: '#ef6c00', icon: <GridViewIcon /> },
+  { value: 'histogram', color: '#3949ab', icon: <SignalCellularAltIcon /> },
+  { value: 'box', color: '#546e7a', icon: <CandlestickChartIcon /> },
+  { value: 'scatter', color: '#7cb342', icon: <ScatterPlotIcon /> },
+  { value: 'bubble', color: '#00acc1', icon: <BubbleChartIcon /> },
+  { value: 'trendline', color: '#9e9d24', icon: <InsightsIcon /> },
+  { value: 'errorbar', color: '#455a64', icon: <HeightIcon /> },
+  { value: 'spc', color: '#c62828', icon: <QueryStatsIcon /> },
+  { value: 'sankey', color: '#0277bd', icon: <HubIcon /> },
+  { value: 'gauge', color: '#0288d1', icon: <SpeedIcon /> },
 ]
 
 /** Custom drag MIME so chart-type drags never collide with field drags (text/plain). */
@@ -138,64 +139,64 @@ function parseOptionalNumber(value: string): number | undefined {
 }
 
 /** Sorts offered for the aggregated categories. */
-const SORT_OPTIONS: { value: ChartSort; label: string }[] = [
-  { value: 'none', label: 'Original order' },
-  { value: 'value_desc', label: 'Value (high → low)' },
-  { value: 'value_asc', label: 'Value (low → high)' },
-  { value: 'label_asc', label: 'Label (A → Z)' },
-  { value: 'label_desc', label: 'Label (Z → A)' },
+const SORT_OPTIONS: { value: ChartSort }[] = [
+  { value: 'none' },
+  { value: 'value_desc' },
+  { value: 'value_asc' },
+  { value: 'label_asc' },
+  { value: 'label_desc' },
 ]
 
-const TOPN_OPTIONS: { value: number; label: string }[] = [
-  { value: 0, label: 'All categories' },
-  { value: 5, label: 'Top 5' },
-  { value: 10, label: 'Top 10' },
-  { value: 15, label: 'Top 15' },
-  { value: 20, label: 'Top 20' },
+const TOPN_OPTIONS: { value: number }[] = [
+  { value: 0 },
+  { value: 5 },
+  { value: 10 },
+  { value: 15 },
+  { value: 20 },
 ]
 
 /** Point symbol shapes for line / scatter series ('auto' = type default). */
-const MARKER_SHAPES: { value: ChartMarkerShape; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'circle', label: 'Circle' },
-  { value: 'rect', label: 'Square' },
-  { value: 'roundRect', label: 'Rounded square' },
-  { value: 'triangle', label: 'Triangle' },
-  { value: 'diamond', label: 'Diamond' },
-  { value: 'pin', label: 'Pin' },
-  { value: 'arrow', label: 'Arrow' },
-  { value: 'none', label: 'None' },
+const MARKER_SHAPES: { value: ChartMarkerShape }[] = [
+  { value: 'auto' },
+  { value: 'circle' },
+  { value: 'rect' },
+  { value: 'roundRect' },
+  { value: 'triangle' },
+  { value: 'diamond' },
+  { value: 'pin' },
+  { value: 'arrow' },
+  { value: 'none' },
 ]
 
 /** Line stroke patterns offered per series ('auto' = the built-in solid stroke). */
-const LINE_STYLE_OPTIONS: { value: ChartLineType; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'solid', label: 'Solid' },
-  { value: 'dashed', label: 'Dashed' },
-  { value: 'dotted', label: 'Dotted' },
+const LINE_STYLE_OPTIONS: { value: ChartLineType }[] = [
+  { value: 'auto' },
+  { value: 'solid' },
+  { value: 'dashed' },
+  { value: 'dotted' },
 ]
 
 /** Per-series line smoothing tri-state. */
-const SMOOTH_OPTIONS: { value: 'auto' | 'on' | 'off'; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'on', label: 'Curved' },
-  { value: 'off', label: 'Straight' },
+const SMOOTH_OPTIONS: { value: 'auto' | 'on' | 'off' }[] = [
+  { value: 'auto' },
+  { value: 'on' },
+  { value: 'off' },
 ]
 
 /** Per-series marker visibility tri-state. */
-const MARKER_VISIBILITY_OPTIONS: { value: 'auto' | 'on' | 'off'; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'on', label: 'Show' },
-  { value: 'off', label: 'Hide' },
+const MARKER_VISIBILITY_OPTIONS: { value: 'auto' | 'on' | 'off' }[] = [
+  { value: 'auto' },
+  { value: 'on' },
+  { value: 'off' },
 ]
 
 /** Per-series stroke width ('auto' = the chart-wide width). */
-const LINE_WIDTH_OPTIONS: { value: number | 'auto'; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 1, label: 'Thin (1)' },
-  { value: 2, label: 'Normal (2)' },
-  { value: 3, label: 'Thick (3)' },
-  { value: 4, label: 'Extra (4)' },
+const LINE_WIDTH_OPTIONS: { value: number | 'auto' }[] = [
+  { value: 'auto' },
+  { value: 1 },
+  { value: 2 },
+  { value: 3 },
+  { value: 4 },
 ]
 
 /** Drop per-column override entries whose column left the shelf, reusing the
@@ -300,11 +301,13 @@ export default function ChartsPanel({
   aiOption,
   onClearAi,
   onAiChart,
-  aiLabel = 'AI Chart',
+  aiLabel,
   aiDisabled,
   onAddToDashboard,
-  addLabel = 'Add to dashboard',
+  addLabel,
 }: ChartsPanelProps) {
+  const { t } = useTranslation('charts')
+
   // Tracks the last Y-column toggle so a fast double-click doesn't immediately
   // reverse the selection (which made the dropdown feel "too sensitive").
   const lastYToggle = useRef<{ name: string; at: number }>({ name: '', at: 0 })
@@ -990,10 +993,10 @@ export default function ChartsPanel({
   // Axis-title editor: the dropdown picks which axis the input edits.
   const axisTitleTargetLabel =
     axisTitleTarget === 'x'
-      ? 'X axis title'
+      ? t('appearance.axisTitleX')
       : axisTitleTarget === 'y'
-        ? 'Primary Y axis title'
-        : 'Secondary Y axis title'
+        ? t('appearance.axisTitleY')
+        : t('appearance.axisTitleY2')
   const axisTitleTargetValue =
     axisTitleTarget === 'x' ? xAxisTitle : axisTitleTarget === 'y' ? yAxisTitle : y2AxisTitle
   const setAxisTitleTargetValue = (value: string) => {
@@ -1002,9 +1005,9 @@ export default function ChartsPanel({
     else setY2AxisTitle(value)
   }
   const axisTitleSummary = [
-    xAxisTitle ? `X: ${xAxisTitle}` : '',
-    yAxisTitle ? `Y: ${yAxisTitle}` : '',
-    y2AxisTitle ? `Y2: ${y2AxisTitle}` : '',
+    xAxisTitle ? t('appearance.summaryX', { title: xAxisTitle }) : '',
+    yAxisTitle ? t('appearance.summaryY', { title: yAxisTitle }) : '',
+    y2AxisTitle ? t('appearance.summaryY2', { title: y2AxisTitle }) : '',
   ]
     .filter(Boolean)
     .join(' · ')
@@ -1041,9 +1044,9 @@ export default function ChartsPanel({
     <Stack spacing={1.5} sx={{ width: '100%' }}>
       {/* Row context banner */}
       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-        Charting {result.rows.length.toLocaleString()} rows
+        {t('banner.charting', { n: result.rows.length.toLocaleString() })}
         {result.elapsed_ms ? ` · ${result.elapsed_ms} ms` : ''}
-        {chartType === 'kpi' ? ' · aggregated' : ''}
+        {chartType === 'kpi' ? t('banner.aggregated') : ''}
       </Typography>
 
       {/* Two-column builder: the draggable field list sits on the left, the
@@ -1082,11 +1085,11 @@ export default function ChartsPanel({
                 onClick={() => setFieldsOpen(false)}
                 role="button"
                 aria-expanded
-                aria-label="Collapse fields"
-                title="Collapse fields"
+                aria-label={t('fields.collapse')}
+                title={t('fields.collapse')}
               >
                 <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-                  Fields
+                  {t('fields.title')}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {result.columns.length}
@@ -1111,7 +1114,7 @@ export default function ChartsPanel({
                         color="text.secondary"
                         sx={{ display: 'block', mb: 0.5 }}
                       >
-                        {COLUMN_KIND_LABELS[kind]}
+                        {t(`kind.${kind}`)}
                       </Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                         {fieldsByKind[kind].map((name) => (
@@ -1144,7 +1147,7 @@ export default function ChartsPanel({
                     </Box>
                   ))}
                   <Typography variant="caption" color="text.disabled">
-                    Drag a field onto a shelf. On a touch screen, tap + on a shelf to pick a field.
+                    {t('fields.dragHint')}
                   </Typography>
                 </Stack>
               </Box>
@@ -1157,8 +1160,8 @@ export default function ChartsPanel({
               onClick={() => setFieldsOpen(true)}
               role="button"
               aria-expanded={false}
-              aria-label="Expand fields"
-              title="Expand fields"
+              aria-label={t('fields.expand')}
+              title={t('fields.expand')}
               sx={{
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1181,7 +1184,7 @@ export default function ChartsPanel({
                   letterSpacing: { md: 2 },
                 }}
               >
-                Fields ({result.columns.length})
+                {t('fields.count', { n: result.columns.length })}
               </Typography>
             </Stack>
           )}
@@ -1225,15 +1228,15 @@ export default function ChartsPanel({
         onClick={() => setSetupOpen(false)}
         role="button"
         aria-expanded
-        aria-label="Collapse visualizations"
-        title="Collapse visualizations"
+        aria-label={t('viz.collapse')}
+        title={t('viz.collapse')}
         sx={{ alignItems: 'center', minHeight: 48, cursor: 'pointer' }}
       >
         <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-          Visualizations
+          {t('viz.title')}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {CHART_TYPES.find((t) => t.value === chartType)?.label ?? 'KPI cards'}
+          {t(`types.${chartType}`)}
         </Typography>
         <IconButton size="small" aria-hidden tabIndex={-1} sx={{ pointerEvents: 'none' }}>
           <ChevronRightIcon />
@@ -1246,7 +1249,7 @@ export default function ChartsPanel({
           the canvas. */}
       <Stack spacing={0.5}>
         <Typography variant="caption" color="text.secondary">
-          Chart type
+          {t('viz.chartType')}
         </Typography>
         <Box
           sx={{
@@ -1256,13 +1259,20 @@ export default function ChartsPanel({
           }}
         >
           {CHART_TYPES.map((type) => (
-            <Tooltip key={type.value} title={`${type.label} — tap or drag onto the canvas`} arrow>
-              <Box {...chartTypeDragProps(type.value, type.label)} sx={{ display: 'flex' }}>
+            <Tooltip
+              key={type.value}
+              title={t('viz.typeTooltip', { name: t(`types.${type.value}`) })}
+              arrow
+            >
+              <Box
+                {...chartTypeDragProps(type.value, t(`types.${type.value}`))}
+                sx={{ display: 'flex' }}
+              >
                 <ToggleButton
                   value={type.value}
                   selected={chartType === type.value}
                   onChange={() => handleChartType(type.value)}
-                  aria-label={type.label}
+                  aria-label={t(`types.${type.value}`)}
                   sx={{
                     flex: 1,
                     minWidth: { xs: 48, md: 44 },
@@ -1288,7 +1298,7 @@ export default function ChartsPanel({
           ))}
         </Box>
         <Typography variant="caption" color="text.disabled">
-          Tap a type to switch, or drag one onto the canvas.
+          {t('viz.typeHint')}
         </Typography>
 
         {onAiChart && (
@@ -1301,7 +1311,7 @@ export default function ChartsPanel({
             disabled={aiDisabled}
             sx={{ minHeight: 48, width: '100%', mt: 0.5 }}
           >
-            {aiLabel}
+            {aiLabel ?? t('actions.aiChart')}
           </Button>
         )}
 
@@ -1318,7 +1328,7 @@ export default function ChartsPanel({
             }
             sx={{ minHeight: 48, width: '100%', mt: 0.5 }}
           >
-            {addLabel}
+            {addLabel ?? t('actions.addToDashboard')}
           </Button>
         )}
       </Stack>
@@ -1329,11 +1339,11 @@ export default function ChartsPanel({
         value={setupTab}
         onChange={(_e, value: 'fields' | 'appearance') => setSetupTab(value)}
         variant="fullWidth"
-        aria-label="Chart setup sections"
+        aria-label={t('aria.setupSections')}
         sx={{ minHeight: 48, borderBottom: 1, borderColor: 'divider' }}
       >
-        <Tab label="Fields" value="fields" sx={{ minHeight: 48, textTransform: 'none' }} />
-        <Tab label="Appearance" value="appearance" sx={{ minHeight: 48, textTransform: 'none' }} />
+        <Tab label={t('fields.title')} value="fields" sx={{ minHeight: 48, textTransform: 'none' }} />
+        <Tab label={t('appearance.title')} value="appearance" sx={{ minHeight: 48, textTransform: 'none' }} />
       </Tabs>
 
       {setupTab === 'fields' && (
@@ -1351,10 +1361,10 @@ export default function ChartsPanel({
             <FieldWell
               label={
                 chartType === 'scatter' || chartType === 'bubble' || chartType === 'trendline'
-                  ? 'X (numeric)'
+                  ? t('well.xNumeric')
                   : chartType === 'sankey'
-                    ? 'Source'
-                    : 'X axis'
+                    ? t('well.source')
+                    : t('well.x')
               }
               value={x ? [x] : []}
               options={xColumns.map((c) => ({ name: c.name, kind: columnKinds[c.name] }))}
@@ -1363,20 +1373,20 @@ export default function ChartsPanel({
               onRemove={() => setX('')}
               hint={
                 chartType === 'scatter' || chartType === 'bubble' || chartType === 'trendline'
-                  ? 'Drop a numeric column for X'
+                  ? t('well.dropXNumeric')
                   : chartType === 'sankey'
-                    ? 'Drop the flow source column'
-                    : 'Drop a column for X'
+                    ? t('well.dropSource')
+                    : t('well.dropX')
               }
             />
           )}
           <FieldWell
             label={
               chartType === 'sankey'
-                ? 'Y (weight, optional)'
+                ? t('well.yWeight')
                 : NUMERIC_Y_TYPES.includes(chartType)
-                  ? 'Y (numeric)'
-                  : 'Y (primary)'
+                  ? t('well.yNumeric')
+                  : t('well.yPrimary')
             }
             value={singleSeriesChart ? y.slice(0, 1) : y}
             multi={!singleSeriesChart && chartType !== 'sankey'}
@@ -1386,55 +1396,55 @@ export default function ChartsPanel({
             onRemove={handleYRemove}
             hint={
               chartType === 'sankey'
-                ? 'Drop a numeric column to weight the flow'
+                ? t('well.dropYWeight')
                 : singleSeriesChart
-                  ? 'Drop a column for Y'
-                  : 'Drop columns for Y'
+                  ? t('well.dropY')
+                  : t('well.dropYMulti')
             }
           />
           {secondaryCapable && (
             <FieldWell
-              label="Y2 (secondary)"
+              label={t('well.y2')}
               value={y2}
               multi
               options={y2Columns.map((c) => ({ name: c.name, kind: columnKinds[c.name] }))}
               onChoose={handleY2Choose}
               onAdd={handleY2Add}
               onRemove={handleY2Remove}
-              hint="Drop columns for the right axis"
+              hint={t('well.dropY2')}
             />
           )}
           {seriesCapable && seriesCandidates.length > 0 && (
             <FieldWell
-              label="Legend"
+              label={t('well.legend')}
               value={series ? [series] : []}
               options={seriesCandidates.map((n) => ({ name: n, kind: columnKinds[n] }))}
               onChoose={setSeries}
               onAdd={setSeries}
               onRemove={() => setSeries('')}
-              hint="Drop to split the series"
+              hint={t('well.dropLegend')}
             />
           )}
           {chartType === 'bubble' && (
             <FieldWell
-              label="Size"
+              label={t('well.size')}
               value={z ? [z] : []}
               options={bubbleSizeColumns.map((c) => ({ name: c.name, kind: columnKinds[c.name] }))}
               onChoose={setZ}
               onAdd={setZ}
               onRemove={() => setZ('')}
-              hint="Drop a numeric column for bubble size"
+              hint={t('well.dropSize')}
             />
           )}
           {chartType === 'sankey' && (
             <FieldWell
-              label="Target"
+              label={t('well.target')}
               value={target ? [target] : []}
               options={sankeyTargetColumns.map((c) => ({ name: c.name, kind: columnKinds[c.name] }))}
               onChoose={setTarget}
               onAdd={setTarget}
               onRemove={() => setTarget('')}
-              hint="Drop the flow target column"
+              hint={t('well.dropTarget')}
             />
           )}
 
@@ -1445,7 +1455,7 @@ export default function ChartsPanel({
               be a no-op; its own Spread selector takes this slot instead. */}
           {chartType !== 'errorbar' && (
             <Box sx={{ minWidth: { xs: '100%', sm: 180 }, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" color="text.secondary" noWrap>Y operation</Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>{t('well.yOperation')}</Typography>
               <Select
                 size="small"
                 value={operation}
@@ -1454,7 +1464,7 @@ export default function ChartsPanel({
               >
                 {availableOperations.map((item) => (
                   <MenuItem key={item.value} value={item.value}>
-                    {item.label}
+                    {t(`ops.${item.value}`)}
                   </MenuItem>
                 ))}
               </Select>
@@ -1462,7 +1472,7 @@ export default function ChartsPanel({
           )}
           {secondaryCapable && (
             <Box sx={{ minWidth: { xs: '100%', sm: 180 }, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-              <Typography variant="caption" color="text.secondary" noWrap>Y2 operation</Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>{t('well.y2Operation')}</Typography>
               <Select
                 size="small"
                 value={y2Operation}
@@ -1471,7 +1481,7 @@ export default function ChartsPanel({
               >
                 {y2OperationOptions.map((item) => (
                   <MenuItem key={item.value} value={item.value}>
-                    {item.label}
+                    {t(`ops.${item.value}`)}
                   </MenuItem>
                 ))}
               </Select>
@@ -1497,7 +1507,7 @@ export default function ChartsPanel({
                 }
                 sx={{ minHeight: 48, justifyContent: 'flex-start', textTransform: 'none' }}
               >
-                Per-series settings
+                {t('perSeries.title')}
                 <Chip size="small" label={perSeriesColumns.length} sx={{ ml: 1 }} />
               </Button>
               {perSeriesOpen && (
@@ -1526,32 +1536,23 @@ export default function ChartsPanel({
                     const overrideOp = secondary ? y2Operations[col] : yOperations[col]
                     const summaryParts: string[] = []
                     if (overrideOp) {
-                      summaryParts.push(
-                        opsForColumn(col, secondary).find((o) => o.value === overrideOp)?.label ??
-                          overrideOp,
-                      )
+                      summaryParts.push(t(`ops.${overrideOp}`))
                     }
                     if (style.lineType && style.lineType !== 'auto') {
-                      summaryParts.push(
-                        LINE_STYLE_OPTIONS.find((o) => o.value === style.lineType)?.label ??
-                          style.lineType,
-                      )
+                      summaryParts.push(t(`lineStyle.${style.lineType}`))
                     }
                     if (style.lineWidth !== undefined && style.lineWidth !== 'auto') {
                       summaryParts.push(`${style.lineWidth}px`)
                     }
-                    if (style.smooth === true) summaryParts.push('Curved')
-                    if (style.smooth === false) summaryParts.push('Straight')
-                    if (style.markers === true) summaryParts.push('Markers')
-                    if (style.markers === false) summaryParts.push('No markers')
+                    if (style.smooth === true) summaryParts.push(t('smooth.on'))
+                    if (style.smooth === false) summaryParts.push(t('smooth.off'))
+                    if (style.markers === true) summaryParts.push(t('perSeries.markersOn'))
+                    if (style.markers === false) summaryParts.push(t('perSeries.markersOff'))
                     if (style.markerShape && style.markerShape !== 'auto') {
-                      summaryParts.push(
-                        MARKER_SHAPES.find((o) => o.value === style.markerShape)?.label ??
-                          style.markerShape,
-                      )
+                      summaryParts.push(t(`markerShape.${style.markerShape}`))
                     }
-                    if (style.color) summaryParts.push('Custom color')
-                    const summary = summaryParts.length > 0 ? summaryParts.join(' · ') : 'Default'
+                    if (style.color) summaryParts.push(t('perSeries.customColor'))
+                    const summary = summaryParts.length > 0 ? summaryParts.join(' · ') : t('perSeries.default')
                     return (
                       <Paper key={`${secondary ? 'y2' : 'y'}-${col}`} variant="outlined" sx={{ p: 1 }}>
                         <Button
@@ -1592,7 +1593,7 @@ export default function ChartsPanel({
                               size="small"
                               variant="outlined"
                               color={secondary ? 'secondary' : 'primary'}
-                              label={secondary ? 'Y2 (right)' : 'Y (left)'}
+                              label={secondary ? t('perSeries.y2Right') : t('perSeries.yLeft')}
                             />
                           </Stack>
                           <Stack
@@ -1631,7 +1632,7 @@ export default function ChartsPanel({
                           >
                           {chartType !== 'errorbar' && (
                             <Box sx={cellSx}>
-                              <Typography variant="caption" color="text.secondary" noWrap>Operation</Typography>
+                              <Typography variant="caption" color="text.secondary" noWrap>{t('perSeries.operation')}</Typography>
                               <Select
                                 size="small"
                                 value={opValue}
@@ -1641,14 +1642,14 @@ export default function ChartsPanel({
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {opsForColumn(col, secondary).map((item) => (
-                                  <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                                  <MenuItem key={item.value} value={item.value}>{t(`ops.${item.value}`)}</MenuItem>
                                 ))}
                               </Select>
                             </Box>
                           )}
                           {lineLike && (
                             <Box sx={cellSx}>
-                              <Typography variant="caption" color="text.secondary" noWrap>Line type</Typography>
+                              <Typography variant="caption" color="text.secondary" noWrap>{t('perSeries.lineType')}</Typography>
                               <Select
                                 size="small"
                                 value={style.lineType ?? 'auto'}
@@ -1658,14 +1659,14 @@ export default function ChartsPanel({
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {LINE_STYLE_OPTIONS.map((item) => (
-                                  <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                                  <MenuItem key={item.value} value={item.value}>{t(`lineStyle.${item.value}`)}</MenuItem>
                                 ))}
                               </Select>
                             </Box>
                           )}
                           {lineLike && (
                             <Box sx={cellSx}>
-                              <Typography variant="caption" color="text.secondary" noWrap>Line width</Typography>
+                              <Typography variant="caption" color="text.secondary" noWrap>{t('perSeries.lineWidth')}</Typography>
                               <Select
                                 size="small"
                                 value={String(style.lineWidth ?? 'auto')}
@@ -1678,14 +1679,14 @@ export default function ChartsPanel({
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {LINE_WIDTH_OPTIONS.map((item) => (
-                                  <MenuItem key={String(item.value)} value={item.value}>{item.label}</MenuItem>
+                                  <MenuItem key={String(item.value)} value={item.value}>{t(`lineWidth.${item.value}`)}</MenuItem>
                                 ))}
                               </Select>
                             </Box>
                           )}
                           {lineLike && (
                             <Box sx={cellSx}>
-                              <Typography variant="caption" color="text.secondary" noWrap>Smoothing</Typography>
+                              <Typography variant="caption" color="text.secondary" noWrap>{t('perSeries.smoothing')}</Typography>
                               <Select
                                 size="small"
                                 value={smoothValue}
@@ -1696,14 +1697,14 @@ export default function ChartsPanel({
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {SMOOTH_OPTIONS.map((item) => (
-                                  <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                                  <MenuItem key={item.value} value={item.value}>{t(`smooth.${item.value}`)}</MenuItem>
                                 ))}
                               </Select>
                             </Box>
                           )}
                           {shapeLike && (
                             <Box sx={cellSx}>
-                              <Typography variant="caption" color="text.secondary" noWrap>Markers</Typography>
+                              <Typography variant="caption" color="text.secondary" noWrap>{t('perSeries.markers')}</Typography>
                               <Select
                                 size="small"
                                 value={markersValue}
@@ -1714,14 +1715,14 @@ export default function ChartsPanel({
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {MARKER_VISIBILITY_OPTIONS.map((item) => (
-                                  <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                                  <MenuItem key={item.value} value={item.value}>{t(`markerVisibility.${item.value}`)}</MenuItem>
                                 ))}
                               </Select>
                             </Box>
                           )}
                           {shapeLike && (
                             <Box sx={cellSx}>
-                              <Typography variant="caption" color="text.secondary" noWrap>Marker shape</Typography>
+                              <Typography variant="caption" color="text.secondary" noWrap>{t('appearance.markerShape')}</Typography>
                               <Select
                                 size="small"
                                 value={style.markerShape ?? 'auto'}
@@ -1731,13 +1732,13 @@ export default function ChartsPanel({
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {MARKER_SHAPES.map((item) => (
-                                  <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                                  <MenuItem key={item.value} value={item.value}>{t(`markerShape.${item.value}`)}</MenuItem>
                                 ))}
                               </Select>
                             </Box>
                           )}
                           <Box sx={cellSx}>
-                            <Typography variant="caption" color="text.secondary" noWrap>Color</Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap>{t('perSeries.color')}</Typography>
                             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                               <Box
                                 component="input"
@@ -1746,7 +1747,7 @@ export default function ChartsPanel({
                                 onChange={(event: ReactChangeEvent<HTMLInputElement>) =>
                                   patchSeriesStyle(col, { color: event.target.value })
                                 }
-                                aria-label={`${col} color`}
+                                aria-label={t('perSeries.colorAria', { name: col })}
                                 sx={{
                                   width: 56,
                                   height: 48,
@@ -1766,7 +1767,7 @@ export default function ChartsPanel({
                                 disabled={!style.color}
                                 sx={{ minHeight: 48 }}
                               >
-                                Palette
+                                {t('perSeries.palette')}
                               </Button>
                             </Stack>
                           </Box>
@@ -1799,9 +1800,9 @@ export default function ChartsPanel({
                     if (v) setBarMode(v)
                   }}
                 >
-                  <ToggleButton value="grouped" sx={{ minHeight: 48 }}>Grouped</ToggleButton>
-                  <ToggleButton value="stacked" sx={{ minHeight: 48 }}>Stacked</ToggleButton>
-                  <ToggleButton value="percent" sx={{ minHeight: 48 }}>100%</ToggleButton>
+                  <ToggleButton value="grouped" sx={{ minHeight: 48 }}>{t('controls.grouped')}</ToggleButton>
+                  <ToggleButton value="stacked" sx={{ minHeight: 48 }}>{t('controls.stacked')}</ToggleButton>
+                  <ToggleButton value="percent" sx={{ minHeight: 48 }}>{t('controls.percent')}</ToggleButton>
                 </ToggleButtonGroup>
               )}
               <ToggleButtonGroup
@@ -1812,8 +1813,8 @@ export default function ChartsPanel({
                   if (v) setHorizontal(v === 'h')
                 }}
               >
-                <ToggleButton value="v" sx={{ minHeight: 48 }}>Vertical</ToggleButton>
-                <ToggleButton value="h" sx={{ minHeight: 48 }}>Horizontal</ToggleButton>
+                <ToggleButton value="v" sx={{ minHeight: 48 }}>{t('controls.vertical')}</ToggleButton>
+                <ToggleButton value="h" sx={{ minHeight: 48 }}>{t('controls.horizontal')}</ToggleButton>
               </ToggleButtonGroup>
             </>
           )}
@@ -1827,41 +1828,41 @@ export default function ChartsPanel({
                 if (v) setArea(v === 'area')
               }}
             >
-              <ToggleButton value="line" sx={{ minHeight: 48 }}>Line</ToggleButton>
-              <ToggleButton value="area" sx={{ minHeight: 48 }}>Area</ToggleButton>
+              <ToggleButton value="line" sx={{ minHeight: 48 }}>{t('controls.line')}</ToggleButton>
+              <ToggleButton value="area" sx={{ minHeight: 48 }}>{t('controls.area')}</ToggleButton>
             </ToggleButtonGroup>
           )}
 
           {AGGREGATE_SORTABLE_TYPES.includes(chartType) && (
             <>
               <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 180 } }}>
-                <InputLabel id="chart-sort-label">Sort</InputLabel>
+                <InputLabel id="chart-sort-label">{t('controls.sort')}</InputLabel>
                 <Select
                   labelId="chart-sort-label"
-                  label="Sort"
+                  label={t('controls.sort')}
                   value={sort}
                   onChange={(event: SelectChangeEvent) => setSort(event.target.value as ChartSort)}
                   sx={selectSx}
                 >
                   {SORT_OPTIONS.map((item) => (
                     <MenuItem key={item.value} value={item.value}>
-                      {item.label}
+                      {t(`sort.${item.value}`)}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
               <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 160 } }}>
-                <InputLabel id="chart-topn-label">Categories</InputLabel>
+                <InputLabel id="chart-topn-label">{t('controls.categories')}</InputLabel>
                 <Select
                   labelId="chart-topn-label"
-                  label="Categories"
+                  label={t('controls.categories')}
                   value={String(topN)}
                   onChange={(event: SelectChangeEvent) => setTopN(Number(event.target.value))}
                   sx={selectSx}
                 >
                   {TOPN_OPTIONS.map((item) => (
                     <MenuItem key={item.value} value={String(item.value)}>
-                      {item.label}
+                      {t(`topn.${item.value}`)}
                     </MenuItem>
                   ))}
                 </Select>
@@ -1871,18 +1872,18 @@ export default function ChartsPanel({
 
           {chartType === 'errorbar' && (
             <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 180 } }}>
-              <InputLabel id="chart-errorbar-label">Spread</InputLabel>
+              <InputLabel id="chart-errorbar-label">{t('controls.spread')}</InputLabel>
               <Select
                 labelId="chart-errorbar-label"
-                label="Spread"
+                label={t('controls.spread')}
                 value={errorBarMode}
                 onChange={(event: SelectChangeEvent) =>
                   setErrorBarMode(event.target.value as 'std' | 'ci95')
                 }
                 sx={selectSx}
               >
-                <MenuItem value="ci95">95% CI of mean</MenuItem>
-                <MenuItem value="std">Std dev</MenuItem>
+                <MenuItem value="ci95">{t('controls.ci95')}</MenuItem>
+                <MenuItem value="std">{t('controls.std')}</MenuItem>
               </Select>
             </FormControl>
           )}
@@ -1897,36 +1898,36 @@ export default function ChartsPanel({
               <TextField
                 size="small"
                 type="number"
-                label="Bin size"
-                placeholder="Auto"
+                label={t('controls.binSize')}
+                placeholder={t('auto')}
                 value={binSizeInput}
                 onChange={(event: ReactChangeEvent<HTMLInputElement>) => setBinSizeInput(event.target.value)}
                 slotProps={{
-                  htmlInput: { min: 0, step: 'any', inputMode: 'decimal', 'aria-label': 'Histogram bin size' },
+                  htmlInput: { min: 0, step: 'any', inputMode: 'decimal', 'aria-label': t('aria.binSize') },
                 }}
                 fullWidth
               />
               <TextField
                 size="small"
                 type="number"
-                label="Start"
-                placeholder="Auto"
+                label={t('controls.start')}
+                placeholder={t('auto')}
                 value={rangeStartInput}
                 onChange={(event: ReactChangeEvent<HTMLInputElement>) => setRangeStartInput(event.target.value)}
                 slotProps={{
-                  htmlInput: { step: 'any', inputMode: 'decimal', 'aria-label': 'Histogram range start' },
+                  htmlInput: { step: 'any', inputMode: 'decimal', 'aria-label': t('aria.rangeStart') },
                 }}
                 fullWidth
               />
               <TextField
                 size="small"
                 type="number"
-                label="End"
-                placeholder="Auto"
+                label={t('controls.end')}
+                placeholder={t('auto')}
                 value={rangeEndInput}
                 onChange={(event: ReactChangeEvent<HTMLInputElement>) => setRangeEndInput(event.target.value)}
                 slotProps={{
-                  htmlInput: { step: 'any', inputMode: 'decimal', 'aria-label': 'Histogram range end' },
+                  htmlInput: { step: 'any', inputMode: 'decimal', 'aria-label': t('aria.rangeEnd') },
                 }}
                 fullWidth
               />
@@ -1944,18 +1945,18 @@ export default function ChartsPanel({
               {/* Title */}
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Title
+                  {t('appearance.title')}
                 </Typography>
                 <TextField
                   size="small"
-                  label="Title"
+                  label={t('appearance.title')}
                   value={title}
                   onChange={(event: ReactChangeEvent<HTMLInputElement>) => setTitle(event.target.value)}
                   fullWidth
                 />
                 <TextField
                   size="small"
-                  label="Subtitle"
+                  label={t('appearance.subtitle')}
                   value={subtitle}
                   onChange={(event: ReactChangeEvent<HTMLInputElement>) => setSubtitle(event.target.value)}
                   fullWidth
@@ -1965,7 +1966,7 @@ export default function ChartsPanel({
               {/* Legend */}
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Legend
+                  {t('appearance.legend')}
                 </Typography>
                 <FormControlLabel
                   sx={{ minHeight: 44, m: 0 }}
@@ -1975,7 +1976,7 @@ export default function ChartsPanel({
                       onChange={(event: ReactChangeEvent<HTMLInputElement>) => setLegendShow(event.target.checked)}
                     />
                   }
-                  label="Show legend"
+                  label={t('appearance.showLegend')}
                 />
                 <ToggleButtonGroup
                   exclusive
@@ -1987,31 +1988,31 @@ export default function ChartsPanel({
                   disabled={!legendShow}
                   sx={{ flexWrap: 'wrap' }}
                 >
-                  <ToggleButton value="top" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>Top</ToggleButton>
-                  <ToggleButton value="bottom" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>Bottom</ToggleButton>
-                  <ToggleButton value="left" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>Left</ToggleButton>
-                  <ToggleButton value="right" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>Right</ToggleButton>
+                  <ToggleButton value="top" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>{t('appearance.top')}</ToggleButton>
+                  <ToggleButton value="bottom" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>{t('appearance.bottom')}</ToggleButton>
+                  <ToggleButton value="left" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>{t('appearance.left')}</ToggleButton>
+                  <ToggleButton value="right" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>{t('appearance.right')}</ToggleButton>
                 </ToggleButtonGroup>
               </Stack>
 
               {/* Colors */}
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Colors
+                  {t('appearance.colors')}
                 </Typography>
                 <FormControl size="small" fullWidth>
-                  <InputLabel id="chart-palette-label">Palette</InputLabel>
+                  <InputLabel id="chart-palette-label">{t('appearance.palette')}</InputLabel>
                   <Select
                     labelId="chart-palette-label"
-                    label="Palette"
+                    label={t('appearance.palette')}
                     value={palette}
                     onChange={(event: SelectChangeEvent) => setPalette(event.target.value as ChartPaletteId)}
                     sx={selectSx}
                   >
-                    <MenuItem value="default">Default</MenuItem>
-                    <MenuItem value="warm">Warm</MenuItem>
-                    <MenuItem value="cool">Cool</MenuItem>
-                    <MenuItem value="colorblind">Colorblind-safe</MenuItem>
+                    <MenuItem value="default">{t('appearance.paletteDefault')}</MenuItem>
+                    <MenuItem value="warm">{t('appearance.paletteWarm')}</MenuItem>
+                    <MenuItem value="cool">{t('appearance.paletteCool')}</MenuItem>
+                    <MenuItem value="colorblind">{t('appearance.paletteColorblind')}</MenuItem>
                   </Select>
                 </FormControl>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -2020,7 +2021,7 @@ export default function ChartsPanel({
                     type="color"
                     value={customColor || '#1e88e5'}
                     onChange={(event: ReactChangeEvent<HTMLInputElement>) => setCustomColor(event.target.value)}
-                    aria-label="Series color"
+                    aria-label={t('appearance.seriesColorAria')}
                     disabled={!!series}
                     sx={{
                       width: 56,
@@ -2034,7 +2035,7 @@ export default function ChartsPanel({
                     }}
                   />
                   <Typography variant="body2" sx={{ flexGrow: 1 }}>
-                    Series color
+                    {t('appearance.seriesColor')}
                   </Typography>
                   <Button
                     size="small"
@@ -2043,18 +2044,18 @@ export default function ChartsPanel({
                     disabled={!customColor}
                     sx={{ minHeight: 44 }}
                   >
-                    Clear
+                    {t('appearance.clear')}
                   </Button>
                 </Stack>
                 <Typography variant="caption" color="text.disabled">
-                  Series color applies to single-series charts (no Legend / color-by column).
+                  {t('appearance.seriesColorHint')}
                 </Typography>
               </Stack>
 
               {/* Data labels */}
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Data labels
+                  {t('appearance.dataLabels')}
                 </Typography>
                 <FormControlLabel
                   sx={{ minHeight: 44, m: 0 }}
@@ -2064,21 +2065,21 @@ export default function ChartsPanel({
                       onChange={(event: ReactChangeEvent<HTMLInputElement>) => setDataLabels(event.target.checked)}
                     />
                   }
-                  label="Show labels"
+                  label={t('appearance.showLabels')}
                 />
                 <FormControl size="small" fullWidth disabled={dataLabels !== true}>
-                  <InputLabel id="chart-labelpos-label">Label position</InputLabel>
+                  <InputLabel id="chart-labelpos-label">{t('appearance.labelPosition')}</InputLabel>
                   <Select
                     labelId="chart-labelpos-label"
-                    label="Label position"
+                    label={t('appearance.labelPosition')}
                     value={labelPosition}
                     onChange={(event: SelectChangeEvent) => setLabelPosition(event.target.value as ChartLabelPosition)}
                     sx={selectSx}
                   >
-                    <MenuItem value="auto">Auto</MenuItem>
-                    <MenuItem value="inside">Inside</MenuItem>
-                    <MenuItem value="outside">Outside</MenuItem>
-                    <MenuItem value="top">Top</MenuItem>
+                    <MenuItem value="auto">{t('auto')}</MenuItem>
+                    <MenuItem value="inside">{t('appearance.inside')}</MenuItem>
+                    <MenuItem value="outside">{t('appearance.outside')}</MenuItem>
+                    <MenuItem value="top">{t('appearance.top')}</MenuItem>
                   </Select>
                 </FormControl>
               </Stack>
@@ -2086,36 +2087,36 @@ export default function ChartsPanel({
               {/* Number format */}
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Number format
+                  {t('appearance.numberFormat')}
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <FormControl size="small" fullWidth>
-                    <InputLabel id="chart-numfmt-label">Format</InputLabel>
+                    <InputLabel id="chart-numfmt-label">{t('appearance.format')}</InputLabel>
                     <Select
                       labelId="chart-numfmt-label"
-                      label="Format"
+                      label={t('appearance.format')}
                       value={numberFormat}
                       onChange={(event: SelectChangeEvent) => setNumberFormat(event.target.value as ChartNumberFormat)}
                       sx={selectSx}
                     >
-                      <MenuItem value="auto">Auto (unchanged)</MenuItem>
-                      <MenuItem value="compact">Compact (1.2K)</MenuItem>
-                      <MenuItem value="full">Full (1,200)</MenuItem>
-                      <MenuItem value="percent">Percent (%)</MenuItem>
+                      <MenuItem value="auto">{t('appearance.fmtAuto')}</MenuItem>
+                      <MenuItem value="compact">{t('appearance.fmtCompact')}</MenuItem>
+                      <MenuItem value="full">{t('appearance.fmtFull')}</MenuItem>
+                      <MenuItem value="percent">{t('appearance.fmtPercent')}</MenuItem>
                     </Select>
                   </FormControl>
                   <FormControl size="small" fullWidth>
-                    <InputLabel id="chart-decimals-label">Decimals</InputLabel>
+                    <InputLabel id="chart-decimals-label">{t('appearance.decimals')}</InputLabel>
                     <Select
                       labelId="chart-decimals-label"
-                      label="Decimals"
+                      label={t('appearance.decimals')}
                       value={decimals === 'auto' ? 'auto' : String(decimals)}
                       onChange={(event: SelectChangeEvent) =>
                         setDecimals(event.target.value === 'auto' ? 'auto' : Number(event.target.value))
                       }
                       sx={selectSx}
                     >
-                      <MenuItem value="auto">Auto</MenuItem>
+                      <MenuItem value="auto">{t('auto')}</MenuItem>
                       <MenuItem value="0">0</MenuItem>
                       <MenuItem value="1">1</MenuItem>
                       <MenuItem value="2">2</MenuItem>
@@ -2128,7 +2129,7 @@ export default function ChartsPanel({
               {/* Axes */}
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Axes
+                  {t('appearance.axes')}
                 </Typography>
                 <FormControlLabel
                   sx={{ minHeight: 44, m: 0 }}
@@ -2138,25 +2139,25 @@ export default function ChartsPanel({
                       onChange={(event: ReactChangeEvent<HTMLInputElement>) => setAxisTitles(event.target.checked)}
                     />
                   }
-                  label="Axis titles"
+                  label={t('appearance.axisTitles')}
                 />
                 {/* Custom per-axis titles — the dropdown picks the target axis
                     and the input edits that axis's own title. */}
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <FormControl size="small" fullWidth disabled={!axisTitles}>
-                    <InputLabel id="chart-axistitle-axis-label">Axis</InputLabel>
+                    <InputLabel id="chart-axistitle-axis-label">{t('appearance.axis')}</InputLabel>
                     <Select
                       labelId="chart-axistitle-axis-label"
-                      label="Axis"
+                      label={t('appearance.axis')}
                       value={axisTitleTarget}
                       onChange={(event: SelectChangeEvent) =>
                         setAxisTitleTarget(event.target.value as 'x' | 'y' | 'y2')
                       }
                       sx={selectSx}
                     >
-                      <MenuItem value="x">X axis</MenuItem>
-                      <MenuItem value="y">Primary Y</MenuItem>
-                      <MenuItem value="y2">Secondary Y</MenuItem>
+                      <MenuItem value="x">{t('appearance.axisX')}</MenuItem>
+                      <MenuItem value="y">{t('appearance.axisPrimaryY')}</MenuItem>
+                      <MenuItem value="y2">{t('appearance.axisSecondaryY')}</MenuItem>
                     </Select>
                   </FormControl>
                   <TextField
@@ -2181,7 +2182,7 @@ export default function ChartsPanel({
                       onClick={() => setAxisTitleTargetValue('')}
                       sx={{ minHeight: 44 }}
                     >
-                      Clear
+                      {t('appearance.clear')}
                     </Button>
                   </Stack>
                 )}
@@ -2193,7 +2194,7 @@ export default function ChartsPanel({
                       onChange={(event: ReactChangeEvent<HTMLInputElement>) => setGridlines(event.target.checked)}
                     />
                   }
-                  label="Gridlines"
+                  label={t('appearance.gridlines')}
                 />
                 <FormControlLabel
                   sx={{ minHeight: 44, m: 0 }}
@@ -2203,13 +2204,13 @@ export default function ChartsPanel({
                       onChange={(event: ReactChangeEvent<HTMLInputElement>) => setStartAtZero(event.target.checked)}
                     />
                   }
-                  label="Start at zero"
+                  label={t('appearance.startAtZero')}
                 />
                 <FormControl size="small" fullWidth>
-                  <InputLabel id="chart-rotate-label">X label rotation</InputLabel>
+                  <InputLabel id="chart-rotate-label">{t('appearance.labelRotation')}</InputLabel>
                   <Select
                     labelId="chart-rotate-label"
-                    label="X label rotation"
+                    label={t('appearance.labelRotation')}
                     value={labelRotate === 'auto' ? 'auto' : String(labelRotate)}
                     onChange={(event: SelectChangeEvent) => {
                       const v = event.target.value
@@ -2217,7 +2218,7 @@ export default function ChartsPanel({
                     }}
                     sx={selectSx}
                   >
-                    <MenuItem value="auto">Auto</MenuItem>
+                    <MenuItem value="auto">{t('auto')}</MenuItem>
                     <MenuItem value="0">0°</MenuItem>
                     <MenuItem value="45">45°</MenuItem>
                     <MenuItem value="90">90°</MenuItem>
@@ -2226,16 +2227,16 @@ export default function ChartsPanel({
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <TextField
                     size="small"
-                    label="Y min"
-                    placeholder="Auto"
+                    label={t('appearance.yMin')}
+                    placeholder={t('auto')}
                     value={yMinInput}
                     onChange={(event: ReactChangeEvent<HTMLInputElement>) => setYMinInput(event.target.value)}
                     fullWidth
                   />
                   <TextField
                     size="small"
-                    label="Y max"
-                    placeholder="Auto"
+                    label={t('appearance.yMax')}
+                    placeholder={t('auto')}
                     value={yMaxInput}
                     onChange={(event: ReactChangeEvent<HTMLInputElement>) => setYMaxInput(event.target.value)}
                     fullWidth
@@ -2246,7 +2247,7 @@ export default function ChartsPanel({
               {/* Lines */}
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Lines
+                  {t('appearance.lines')}
                 </Typography>
                 <ToggleButtonGroup
                   exclusive
@@ -2257,9 +2258,9 @@ export default function ChartsPanel({
                   }}
                   sx={{ flexWrap: 'wrap' }}
                 >
-                  <ToggleButton value="auto" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>Auto</ToggleButton>
-                  <ToggleButton value="smooth" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>Smooth</ToggleButton>
-                  <ToggleButton value="straight" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>Straight</ToggleButton>
+                  <ToggleButton value="auto" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>{t('auto')}</ToggleButton>
+                  <ToggleButton value="smooth" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>{t('appearance.smooth')}</ToggleButton>
+                  <ToggleButton value="straight" sx={{ minHeight: 44, flex: 1, minWidth: 64 }}>{t('appearance.straight')}</ToggleButton>
                 </ToggleButtonGroup>
                 <FormControlLabel
                   sx={{ minHeight: 44, m: 0 }}
@@ -2269,13 +2270,13 @@ export default function ChartsPanel({
                       onChange={(event: ReactChangeEvent<HTMLInputElement>) => setMarkers(event.target.checked)}
                     />
                   }
-                  label="Point markers"
+                  label={t('appearance.pointMarkers')}
                 />
                 <FormControl size="small" fullWidth disabled={!markers}>
-                  <InputLabel id="chart-markershape-label">Marker shape</InputLabel>
+                  <InputLabel id="chart-markershape-label">{t('appearance.markerShape')}</InputLabel>
                   <Select
                     labelId="chart-markershape-label"
-                    label="Marker shape"
+                    label={t('appearance.markerShape')}
                     value={markerShape}
                     onChange={(event: SelectChangeEvent) =>
                       setMarkerShape(event.target.value as ChartMarkerShape)
@@ -2284,14 +2285,14 @@ export default function ChartsPanel({
                   >
                     {MARKER_SHAPES.map((item) => (
                       <MenuItem key={item.value} value={item.value}>
-                        {item.label}
+                        {t(`markerShape.${item.value}`)}
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
                 <Box sx={{ px: 0.5 }}>
                   <Typography variant="caption" color="text.secondary">
-                    Line width: {lineWidth}
+                    {t('appearance.lineWidthValue', { n: lineWidth })}
                   </Typography>
                   <Slider
                     size="small"
@@ -2309,7 +2310,7 @@ export default function ChartsPanel({
               {/* Other */}
               <Stack spacing={1}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Other
+                  {t('appearance.other')}
                 </Typography>
                 <FormControlLabel
                   sx={{ minHeight: 44, m: 0 }}
@@ -2319,7 +2320,7 @@ export default function ChartsPanel({
                       onChange={(event: ReactChangeEvent<HTMLInputElement>) => setTooltipShow(event.target.checked)}
                     />
                   }
-                  label="Tooltips"
+                  label={t('appearance.tooltips')}
                 />
                 <FormControlLabel
                   sx={{ minHeight: 44, m: 0 }}
@@ -2329,7 +2330,7 @@ export default function ChartsPanel({
                       onChange={(event: ReactChangeEvent<HTMLInputElement>) => setTrimWhitespace(event.target.checked)}
                     />
                   }
-                  label="Trim whitespace"
+                  label={t('appearance.trimWhitespace')}
                 />
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                   <Box
@@ -2337,7 +2338,7 @@ export default function ChartsPanel({
                     type="color"
                     value={background || '#ffffff'}
                     onChange={(event: ReactChangeEvent<HTMLInputElement>) => setBackground(event.target.value)}
-                    aria-label="Background color"
+                    aria-label={t('appearance.backgroundAria')}
                     sx={{
                       width: 56,
                       height: 44,
@@ -2350,7 +2351,7 @@ export default function ChartsPanel({
                     }}
                   />
                   <Typography variant="body2" sx={{ flexGrow: 1 }}>
-                    Background
+                    {t('appearance.background')}
                   </Typography>
                   <Button
                     size="small"
@@ -2359,7 +2360,7 @@ export default function ChartsPanel({
                     disabled={!background}
                     sx={{ minHeight: 44 }}
                   >
-                    Clear
+                    {t('appearance.clear')}
                   </Button>
                 </Stack>
               </Stack>
@@ -2370,7 +2371,7 @@ export default function ChartsPanel({
                 onClick={resetAppearance}
                 sx={{ alignSelf: 'flex-start', minHeight: 44 }}
               >
-                Reset appearance
+                {t('appearance.reset')}
               </Button>
         </Stack>
       )}
@@ -2384,8 +2385,8 @@ export default function ChartsPanel({
           onClick={() => setSetupOpen(true)}
           role="button"
           aria-expanded={false}
-          aria-label="Expand visualizations"
-          title="Expand visualizations"
+          aria-label={t('viz.expand')}
+          title={t('viz.expand')}
           sx={{
             alignItems: 'center',
             justifyContent: 'center',
@@ -2407,7 +2408,7 @@ export default function ChartsPanel({
               letterSpacing: { lg: 2 },
             }}
           >
-            Visualizations
+            {t('viz.title')}
           </Typography>
         </Stack>
       )}
@@ -2420,7 +2421,7 @@ export default function ChartsPanel({
 
       {aiOption && (
         <Alert severity="info" onClose={onClearAi}>
-          AI chart applied. Edit the script in the AI assistant and re-apply to update it.
+          {t('canvas.aiApplied')}
         </Alert>
       )}
 
@@ -2447,7 +2448,7 @@ export default function ChartsPanel({
         kpiCards.length > 0 ? (
           <KpiCards cards={kpiCards} />
         ) : (
-          <Typography color="text.secondary">Select numeric columns to show KPI cards.</Typography>
+          <Typography color="text.secondary">{t('canvas.kpiEmpty')}</Typography>
         )
       ) : (
         <Box sx={{ position: 'relative' }}>
@@ -2470,9 +2471,9 @@ export default function ChartsPanel({
               <Typography color="text.secondary">
                 {missingAxes
                   ? NO_X_AXIS_TYPES.includes(chartType)
-                    ? 'Select a numeric column to plot.'
-                    : 'Select an X and Y column to build the chart.'
-                  : 'No data to chart with the selected columns — try different columns or operation.'}
+                    ? t('canvas.noNumeric')
+                    : t('canvas.noXY')
+                  : t('canvas.noData')}
               </Typography>
             </Box>
           )}
@@ -2494,7 +2495,7 @@ export default function ChartsPanel({
             }}
           >
             <Typography color="primary" sx={{ fontWeight: 600, px: 2, textAlign: 'center' }}>
-              {draggingType ? `Drop to switch to ${draggingType}` : 'Drop a chart type here'}
+              {draggingType ? t('canvas.dropType', { name: draggingType }) : t('canvas.dropHere')}
             </Typography>
           </Box>
         )}

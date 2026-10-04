@@ -1,0 +1,90 @@
+{
+  "page": {
+    "title": "设置",
+    "subtitle": "配置连接与 AI 助手，并查看应用信息。"
+  },
+  "sections": {
+    "connections": "连接",
+    "ai": "AI 助手",
+    "about": "关于"
+  },
+  "appInfo": {
+    "copyrightLabel": "版权 / 许可",
+    "copyrightValue": "© 2026 Alex Luo · Gore 内部使用",
+    "platformLabel": "开发平台",
+    "platformValue": "Trae CN · Deepseek/GLM flash 模型",
+    "frontendLabel": "前端技术栈",
+    "frontendValue": "React 19 · MUI · AG Grid · ECharts",
+    "backendLabel": "后端技术栈",
+    "backendValue": "Python · FastAPI · pyodbc · pandas",
+    "versionLabel": "构建版本"
+  },
+  "about": {
+    "logoAlt": "ODBC Query App 标志",
+    "appName": "ODBC Query App",
+    "tagline": "桌面端 SQL 查询、分析与脚本工作区。",
+    "updates": "更新",
+    "checkNow": "立即检查",
+    "updateNow": "立即更新",
+    "whatsNewToggle": "新功能与版本历史",
+    "whatsNewIn": "v{{version}} 新功能",
+    "versionHistory": "版本历史",
+    "thisBuild": "当前构建",
+    "notesUnavailable": "此构建中不提供发布说明。",
+    "featuresHeading": "关键功能与特性",
+    "ackHeading": "致谢",
+    "ackIntro": "「工具」标签页内嵌了第三方应用，版权归其作者所有：",
+    "embeds": "内嵌"
+  },
+  "updates": {
+    "loading": "正在加载更新状态…",
+    "checkFailed": "更新检查失败：{{error}}",
+    "checkFailedShort": "检查失败",
+    "available": "有可用更新：v{{version}}（当前为 v{{current}}）",
+    "required": " — 必需",
+    "inProgress": "更新进行中…",
+    "noSource": "未配置更新源 —— 自动更新检查已关闭。",
+    "upToDateChecked": "已是最新（v{{current}}） · 上次检查 {{checked}}",
+    "upToDate": "已是最新（v{{current}}）。",
+    "unsupported": "自动自更新仅在打包的桌面应用中可用。若要更新开发检出副本，请停止服务器、替换文件后重新启动。"
+  },
+  "features": {
+    "odbc": {
+      "title": "ODBC 连接",
+      "description": "将任意 ODBC 数据源保存为可复用的配置：选择驱动、填写设置并在查询前测试连接。可在「查询」标签页的选取器中切换数据库。"
+    },
+    "builder": {
+      "title": "可视化构建器与 SQL 编辑器",
+      "description": "无需编写 SQL 即可构建查询 —— 选择表或视图，然后添加筛选条件、挑选列、设置日期范围和行数上限。更喜欢手写 SQL？可用方言感知的格式化来编写，或加载连接模板以填充样板内容。"
+    },
+    "charts": {
+      "title": "图表与 KPI",
+      "description": "将当前结果集转换为 20 种图表类型 —— 柱状图、折线图、面积图、饼图、散点图、直方图、箱线图、瀑布图、热力图等 —— 或 KPI 卡片。选择 X / Y / 颜色字段，并调整运算、排序和 Top-N。"
+    },
+    "scripting": {
+      "title": "Python 脚本",
+      "description": "对网格中的每一行运行 Python 脚本，并实时查看可复制的 stdout/stderr。五个现成示例和可保存的自定义脚本覆盖了常见分析步骤。"
+    },
+    "queries": {
+      "title": "自定义查询与运行历史",
+      "description": "将「构建器」或 SQL 查询保存为可复用的自定义查询 —— 支持取值提示和 Excel 报表 —— 并可重新打开最近 20 次运行中的任意一次，连同其连接、行数、耗时和 SQL。"
+    },
+    "tools": {
+      "title": "工具与集成",
+      "description": "三个内嵌工作区可就地打开：FlowDiagram 用于 AI 辅助架构图，Project 用于甘特式时间线，ProblemSolving 用于 metric-bowler 分解。"
+    },
+    "ai": {
+      "title": "AI 助手",
+      "description": "一个停靠式助手，支持 SQL、脚本和图表模式：解释或优化查询、起草 Python 脚本，或描述图表 —— 然后将结果直接应用到编辑器、脚本或图表标签页。"
+    },
+    "updates": {
+      "title": "自动更新",
+      "description": "应用每小时在后台检查是否有新构建；一旦发现，便会按需下载、校验和、替换并重启自身。设置 → 关于会保留发布说明和完整版本历史。"
+    }
+  },
+  "ack": {
+    "flowdiagram": "AI 辅助的 draw.io 图表，来自 DayuanJiang 的 GitHub 仓库。",
+    "project": "托管在 study-llm.me 的甘特式时间线规划器。",
+    "problemsolving": "托管在 study-llm.me 的 metric-bowler 分解工作区。"
+  }
+}

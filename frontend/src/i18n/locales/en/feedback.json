@@ -1,0 +1,140 @@
+{
+  "category": {
+    "bug": "Bug",
+    "idea": "Idea",
+    "question": "Question",
+    "other": "Other"
+  },
+  "sort": {
+    "recent": "Latest activity",
+    "newest": "Newest first",
+    "top": "Most liked"
+  },
+  "status": {
+    "open": "Open",
+    "resolved": "Resolved"
+  },
+  "relativeTime": {
+    "justNow": "just now",
+    "minutesAgo": "{{n}}m ago",
+    "hoursAgo": "{{n}}h ago",
+    "daysAgo": "{{n}}d ago"
+  },
+  "author": {
+    "anonymous": "Anonymous"
+  },
+  "unexpected": "Unexpected error",
+  "attachments": {
+    "openInNewTab": "{{name}} — open in a new tab",
+    "count_one": "{{count}} attachment",
+    "count_other": "{{count}} attachments",
+    "unsupportedType": "Unsupported file type.",
+    "tooLarge": "Attachments are limited to 10 MB each.",
+    "maxReached": "Up to {{max}} attachments per post.",
+    "onlyFirstAdded": "Only the first {{added}} of {{total}} files were added.",
+    "attachFile": "Attach file",
+    "hint": "Paste a screenshot, or attach up to {{max}} files — 10 MB each."
+  },
+  "votes": {
+    "sameProblem_one": "Same problem — {{count}} vote",
+    "sameProblem_other": "Same problem — {{count}} votes"
+  },
+  "replies": {
+    "count_one": "{{count}} reply",
+    "count_other": "{{count}} replies"
+  },
+  "aria": {
+    "card": "{{category}} feedback, {{status}}: {{title}}",
+    "close": "Close",
+    "deleteReply": "Delete reply"
+  },
+  "table": {
+    "title": "Title",
+    "content": "Content",
+    "type": "Type",
+    "status": "Status",
+    "postedBy": "Posted by",
+    "posted": "Posted",
+    "replies": "Replies",
+    "votes": "Votes"
+  },
+  "composer": {
+    "newTitle": "New feedback",
+    "editTitle": "Edit feedback",
+    "nameLabel": "Your name",
+    "nameHelper": "Shown on your post. Remembered on this machine for next time.",
+    "titleLabel": "Title",
+    "categoryLabel": "Category",
+    "descriptionLabel": "Description",
+    "descriptionHelper": "What happened, what you expected, and any steps to reproduce it.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "post": "Post",
+    "needTitleBody": "Add a title and a description first.",
+    "needName": "Add the name to publish under."
+  },
+  "detail": {
+    "retry": "Retry",
+    "reply": "Reply",
+    "reopen": "Reopen",
+    "markResolved": "Mark resolved",
+    "edit": "Edit",
+    "delete": "Delete",
+    "noReplies": "No replies yet",
+    "repliesHeading_one": "{{count}} reply",
+    "repliesHeading_other": "{{count}} replies"
+  },
+  "replyDialog": {
+    "title": "Write a reply",
+    "replyLabel": "Your reply",
+    "placeholder": "Add details, agree, or answer the question",
+    "cancel": "Cancel",
+    "submit": "Reply"
+  },
+  "board": {
+    "intro": "Report a problem, suggest an improvement or ask a question. Everything here is visible to every user of this app.",
+    "newFeedback": "New feedback",
+    "privacy": "No sign-in is required, so please do not paste confidential data (customer names, credentials, proprietary process details) into a post or an attachment.",
+    "searchPlaceholder": "Search feedback",
+    "searchAria": "Search feedback",
+    "all": "All",
+    "anyStatus": "Any status",
+    "openOnly": "Open only",
+    "resolvedOnly": "Resolved only",
+    "sortLabel": "Sort",
+    "refresh": "Refresh",
+    "refreshAria": "Refresh feedback",
+    "loading": "Loading…",
+    "count_one": "{{visible}} of {{total}} post",
+    "count_other": "{{visible}} of {{total}} posts",
+    "total_one": "{{total}} post",
+    "total_other": "{{total}} posts",
+    "pageInfo": "page {{page}} of {{total}}",
+    "emptyFilteredTitle": "No matching post",
+    "emptyTitle": "Nothing here yet",
+    "emptyFilteredBody": "Try another word, or clear the search and the filters.",
+    "emptyBody": "Start the conversation: report a problem or suggest an idea.",
+    "clearFilters": "Clear search and filters",
+    "discussion": "Discussion",
+    "closeDiscussion": "Close discussion",
+    "previous": "Previous",
+    "next": "Next",
+    "posted": "Feedback posted.",
+    "updated": "Feedback updated.",
+    "deleted": "Feedback deleted.",
+    "replyDeleted": "Reply deleted.",
+    "deleteThreadTitle": "Delete feedback?",
+    "deleteReplyTitle": "Delete reply?",
+    "deleteThreadBody": "The post, its replies and its votes will be removed for everyone. This cannot be undone.",
+    "deleteReplyBody": "This reply will be removed for everyone. This cannot be undone.",
+    "cancel": "Cancel",
+    "delete": "Delete"
+  },
+  "pagination": {
+    "page": "Go to page {{page}}",
+    "first": "Go to first page",
+    "last": "Go to last page",
+    "next": "Go to next page",
+    "previous": "Go to previous page"
+  }
+}

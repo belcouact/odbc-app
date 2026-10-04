@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import Button from '@mui/material/Button'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -26,50 +27,6 @@ interface TourStep {
 
 const CARD_GAP = 16
 
-const TOUR_STEPS: TourStep[] = [
-  {
-    id: 'connections',
-    title: 'Connect your database',
-    body: (
-      <>
-        This app talks to your databases over ODBC. Click <b>Add connection</b> — DSNs
-        already installed on this PC are detected automatically and listed for you.
-        Save one and it appears as a badge in the top bar.
-      </>
-    ),
-    target: 'connections-actions',
-    goto: { view: 'settings', section: 'connections' },
-  },
-  {
-    id: 'query-template',
-    title: 'Query with a template',
-    body: (
-      <>
-        Pick the connection you saved in the row above. With <b>Use template</b> on, a{' '}
-        <b>Template</b> menu appears — choose a ready-made quick-search, fill the
-        criteria (dates with a red * are required), then press <b>Run</b>. The SQL is
-        generated for you.
-      </>
-    ),
-    target: 'query-template',
-    goto: { view: 'editor' },
-  },
-  {
-    id: 'script-template',
-    title: 'Analyze with a template script',
-    body: (
-      <>
-        Open the <b>Script</b> tab — <b>Use template</b> is already on — and pick a
-        script such as <i>analyze-mesa-yield</i>: it loads into the editor. Hit{' '}
-        <b>Run</b> and the charts open in your browser, with the file saved to your
-        Downloads folder.
-      </>
-    ),
-    target: 'script-template',
-    goto: { view: 'script', analyzeTab: 'script' },
-  },
-]
-
 interface GuidedTourProps {
   /** Increment this counter each time the tour should (re)start. */
   runToken: number
@@ -94,6 +51,52 @@ export default function GuidedTour({ runToken, gotoView, gotoSection }: GuidedTo
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+  const { t } = useTranslation('intro')
+
+  const TOUR_STEPS = useMemo<TourStep[]>(
+    () => [
+      {
+        id: 'connections',
+        title: t('tour.steps.connections.title'),
+        body: (
+          <Trans
+            t={t}
+            i18nKey="tour.steps.connections.body"
+            components={{ b: <b /> }}
+          />
+        ),
+        target: 'connections-actions',
+        goto: { view: 'settings', section: 'connections' },
+      },
+      {
+        id: 'query-template',
+        title: t('tour.steps.queryTemplate.title'),
+        body: (
+          <Trans
+            t={t}
+            i18nKey="tour.steps.queryTemplate.body"
+            components={{ b: <b /> }}
+          />
+        ),
+        target: 'query-template',
+        goto: { view: 'editor' },
+      },
+      {
+        id: 'script-template',
+        title: t('tour.steps.scriptTemplate.title'),
+        body: (
+          <Trans
+            t={t}
+            i18nKey="tour.steps.scriptTemplate.body"
+            components={{ b: <b />, i: <i /> }}
+          />
+        ),
+        target: 'script-template',
+        goto: { view: 'script', analyzeTab: 'script' },
+      },
+    ],
+    [t],
+  )
 
   const [active, setActive] = useState(false)
   const [stepIndex, setStepIndex] = useState(0)
@@ -376,7 +379,7 @@ export default function GuidedTour({ runToken, gotoView, gotoSection }: GuidedTo
         )}
 
         <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'text.secondary', mb: 0.75 }}>
-          Step {stepIndex + 1} of {TOUR_STEPS.length}
+          {t('tour.progress', { current: stepIndex + 1, total: TOUR_STEPS.length })}
         </Typography>
         <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.75, pr: 0.5 }}>
           {step.title}
@@ -387,16 +390,16 @@ export default function GuidedTour({ runToken, gotoView, gotoSection }: GuidedTo
 
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
           <Button size="small" onClick={finish} sx={{ minHeight: { xs: 48, sm: 40 }, color: 'text.secondary' }}>
-            Skip
+            {t('tour.skip')}
           </Button>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {stepIndex > 0 && (
               <Button size="small" onClick={() => setStepIndex((index) => index - 1)} sx={{ minHeight: { xs: 48, sm: 40 } }}>
-                Back
+                {t('tour.back')}
               </Button>
             )}
             <Button variant="contained" onClick={() => (isLast ? finish() : setStepIndex((index) => index + 1))} sx={{ minHeight: { xs: 48, sm: 40 } }}>
-              {isLast ? 'Finish' : 'Next'}
+              {isLast ? t('tour.finish') : t('tour.next')}
             </Button>
           </Box>
         </Box>

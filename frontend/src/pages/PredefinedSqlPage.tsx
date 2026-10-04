@@ -35,6 +35,7 @@ import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import { useTranslation } from 'react-i18next'
 import { api, downloadBlob } from '../api/client'
 import type { DbConnection, QueryDef, SavedQuery, SavedSqlQuery } from '../types'
 import { emit } from '../editorBus'
@@ -64,6 +65,7 @@ interface EditTarget {
 }
 
 export default function PredefinedSqlPage({ active, onOpenInEditor }: PredefinedSqlPageProps) {
+  const { t } = useTranslation('script')
   const [builderQueries, setBuilderQueries] = useState<SavedQuery[]>([])
   const [sqlQueries, setSqlQueries] = useState<SavedSqlQuery[]>([])
   const [connections, setConnections] = useState<DbConnection[]>([])
@@ -78,6 +80,16 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
   const [editConnectionId, setEditConnectionId] = useState('')
   const [editing, setEditing] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  /** Severity for the notice snackbar — explicit, since translated messages
+   *  no longer start with "Deleted"/"Updated" for the code to sniff. */
+  const [noticeSeverity, setNoticeSeverity] = useState<'success' | 'error'>('error')
+  const showNotice = useCallback(
+    (message: string, severity: 'success' | 'error' = 'error') => {
+      setNotice(message)
+      setNoticeSeverity(severity)
+    },
+    [],
+  )
 
   // ---- Parameter prompt dialog (builder queries with prompts) ----
   const [promptTarget, setPromptTarget] = useState<SavedQuery | null>(null)
@@ -101,11 +113,11 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
       setSqlQueries(sqlList)
       setConnections(connectionList)
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Failed to load pre-defined queries')
+      setLoadError(err instanceof Error ? err.message : t('predefined.loadError'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void refresh()
@@ -175,16 +187,16 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
       const blob = await api.exportReport(saved.query, saved.name)
       const savedToDisk = await downloadBlob(blob, filename)
       if (savedToDisk.cancelled) {
-        setNotice('Report export cancelled')
+        setNotice(t('predefined.reportCancelled'))
         return
       }
       setNotice(
         savedToDisk.savedPath
-          ? `Exported report to ${savedToDisk.savedPath}`
-          : `Exported report (${filename})`,
+          ? t('predefined.reportExportedTo', { path: savedToDisk.savedPath })
+          : t('predefined.reportExported', { filename }),
       )
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Report export failed')
+      setNotice(err instanceof Error ? err.message : t('predefined.reportFailed'))
     } finally {
       setReportingId(null)
     }
@@ -201,10 +213,10 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
         await api.deleteSqlQuery(deleteTarget.id)
         setSqlQueries((current) => current.filter((q) => q.id !== deleteTarget.id))
       }
-      setNotice(`Deleted "${deleteTarget.name}".`)
+      showNotice(t('notices.deleted', { name: deleteTarget.name }), 'success')
       setDeleteTarget(null)
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Failed to delete')
+      setNotice(err instanceof Error ? err.message : t('notices.failedToDelete'))
     } finally {
       setDeleting(false)
     }
@@ -228,19 +240,19 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
     if (!editTarget) return
     const name = editName.trim()
     if (!name) {
-      setNotice('Enter a name.')
+      setNotice(t('notices.enterName'))
       return
     }
     setEditing(true)
     try {
       if (editTarget.kind === 'builder') {
         const current = builderQueries.find((q) => q.id === editTarget.id)
-        if (!current) throw new Error('Saved query no longer exists')
+        if (!current) throw new Error(t('predefined.noLongerExists'))
         const updated = await api.updateSavedQuery(editTarget.id, name, editDescription, current.query)
         setBuilderQueries((list) => list.map((q) => (q.id === editTarget.id ? updated : q)))
       } else {
         const current = sqlQueries.find((q) => q.id === editTarget.id)
-        if (!current) throw new Error('Saved query no longer exists')
+        if (!current) throw new Error(t('predefined.noLongerExists'))
         const updated = await api.updateSqlQuery(
           editTarget.id,
           name,
@@ -250,10 +262,10 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
         )
         setSqlQueries((list) => list.map((q) => (q.id === editTarget.id ? updated : q)))
       }
-      setNotice(`Updated "${name}".`)
+      showNotice(t('notices.updated', { name }), 'success')
       setEditTarget(null)
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Failed to update')
+      setNotice(err instanceof Error ? err.message : t('notices.failedToUpdate'))
     } finally {
       setEditing(false)
     }
@@ -263,12 +275,12 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
   const connectionLabel = useMemo(() => {
     const map = new Map(connections.map((c) => [c.id, c]))
     return (connectionId?: string | null): string => {
-      if (!connectionId) return 'No connection'
+      if (!connectionId) return t('common.noConnection')
       const conn = map.get(connectionId)
-      if (!conn) return 'Deleted connection'
-      return conn.name || conn.dsn || 'Unnamed connection'
+      if (!conn) return t('common.deletedConnection')
+      return conn.name || conn.dsn || t('common.unnamedConnection')
     }
-  }, [connections])
+  }, [connections, t])
 
   // Combined list of every saved pre-defined query (Builder + custom SQL).
   type CombinedQuery =
@@ -287,9 +299,9 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
     <Box sx={{ width: '100%' }}>
       <Stack spacing={2}>
         <Box>
-          <Typography variant="h6">Custom queries</Typography>
+          <Typography variant="h6">{t('predefined.title')}</Typography>
           <Typography variant="body2" color="text.secondary">
-            Custom queries saved from the Builder and SQL modes. Open one to run or refine it.
+            {t('predefined.subtitle')}
           </Typography>
         </Box>
 
@@ -300,7 +312,7 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
             severity="error"
             action={
               <Button color="inherit" size="small" onClick={() => void refresh()}>
-                Retry
+                {t('common.retry')}
               </Button>
             }
           >
@@ -312,26 +324,28 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
           <Paper variant="outlined" sx={{ textAlign: 'center', py: 6, px: 2 }}>
             <LibraryBooksIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
             <Typography variant="h6" gutterBottom>
-              No pre-defined queries saved
+              {t('predefined.emptyTitle')}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Use the Builder or SQL tab, then press “Save as pre-defined”.
+              {t('predefined.emptyBody')}
             </Typography>
           </Paper>
         )}
         {combinedCount > 0 && (
           <TableContainer component={Paper} variant="outlined">
-            <Table size="small" aria-label="Custom queries">
+            <Table size="small" aria-label={t('predefined.tableAria')}>
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Connection</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Type</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('predefined.colConnection')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('predefined.colName')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    {t('predefined.colType')}
+                  </TableCell>
                   <TableCell sx={{ fontWeight: 600, display: { xs: 'none', md: 'table-cell' } }}>
-                    Source
+                    {t('predefined.colSource')}
                   </TableCell>
                   <TableCell sx={{ fontWeight: 600, display: { xs: 'none', sm: 'table-cell' } }}>
-                    Description
+                    {t('predefined.colDescription')}
                   </TableCell>
                   <TableCell
                     sx={{
@@ -340,10 +354,10 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    Saved
+                    {t('predefined.colSaved')}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    Actions
+                    {t('predefined.colActions')}
                   </TableCell>
                 </TableRow>
               </TableHead>
@@ -371,7 +385,7 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                         sx={{ display: { xs: 'block', md: 'none' } }}
                       >
                         {query.kind === 'builder'
-                          ? `Table: ${query.item.query.table}`
+                          ? t('predefined.tableSource', { table: query.item.query.table })
                           : query.item.sql || '—'}
                       </Typography>
                       {query.item.description && (
@@ -389,8 +403,12 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                         sx={{ display: { xs: 'block', md: 'none' } }}
                       >
                         {query.kind === 'builder'
-                          ? `Saved ${new Date(query.item.created_at).toLocaleDateString()}`
-                          : `Updated ${new Date(query.item.updated_at).toLocaleDateString()}`}
+                          ? t('predefined.savedDate', {
+                              date: new Date(query.item.created_at).toLocaleDateString(),
+                            })
+                          : t('predefined.updatedDate', {
+                              date: new Date(query.item.updated_at).toLocaleDateString(),
+                            })}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -399,14 +417,14 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                           size="small"
                           color={query.kind === 'builder' ? 'primary' : 'secondary'}
                           variant="outlined"
-                          label={query.kind === 'builder' ? 'Builder' : 'SQL'}
+                          label={query.kind === 'builder' ? t('predefined.chipBuilder') : t('predefined.chipSql')}
                         />
                         {query.kind === 'builder' && (query.item.parameters?.length ?? 0) > 0 && (
                           <Chip
                             size="small"
                             variant="outlined"
                             color="warning"
-                            label={`${query.item.parameters!.length} prompt${query.item.parameters!.length > 1 ? 's' : ''}`}
+                            label={t('predefined.prompts', { count: query.item.parameters!.length })}
                           />
                         )}
                       </Stack>
@@ -423,7 +441,7 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                         }}
                       >
                         {query.kind === 'builder'
-                          ? `Table: ${query.item.query.table}`
+                          ? t('predefined.tableSource', { table: query.item.query.table })
                           : query.item.sql || '—'}
                       </Typography>
                     </TableCell>
@@ -450,11 +468,11 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                         sx={{ justifyContent: 'flex-end', alignItems: 'center' }}
                       >
                         {query.kind === 'builder' && (
-                          <Tooltip title="Run">
+                          <Tooltip title={t('predefined.run')}>
                             <IconButton
                               size="small"
                               color="primary"
-                              aria-label={`Run ${query.item.name}`}
+                              aria-label={t('predefined.runAria', { name: query.item.name })}
                               onClick={() => openBuilder(query.item, true)}
                               sx={{ width: 48, height: 48 }}
                             >
@@ -462,10 +480,10 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                             </IconButton>
                           </Tooltip>
                         )}
-                        <Tooltip title="Open in editor">
+                        <Tooltip title={t('predefined.openInEditor')}>
                           <IconButton
                             size="small"
-                            aria-label={`Open ${query.item.name} in editor`}
+                            aria-label={t('predefined.openAria', { name: query.item.name })}
                             onClick={() =>
                               query.kind === 'builder'
                                 ? openBuilder(query.item, false)
@@ -477,12 +495,12 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                           </IconButton>
                         </Tooltip>
                         {query.kind === 'builder' && (
-                          <Tooltip title="Report">
+                          <Tooltip title={t('predefined.report')}>
                             <span>
                               <IconButton
                                 size="small"
                                 color="secondary"
-                                aria-label={`Export report for ${query.item.name}`}
+                                aria-label={t('predefined.reportAria', { name: query.item.name })}
                                 onClick={() => void handleExportReport(query.item)}
                                 disabled={reportingId !== null}
                                 sx={{ width: 48, height: 48 }}
@@ -496,10 +514,10 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                             </span>
                           </Tooltip>
                         )}
-                        <Tooltip title="Edit">
+                        <Tooltip title={t('predefined.edit')}>
                           <IconButton
                             size="small"
-                            aria-label={`Edit ${query.item.name}`}
+                            aria-label={t('predefined.editAria', { name: query.item.name })}
                             onClick={() =>
                               openEdit(
                                 query.kind,
@@ -514,11 +532,11 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                             <EditIcon />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Delete">
+                        <Tooltip title={t('predefined.delete')}>
                           <IconButton
                             size="small"
                             color="error"
-                            aria-label={`Delete ${query.item.name}`}
+                            aria-label={t('predefined.deleteAria', { name: query.item.name })}
                             onClick={() =>
                               setDeleteTarget({
                                 kind: query.kind,
@@ -549,12 +567,12 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
         maxWidth="sm"
       >
         <DialogTitle>
-          Edit {editTarget?.kind === 'builder' ? 'pre-defined query' : 'pre-defined SQL'}
+          {t(editTarget?.kind === 'builder' ? 'predefined.editDialog.builderTitle' : 'predefined.editDialog.sqlTitle')}
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={1.5}>
             <TextField
-              label="Name"
+              label={t('predefined.editDialog.nameLabel')}
               value={editName}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setEditName(event.target.value)}
               fullWidth
@@ -563,38 +581,38 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
             />
             {editTarget?.kind === 'sql' && (
               <FormControl fullWidth size="small">
-                <InputLabel id="edit-sql-connection-label">Connection</InputLabel>
+                <InputLabel id="edit-sql-connection-label">{t('predefined.editDialog.connectionLabel')}</InputLabel>
                 <Select
                   labelId="edit-sql-connection-label"
-                  label="Connection"
+                  label={t('predefined.editDialog.connectionLabel')}
                   value={editConnectionId}
                   onChange={(event: SelectChangeEvent) => setEditConnectionId(event.target.value)}
                 >
                   <MenuItem value="">
-                    <em>No connection</em>
+                    <em>{t('common.noConnection')}</em>
                   </MenuItem>
                   {connections.map((c) => (
                     <MenuItem key={c.id} value={c.id}>
-                      {c.name || c.dsn || 'Unnamed connection'}
+                      {c.name || c.dsn || t('common.unnamedConnection')}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
             )}
             <TextField
-              label="Description (optional)"
+              label={t('predefined.editDialog.descriptionLabel')}
               value={editDescription}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setEditDescription(event.target.value)}
               fullWidth
               multiline
               minRows={2}
-              placeholder="What this query is for — shown in the pre-defined list."
+              placeholder={t('predefined.editDialog.descriptionPlaceholder')}
             />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setEditTarget(null)} disabled={editing} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -603,23 +621,22 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
             startIcon={editing ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
             sx={{ minHeight: 44 }}
           >
-            Save
+            {t('common.save')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Delete confirmation */}
       <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)} maxWidth="xs">
-        <DialogTitle>Delete “{deleteTarget?.name}”?</DialogTitle>
+        <DialogTitle>{t('predefined.deleteDialog.title', { name: deleteTarget?.name })}</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
-            This pre-defined {deleteTarget?.kind === 'builder' ? 'query' : 'SQL'} will be permanently
-            deleted.
+            {t(deleteTarget?.kind === 'builder' ? 'predefined.deleteDialog.builderBody' : 'predefined.deleteDialog.sqlBody')}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDeleteTarget(null)} disabled={deleting} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             color="error"
@@ -629,19 +646,18 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
             startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
             sx={{ minHeight: 44 }}
           >
-            Delete
+            {t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Parameter prompt dialog (builder queries with prompts) */}
       <Dialog open={promptTarget !== null} onClose={() => setPromptTarget(null)} fullWidth maxWidth="xs">
-        <DialogTitle>{promptAutoRun ? 'Run' : 'Open'} “{promptTarget?.name}”</DialogTitle>
+        <DialogTitle>{t(promptAutoRun ? 'predefined.promptDialog.runTitle' : 'predefined.promptDialog.openTitle', { name: promptTarget?.name })}</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={1.5}>
             <Typography variant="body2" color="text.secondary">
-              Enter a value for each prompt. These become filters on the selected columns; leave a
-              prompt blank to skip it.
+              {t('predefined.promptDialog.body')}
             </Typography>
             {(promptTarget?.parameters ?? []).map((param) => {
               const isNullOp = param.operator === 'is null' || param.operator === 'is not null'
@@ -655,7 +671,7 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
                   }
                   fullWidth
                   disabled={isNullOp}
-                  placeholder={isNullOp ? (param.operator === 'is null' ? 'Will filter IS NULL' : 'Will filter IS NOT NULL') : param.default !== undefined ? `Default: ${param.default}` : `Filter: ${param.column}`}
+                  placeholder={isNullOp ? (param.operator === 'is null' ? t('predefined.promptDialog.willFilterNull') : t('predefined.promptDialog.willFilterNotNull')) : param.default !== undefined ? t('predefined.promptDialog.default', { value: param.default }) : t('predefined.promptDialog.filter', { column: param.column })}
                   autoFocus={false}
                 />
               )
@@ -664,10 +680,10 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setPromptTarget(null)} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button variant="contained" onClick={() => void handlePromptConfirmed()} sx={{ minHeight: 44 }}>
-            {promptAutoRun ? 'Run' : 'Open in editor'}
+            {promptAutoRun ? t('predefined.promptDialog.run') : t('predefined.promptDialog.openInEditor')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -679,9 +695,7 @@ export default function PredefinedSqlPage({ active, onOpenInEditor }: Predefined
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
-          severity={
-            notice?.startsWith('Deleted') || notice?.startsWith('Updated') ? 'success' : 'error'
-          }
+          severity={noticeSeverity}
           variant="filled"
           onClose={() => setNotice(null)}
         >

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import AddIcon from '@mui/icons-material/Add'
 import AttachFileIcon from '@mui/icons-material/AttachFile'
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
@@ -9,7 +10,6 @@ import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
-import GridViewIcon from '@mui/icons-material/GridView'
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined'
 import ReplayIcon from '@mui/icons-material/Replay'
@@ -18,7 +18,6 @@ import SearchIcon from '@mui/icons-material/Search'
 import SendIcon from '@mui/icons-material/Send'
 import ThumbUpIcon from '@mui/icons-material/ThumbUp'
 import ThumbUpOutlinedIcon from '@mui/icons-material/ThumbUpOutlined'
-import ViewListIcon from '@mui/icons-material/ViewList'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -35,6 +34,7 @@ import InputLabel from '@mui/material/InputLabel'
 import InputAdornment from '@mui/material/InputAdornment'
 import LinearProgress from '@mui/material/LinearProgress'
 import MenuItem from '@mui/material/MenuItem'
+import Pagination from '@mui/material/Pagination'
 import Paper from '@mui/material/Paper'
 import Select from '@mui/material/Select'
 import Skeleton from '@mui/material/Skeleton'
@@ -50,6 +50,8 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { alpha, useTheme } from '@mui/material/styles'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { api } from '../api/client'
 import type {
   FeedbackAttachment,
@@ -66,6 +68,8 @@ import type {
 const POLL_INTERVAL_MS = 20000
 const MAX_ATTACHMENTS = 5
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+/** Posts shown per page on the board. */
+const POSTS_PER_PAGE = 10
 /** Mirrors the backend allow-list so a bad pick fails before the upload. */
 const ATTACHMENT_EXTENSIONS = [
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp',
@@ -79,17 +83,17 @@ const PAGE_GUTTER = { xs: 1.5, sm: 2, md: 3 }
 
 type CategoryColor = 'error' | 'warning' | 'info' | 'default'
 
-const CATEGORY_META: { value: FeedbackCategory; label: string; color: CategoryColor }[] = [
-  { value: 'bug', label: 'Bug', color: 'error' },
-  { value: 'idea', label: 'Idea', color: 'warning' },
-  { value: 'question', label: 'Question', color: 'info' },
-  { value: 'other', label: 'Other', color: 'default' },
+const CATEGORY_META: { value: FeedbackCategory; color: CategoryColor }[] = [
+  { value: 'bug', color: 'error' },
+  { value: 'idea', color: 'warning' },
+  { value: 'question', color: 'info' },
+  { value: 'other', color: 'default' },
 ]
 
-const SORT_OPTIONS: { value: FeedbackSort; label: string }[] = [
-  { value: 'recent', label: 'Latest activity' },
-  { value: 'newest', label: 'Newest first' },
-  { value: 'top', label: 'Most liked' },
+const SORT_OPTIONS: { value: FeedbackSort }[] = [
+  { value: 'recent' },
+  { value: 'newest' },
+  { value: 'top' },
 ]
 
 type Notice = { severity: 'success' | 'error' | 'info'; message: string } | null
@@ -99,7 +103,7 @@ function categoryMeta(value: FeedbackCategory) {
 }
 
 /** "3 minutes ago" style timestamp, falling back to a date after a week. */
-function relativeTime(iso: string): string {
+function relativeTime(iso: string, t: TFunction): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return ''
   const diff = Date.now() - then
@@ -107,10 +111,10 @@ function relativeTime(iso: string): string {
   const hour = 60 * minute
   const day = 24 * hour
   if (diff < 0) return new Date(then).toLocaleString()
-  if (diff < minute) return 'just now'
-  if (diff < hour) return `${Math.floor(diff / minute)}m ago`
-  if (diff < day) return `${Math.floor(diff / hour)}h ago`
-  if (diff < 7 * day) return `${Math.floor(diff / day)}d ago`
+  if (diff < minute) return t('relativeTime.justNow')
+  if (diff < hour) return t('relativeTime.minutesAgo', { n: Math.floor(diff / minute) })
+  if (diff < day) return t('relativeTime.hoursAgo', { n: Math.floor(diff / hour) })
+  if (diff < 7 * day) return t('relativeTime.daysAgo', { n: Math.floor(diff / day) })
   return new Date(then).toLocaleDateString()
 }
 
@@ -140,17 +144,18 @@ function nameForUpload(file: File): File {
   return new File([file], `screenshot-${stamp}.${extension}`, { type: file.type })
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : 'Unexpected error'
+function errorText(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
 }
 
 /** Author line: nickname (or "Anonymous"), app version, timestamp. */
 function AuthorLine({ name, version, at }: { name: string; version: string; at: string }) {
+  const { t } = useTranslation('feedback')
   return (
     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-      {name || 'Anonymous'}
+      {name || t('author.anonymous')}
       {version ? ` · v${version}` : ''}
-      {at ? ` · ${relativeTime(at)}` : ''}
+      {at ? ` · ${relativeTime(at, t)}` : ''}
     </Typography>
   )
 }
@@ -166,6 +171,7 @@ function AttachmentList({
   attachments: FeedbackAttachment[]
   large?: boolean
 }) {
+  const { t } = useTranslation('feedback')
   if (attachments.length === 0) return null
   return (
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1.5 }}>
@@ -177,7 +183,7 @@ function AttachmentList({
             href={attachment.url}
             target="_blank"
             rel="noopener noreferrer"
-            title={`${attachment.name} — open in a new tab`}
+            title={t('attachments.openInNewTab', { name: attachment.name })}
             sx={{
               display: 'block',
               lineHeight: 0,
@@ -242,6 +248,7 @@ function AttachmentField({
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState<number | null>(null)
+  const { t } = useTranslation('feedback')
 
   /** Validate and upload one file, returning null when it was rejected. */
   const uploadOne = async (file: File): Promise<FeedbackAttachment | null> => {
@@ -250,18 +257,18 @@ function AttachmentField({
     const normalised = nameForUpload(file)
     const extension = normalised.name.slice(normalised.name.lastIndexOf('.')).toLowerCase()
     if (!ATTACHMENT_EXTENSIONS.includes(extension)) {
-      onNotice({ severity: 'error', message: 'Unsupported file type.' })
+      onNotice({ severity: 'error', message: t('attachments.unsupportedType') })
       return null
     }
     if (normalised.size > MAX_ATTACHMENT_BYTES) {
-      onNotice({ severity: 'error', message: 'Attachments are limited to 10 MB each.' })
+      onNotice({ severity: 'error', message: t('attachments.tooLarge') })
       return null
     }
     setUploading(0)
     try {
       return await api.uploadFeedbackAttachment(normalised, setUploading)
     } catch (error) {
-      onNotice({ severity: 'error', message: errorText(error) })
+      onNotice({ severity: 'error', message: errorText(error, t('unexpected')) })
       return null
     } finally {
       setUploading(null)
@@ -272,13 +279,16 @@ function AttachmentField({
   const addFiles = async (files: File[]) => {
     const room = MAX_ATTACHMENTS - attachments.length
     if (room <= 0) {
-      onNotice({ severity: 'error', message: `Up to ${MAX_ATTACHMENTS} attachments per post.` })
+      onNotice({
+        severity: 'error',
+        message: t('attachments.maxReached', { max: MAX_ATTACHMENTS }),
+      })
       return
     }
     if (files.length > room) {
       onNotice({
         severity: 'info',
-        message: `Only the first ${room} of ${files.length} files were added.`,
+        message: t('attachments.onlyFirstAdded', { added: room, total: files.length }),
       })
     }
     const uploaded: FeedbackAttachment[] = []
@@ -331,14 +341,14 @@ function AttachmentField({
           disabled={disabled || uploading !== null || attachments.length >= MAX_ATTACHMENTS}
           sx={{ minHeight: 48 }}
         >
-          Attach file
+          {t('attachments.attachFile')}
         </Button>
         <Typography
           variant="caption"
           color="text.secondary"
           sx={{ flex: '1 1 auto', minWidth: 0 }}
         >
-          Paste a screenshot, or attach up to {MAX_ATTACHMENTS} files — 10 MB each.
+          {t('attachments.hint', { max: MAX_ATTACHMENTS })}
         </Typography>
         {action}
       </Box>
@@ -372,8 +382,9 @@ function AttachmentField({
 
 /** Category pill, shared by every board layout. */
 function CategoryChip({ category }: { category: FeedbackCategory }) {
+  const { t } = useTranslation('feedback')
   const meta = categoryMeta(category)
-  return <Chip label={meta.label} color={meta.color} size="small" variant="outlined" />
+  return <Chip label={t(`category.${meta.value}`)} color={meta.color} size="small" variant="outlined" />
 }
 
 /**
@@ -381,20 +392,20 @@ function CategoryChip({ category }: { category: FeedbackCategory }) {
  * too; the roomier layouts stay quiet and only flag what is outstanding.
  */
 function StatusChip({ status }: { status: FeedbackStatus }) {
+  const { t } = useTranslation('feedback')
   return status === 'resolved' ? (
-    <Chip label="Resolved" size="small" color="success" icon={<CheckCircleOutlinedIcon />} />
+    <Chip label={t('status.resolved')} size="small" color="success" icon={<CheckCircleOutlinedIcon />} />
   ) : (
-    <Chip label="Open" size="small" variant="outlined" />
+    <Chip label={t('status.open')} size="small" variant="outlined" />
   )
 }
 
 /** Quiet paperclip noting how many files a post carries. */
 function AttachmentCount({ attachments }: { attachments: FeedbackAttachment[] }) {
+  const { t } = useTranslation('feedback')
   if (attachments.length === 0) return null
   return (
-    <Tooltip
-      title={`${attachments.length} attachment${attachments.length === 1 ? '' : 's'}`}
-    >
+    <Tooltip title={t('attachments.count', { count: attachments.length })}>
       <AttachFileIcon fontSize="small" color="disabled" />
     </Tooltip>
   )
@@ -436,6 +447,7 @@ function VoteButton({
   dense?: boolean
   onToggle: () => void
 }) {
+  const { t } = useTranslation('feedback')
   const variant = thread.liked_by_me ? 'contained' : dense ? 'text' : 'outlined'
   return (
     <Button
@@ -443,7 +455,7 @@ function VoteButton({
       variant={variant}
       color={thread.liked_by_me ? 'primary' : 'inherit'}
       aria-pressed={thread.liked_by_me}
-      aria-label={`Same problem — ${thread.like_count} ${thread.like_count === 1 ? 'vote' : 'votes'}`}
+      aria-label={t('votes.sameProblem', { count: thread.like_count })}
       startIcon={
         pending ? (
           <CircularProgress size={14} color="inherit" />
@@ -477,23 +489,21 @@ function VoteButton({
   )
 }
 
-/** One entry in the board: a full card, or a dense row in list view. */
+/** One dense row entry on the board: title, chips and counters, no excerpt. */
 function ThreadCard({
   thread,
   active,
-  compact = false,
   onOpen,
   onToggleLike,
   likePending,
 }: {
   thread: FeedbackThread
   active: boolean
-  /** Dense single-entry row instead of the full card. */
-  compact?: boolean
   onOpen: () => void
   onToggleLike: () => void
   likePending: boolean
 }) {
+  const { t } = useTranslation('feedback')
   const meta = categoryMeta(thread.category)
   const statusChip = thread.status === 'resolved' ? <StatusChip status={thread.status} /> : null
   const replyChip = (
@@ -502,7 +512,7 @@ function ThreadCard({
       variant="outlined"
       icon={<ForumOutlinedIcon />}
       label={thread.reply_count}
-      aria-label={`${thread.reply_count} ${thread.reply_count === 1 ? 'reply' : 'replies'}`}
+      aria-label={t('replies.count', { count: thread.reply_count })}
       sx={{
         ...COUNTER_SX,
         // Read-only twin of the vote pill: same box, quieter ink.
@@ -522,7 +532,7 @@ function ThreadCard({
   const title = (
     <Typography
       variant="subtitle2"
-      noWrap={compact}
+      noWrap
       sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0, lineHeight: 1.4 }}
     >
       {thread.title}
@@ -539,7 +549,11 @@ function ThreadCard({
       role="button"
       tabIndex={0}
       aria-current={active || undefined}
-      aria-label={`${meta.label} feedback, ${thread.status}: ${thread.title}`}
+      aria-label={t('aria.card', {
+        category: t(`category.${meta.value}`),
+        status: t(`status.${thread.status}`),
+        title: thread.title,
+      })}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
@@ -547,7 +561,7 @@ function ThreadCard({
         }
       }}
       sx={{
-        p: compact ? { xs: 1.25, sm: 1 } : { xs: 1.5, sm: 2 },
+        p: { xs: 1.25, sm: 1 },
         cursor: 'pointer',
         // The accent rail is always laid out, so selecting a card never shifts
         // the text inside it.
@@ -563,69 +577,29 @@ function ThreadCard({
         },
       }}
     >
-      {compact ? (
-        // List view on a phone: the title leads, the metadata and counters ride
-        // below, and the description is left to the post itself.
-        <>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-            {title}
-            <CategoryChip category={thread.category} />
-            {statusChip}
-          </Box>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              mt: 0.5,
-              minWidth: 0,
-              flexWrap: 'wrap',
-            }}
-          >
-            {byline}
-            <Box sx={{ flexGrow: 1 }} />
-            <AttachmentCount attachments={thread.attachments} />
-            {replyChip}
-            {voteButton}
-          </Box>
-        </>
-      ) : (
-        <>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
-            {title}
-            <CategoryChip category={thread.category} />
-            {statusChip}
-          </Box>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{
-              mt: 0.75,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {thread.body}
-          </Typography>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              mt: 1.25,
-              flexWrap: 'wrap',
-            }}
-          >
-            {byline}
-            <Box sx={{ flexGrow: 1 }} />
-            <AttachmentCount attachments={thread.attachments} />
-            {replyChip}
-            {voteButton}
-          </Box>
-        </>
-      )}
+      {/* The title leads, the metadata and counters ride below, and the
+          description is left to the post itself. */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+        {title}
+        <CategoryChip category={thread.category} />
+        {statusChip}
+      </Box>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          mt: 0.5,
+          minWidth: 0,
+          flexWrap: 'wrap',
+        }}
+      >
+        {byline}
+        <Box sx={{ flexGrow: 1 }} />
+        <AttachmentCount attachments={thread.attachments} />
+        {replyChip}
+        {voteButton}
+      </Box>
     </Paper>
   )
 }
@@ -674,6 +648,7 @@ function ThreadTable({
   onOpen: (thread: FeedbackThread) => void
   onToggleLike: (thread: FeedbackThread) => void
 }) {
+  const { t } = useTranslation('feedback')
   return (
     // `clip` (not `hidden`) rounds the corners off without turning the wrapper
     // into a scroll container, which would break the sticky header.
@@ -681,35 +656,39 @@ function ThreadTable({
       <Table size="small" stickyHeader>
         <TableHead>
           <TableRow>
-            <TableCell sx={HEAD_CELL}>Title</TableCell>
-            <TableCell sx={HEAD_CELL}>Content</TableCell>
-            <TableCell sx={{ ...HEAD_CELL, width: COLUMN_WIDTH.type }}>Type</TableCell>
-            <TableCell sx={{ ...HEAD_CELL, width: COLUMN_WIDTH.status }}>Status</TableCell>
+            <TableCell sx={HEAD_CELL}>{t('table.title')}</TableCell>
+            <TableCell sx={HEAD_CELL}>{t('table.content')}</TableCell>
+            <TableCell sx={{ ...HEAD_CELL, width: COLUMN_WIDTH.type }}>{t('table.type')}</TableCell>
+            <TableCell sx={{ ...HEAD_CELL, width: COLUMN_WIDTH.status }}>{t('table.status')}</TableCell>
             <TableCell sx={{ ...HEAD_CELL, ...SECONDARY_COLUMN, width: COLUMN_WIDTH.author }}>
-              Posted by
+              {t('table.postedBy')}
             </TableCell>
             <TableCell sx={{ ...HEAD_CELL, ...SECONDARY_COLUMN, width: COLUMN_WIDTH.posted }}>
-              Posted
+              {t('table.posted')}
             </TableCell>
             <TableCell align="right" sx={{ ...HEAD_CELL, width: COLUMN_WIDTH.replies }}>
-              Replies
+              {t('table.replies')}
             </TableCell>
             <TableCell align="right" sx={{ ...HEAD_CELL, width: COLUMN_WIDTH.votes }}>
-              Votes
+              {t('table.votes')}
             </TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {threads.map((thread) => {
             const active = thread.id === selectedId
-            const replies = `${thread.reply_count} ${thread.reply_count === 1 ? 'reply' : 'replies'}`
+            const replies = t('replies.count', { count: thread.reply_count })
             return (
               <TableRow
                 key={thread.id}
                 hover
                 tabIndex={0}
                 aria-current={active || undefined}
-                aria-label={`${categoryMeta(thread.category).label} feedback, ${thread.status}: ${thread.title}`}
+                aria-label={t('aria.card', {
+                  category: t(`category.${categoryMeta(thread.category).value}`),
+                  status: t(`status.${thread.status}`),
+                  title: thread.title,
+                })}
                 onClick={() => onOpen(thread)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
@@ -764,12 +743,12 @@ function ThreadTable({
                 </TableCell>
                 <TableCell sx={SECONDARY_COLUMN}>
                   <Typography variant="body2" color="text.secondary" noWrap title={thread.author_name}>
-                    {thread.author_name || 'Anonymous'}
+                    {thread.author_name || t('author.anonymous')}
                   </Typography>
                 </TableCell>
                 <TableCell sx={SECONDARY_COLUMN}>
                   <Typography variant="body2" color="text.secondary" noWrap>
-                    {relativeTime(thread.created_at)}
+                    {relativeTime(thread.created_at, t)}
                   </Typography>
                 </TableCell>
                 <TableCell align="right">
@@ -821,6 +800,7 @@ function ThreadComposerDialog({
   const [attachments, setAttachments] = useState<FeedbackAttachment[]>([])
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
+  const { t } = useTranslation('feedback')
 
   // Re-seed the form whenever the dialog opens for a different target.
   useEffect(() => {
@@ -834,14 +814,14 @@ function ThreadComposerDialog({
 
   const submit = async () => {
     if (!title.trim() || !body.trim()) {
-      onNotice({ severity: 'error', message: 'Add a title and a description first.' })
+      onNotice({ severity: 'error', message: t('composer.needTitleBody') })
       return
     }
     // The name is part of this machine's identity, not of the post, so an edit
     // never rewrites the byline of something already published.
     const authorName = name.trim()
     if (!editing && !authorName) {
-      onNotice({ severity: 'error', message: 'Add the name to publish under.' })
+      onNotice({ severity: 'error', message: t('composer.needName') })
       return
     }
     setSaving(true)
@@ -861,7 +841,7 @@ function ThreadComposerDialog({
           })
       onSaved(thread)
     } catch (error) {
-      onNotice({ severity: 'error', message: errorText(error) })
+      onNotice({ severity: 'error', message: errorText(error, t('unexpected')) })
     } finally {
       setSaving(false)
     }
@@ -878,9 +858,9 @@ function ThreadComposerDialog({
           pr: 1,
         }}
       >
-        <Box component="span">{editing ? 'Edit feedback' : 'New feedback'}</Box>
+        <Box component="span">{editing ? t('composer.editTitle') : t('composer.newTitle')}</Box>
         <IconButton
-          aria-label="Close"
+          aria-label={t('aria.close')}
           onClick={onClose}
           disabled={saving}
           size="small"
@@ -893,17 +873,17 @@ function ThreadComposerDialog({
         <Stack spacing={2} sx={{ pt: 0.5 }}>
           {!editing && (
             <TextField
-              label="Your name"
+              label={t('composer.nameLabel')}
               value={name}
               onChange={(event) => setName(event.target.value)}
               slotProps={{ htmlInput: { maxLength: 40 } }}
               fullWidth
               required
-              helperText="Shown on your post. Remembered on this machine for next time."
+              helperText={t('composer.nameHelper')}
             />
           )}
           <TextField
-            label="Title"
+            label={t('composer.titleLabel')}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             slotProps={{ htmlInput: { maxLength: 200 } }}
@@ -911,29 +891,29 @@ function ThreadComposerDialog({
             autoFocus
           />
           <FormControl fullWidth>
-            <InputLabel id="feedback-category-label">Category</InputLabel>
+            <InputLabel id="feedback-category-label">{t('composer.categoryLabel')}</InputLabel>
             <Select
               labelId="feedback-category-label"
-              label="Category"
+              label={t('composer.categoryLabel')}
               value={category}
               onChange={(event) => setCategory(event.target.value as FeedbackCategory)}
             >
               {CATEGORY_META.map((entry) => (
                 <MenuItem key={entry.value} value={entry.value}>
-                  {entry.label}
+                  {t(`category.${entry.value}`)}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
           <TextField
-            label="Description"
+            label={t('composer.descriptionLabel')}
             value={body}
             onChange={(event) => setBody(event.target.value)}
             slotProps={{ htmlInput: { maxLength: 8000 } }}
             multiline
             minRows={5}
             fullWidth
-            helperText="What happened, what you expected, and any steps to reproduce it."
+            helperText={t('composer.descriptionHelper')}
           />
           {!editing && (
             <AttachmentField
@@ -947,7 +927,7 @@ function ThreadComposerDialog({
       </DialogContent>
       <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2, gap: 1 }}>
         <Button onClick={onClose} disabled={saving} color="inherit" sx={{ minHeight: 48 }}>
-          Cancel
+          {t('composer.cancel')}
         </Button>
         <Button
           onClick={submit}
@@ -956,7 +936,7 @@ function ThreadComposerDialog({
           startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
           sx={{ minHeight: 48, minWidth: { xs: '100%', sm: 120 } }}
         >
-          {editing ? 'Save' : 'Post'}
+          {editing ? t('composer.save') : t('composer.post')}
         </Button>
       </DialogActions>
     </Dialog>
@@ -992,6 +972,7 @@ function ThreadDetailView({
   // Whether the reply window is open. The draft itself lives inside
   // ReplyDialog, so a thread switch needs no cleanup here.
   const [replyOpen, setReplyOpen] = useState(false)
+  const { t } = useTranslation('feedback')
 
   // A thread switch closes any reply window left open on the previous post.
   useEffect(() => {
@@ -1014,7 +995,7 @@ function ThreadDetailView({
         severity="error"
         action={
           <Button color="inherit" size="small" onClick={onRetry} startIcon={<RefreshIcon />}>
-            Retry
+            {t('detail.retry')}
           </Button>
         }
       >
@@ -1041,9 +1022,19 @@ function ThreadDetailView({
             <Typography variant="h5" sx={{ flexGrow: 1, minWidth: 0, lineHeight: 1.3 }}>
               {thread.title}
             </Typography>
-            <Chip label={meta.label} color={meta.color} size="small" variant="outlined" />
+            <Chip
+              label={t(`category.${meta.value}`)}
+              color={meta.color}
+              size="small"
+              variant="outlined"
+            />
             {thread.status === 'resolved' && (
-              <Chip label="Resolved" size="small" color="success" icon={<CheckCircleOutlinedIcon />} />
+              <Chip
+                label={t('status.resolved')}
+                size="small"
+                color="success"
+                icon={<CheckCircleOutlinedIcon />}
+              />
             )}
           </Box>
           <AuthorLine
@@ -1059,15 +1050,13 @@ function ThreadDetailView({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2, flexWrap: 'wrap' }}>
             {/* Icon-only vote: the label was pure repetition of the thumb
                 icon, so the count moves into the tooltip and aria-label. */}
-            <Tooltip
-              title={`Same problem — ${thread.like_count} ${thread.like_count === 1 ? 'vote' : 'votes'}`}
-            >
+            <Tooltip title={t('votes.sameProblem', { count: thread.like_count })}>
               <Button
                 size="small"
                 variant={thread.liked_by_me ? 'contained' : 'outlined'}
                 color={thread.liked_by_me ? 'primary' : 'inherit'}
                 aria-pressed={thread.liked_by_me}
-                aria-label={`Same problem — ${thread.like_count} ${thread.like_count === 1 ? 'vote' : 'votes'}`}
+                aria-label={t('votes.sameProblem', { count: thread.like_count })}
                 onClick={onToggleLike}
                 sx={{ minHeight: 36, minWidth: 36, p: 0.75 }}
               >
@@ -1083,7 +1072,7 @@ function ThreadDetailView({
               onClick={() => setReplyOpen(true)}
               sx={{ minHeight: 36 }}
             >
-              Reply
+              {t('detail.reply')}
             </Button>
             {thread.mine && (
               <>
@@ -1094,7 +1083,7 @@ function ThreadDetailView({
                   onClick={() => onToggleStatus(thread)}
                   sx={{ minHeight: 48 }}
                 >
-                  {thread.status === 'resolved' ? 'Reopen' : 'Mark resolved'}
+                  {thread.status === 'resolved' ? t('detail.reopen') : t('detail.markResolved')}
                 </Button>
                 <Button
                   variant="outlined"
@@ -1103,7 +1092,7 @@ function ThreadDetailView({
                   onClick={() => onEdit(thread)}
                   sx={{ minHeight: 48 }}
                 >
-                  Edit
+                  {t('detail.edit')}
                 </Button>
                 <Button
                   variant="outlined"
@@ -1112,7 +1101,7 @@ function ThreadDetailView({
                   onClick={() => onDelete(thread)}
                   sx={{ minHeight: 48 }}
                 >
-                  Delete
+                  {t('detail.delete')}
                 </Button>
               </>
             )}
@@ -1129,8 +1118,8 @@ function ThreadDetailView({
         <Box sx={{ pb: 1 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
             {replies.length === 0
-              ? 'No replies yet'
-              : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
+              ? t('detail.noReplies')
+              : t('detail.repliesHeading', { count: replies.length })}
           </Typography>
           <Stack spacing={1.5}>
             {replies.map((reply) => (
@@ -1162,12 +1151,12 @@ function ThreadDetailView({
                       onClick={() => setReplyOpen(true)}
                       sx={{ minHeight: 44 }}
                     >
-                      Reply
+                      {t('detail.reply')}
                     </Button>
                     {reply.mine && (
-                      <Tooltip title="Delete reply">
+                      <Tooltip title={t('aria.deleteReply')}>
                         <IconButton
-                          aria-label="Delete reply"
+                          aria-label={t('aria.deleteReply')}
                           onClick={() => onDeleteReply(reply)}
                           size="small"
                           sx={{ minWidth: 44, minHeight: 44 }}
@@ -1220,6 +1209,7 @@ function ReplyDialog({
   const [body, setBody] = useState('')
   const [attachments, setAttachments] = useState<FeedbackAttachment[]>([])
   const [sending, setSending] = useState(false)
+  const { t } = useTranslation('feedback')
 
   // Every opening starts a fresh draft.
   useEffect(() => {
@@ -1247,9 +1237,9 @@ function ReplyDialog({
           pr: 1,
         }}
       >
-        <Box component="span">Write a reply</Box>
+        <Box component="span">{t('replyDialog.title')}</Box>
         <IconButton
-          aria-label="Close"
+          aria-label={t('aria.close')}
           onClick={onClose}
           disabled={sending}
           size="small"
@@ -1260,8 +1250,8 @@ function ReplyDialog({
       </DialogTitle>
       <DialogContent dividers>
         <TextField
-          label="Your reply"
-          placeholder="Add details, agree, or answer the question"
+          label={t('replyDialog.replyLabel')}
+          placeholder={t('replyDialog.placeholder')}
           value={body}
           onChange={(event) => setBody(event.target.value)}
           slotProps={{ htmlInput: { maxLength: 8000 } }}
@@ -1282,7 +1272,7 @@ function ReplyDialog({
       </DialogContent>
       <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2 }}>
         <Button onClick={onClose} color="inherit" disabled={sending} sx={{ minHeight: 48 }}>
-          Cancel
+          {t('replyDialog.cancel')}
         </Button>
         <Button
           variant="contained"
@@ -1291,7 +1281,7 @@ function ReplyDialog({
           startIcon={sending ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
           sx={{ minHeight: 48, minWidth: 140 }}
         >
-          Reply
+          {t('replyDialog.submit')}
         </Button>
       </DialogActions>
     </Dialog>
@@ -1303,6 +1293,7 @@ function FeedbackPage() {
   // A desktop shows an open post in a large centred window; a phone gets the
   // same window full-screen.
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'))
+  const { t } = useTranslation('feedback')
 
   const [profile, setProfile] = useState<FeedbackProfile | null>(null)
 
@@ -1314,8 +1305,17 @@ function FeedbackPage() {
   const [status, setStatus] = useState<FeedbackStatus | null>(null)
   const [sort, setSort] = useState<FeedbackSort>('recent')
   const [query, setQuery] = useState('')
-  // List first: it fits far more posts on screen, and the cards are one tap away.
-  const [view, setView] = useState<'list' | 'card'>('list')
+  // The board is paginated in pages of POSTS_PER_PAGE posts.
+  const [page, setPage] = useState(1)
+  // The composer entry point is rendered into the shell's board header (same
+  // row as the "Feedback" title) via this portal target.
+  const [headerActions, setHeaderActions] = useState<HTMLElement | null>(null)
+  // Top of the list: a page jump scrolls it back into view, whichever box is
+  // the scroller (the desktop board column or the phone page itself).
+  const listTopRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    setHeaderActions(document.getElementById('feedback-header-actions'))
+  }, [])
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<FeedbackThreadDetail | null>(null)
@@ -1339,11 +1339,11 @@ function FeedbackPage() {
       setThreads(response.threads)
       setListError(null)
     } catch (error) {
-      setListError(errorText(error))
+      setListError(errorText(error, t('unexpected')))
     } finally {
       setListLoading(false)
     }
-  }, [category, status, sort])
+  }, [category, status, sort, t])
 
   const loadDetail = useCallback(async (threadId: string, options?: { silent?: boolean }) => {
     if (!options?.silent) setDetailLoading(true)
@@ -1352,11 +1352,11 @@ function FeedbackPage() {
       setDetail(response)
       setDetailError(null)
     } catch (error) {
-      setDetailError(errorText(error))
+      setDetailError(errorText(error, t('unexpected')))
     } finally {
       setDetailLoading(false)
     }
-  }, [])
+  }, [t])
 
   // First load: this machine's identity (the name is part of the feedback form)
   // + the board.
@@ -1370,6 +1370,11 @@ function FeedbackPage() {
   useEffect(() => {
     void loadThreads()
   }, [loadThreads])
+
+  // New filters or a new search restart the board at its first page.
+  useEffect(() => {
+    setPage(1)
+  }, [category, status, sort, query])
 
   useEffect(() => {
     if (selectedId) void loadDetail(selectedId)
@@ -1420,7 +1425,7 @@ function FeedbackPage() {
         current ? { ...current, thread: patch(current.thread) } : current,
       )
     } catch (error) {
-      setNotice({ severity: 'error', message: errorText(error) })
+      setNotice({ severity: 'error', message: errorText(error, t('unexpected')) })
     } finally {
       setLikePending(null)
     }
@@ -1434,7 +1439,7 @@ function FeedbackPage() {
       setDetail((current) => (current ? { ...current, thread: updated } : current))
       await loadThreads({ silent: true })
     } catch (error) {
-      setNotice({ severity: 'error', message: errorText(error) })
+      setNotice({ severity: 'error', message: errorText(error, t('unexpected')) })
     }
   }
 
@@ -1450,7 +1455,7 @@ function FeedbackPage() {
           setDetail(null)
           setDetailOpen(false)
         }
-        setNotice({ severity: 'success', message: 'Feedback deleted.' })
+        setNotice({ severity: 'success', message: t('board.deleted') })
         await loadThreads({ silent: true })
       } else {
         await api.deleteFeedbackReply(pendingDelete.reply.id)
@@ -1462,12 +1467,12 @@ function FeedbackPage() {
               }
             : current,
         )
-        setNotice({ severity: 'success', message: 'Reply deleted.' })
+        setNotice({ severity: 'success', message: t('board.replyDeleted') })
         await refreshAfterChange(selectedId)
       }
       setPendingDelete(null)
     } catch (error) {
-      setNotice({ severity: 'error', message: errorText(error) })
+      setNotice({ severity: 'error', message: errorText(error, t('unexpected')) })
     } finally {
       setDeleteBusy(false)
     }
@@ -1480,7 +1485,7 @@ function FeedbackPage() {
       await refreshAfterChange(selectedId)
       return true
     } catch (error) {
-      setNotice({ severity: 'error', message: errorText(error) })
+      setNotice({ severity: 'error', message: errorText(error, t('unexpected')) })
       return false
     }
   }
@@ -1499,15 +1504,29 @@ function FeedbackPage() {
   /** True when a search word or a filter is hiding part of the board. */
   const filtered = Boolean(query.trim() || category || status)
 
+  const pageCount = Math.max(1, Math.ceil(visibleThreads.length / POSTS_PER_PAGE))
+  // A refresh can shrink the board below the stored page; clamp instead of
+  // rendering an empty page.
+  const safePage = Math.min(page, pageCount)
+  const pagedThreads = useMemo(
+    () => visibleThreads.slice((safePage - 1) * POSTS_PER_PAGE, safePage * POSTS_PER_PAGE),
+    [visibleThreads, safePage],
+  )
+
   const threadCountLabel = useMemo(() => {
-    if (listLoading && threads.length === 0) return 'Loading…'
-    if (visibleThreads.length !== threads.length) {
-      return `${visibleThreads.length} of ${threads.length} ${
-        threads.length === 1 ? 'post' : 'posts'
-      }`
-    }
-    return `${threads.length} ${threads.length === 1 ? 'post' : 'posts'}`
-  }, [listLoading, threads.length, visibleThreads.length])
+    if (listLoading && threads.length === 0) return t('board.loading')
+    const base =
+      visibleThreads.length !== threads.length
+        ? t('board.count', {
+            count: threads.length,
+            visible: visibleThreads.length,
+            total: threads.length,
+          })
+        : t('board.total', { count: threads.length, total: threads.length })
+    return pageCount > 1
+      ? `${base} · ${t('board.pageInfo', { page: safePage, total: pageCount })}`
+      : base
+  }, [listLoading, threads.length, visibleThreads.length, pageCount, safePage, t])
 
   // Prev/next navigation inside the discussion window steps through the board
   // list the user was browsing, honouring the active search and filters.
@@ -1515,6 +1534,13 @@ function FeedbackPage() {
   const navStep = (delta: number) => {
     const next = selectedIndex + delta
     if (next >= 0 && next < visibleThreads.length) openThread(visibleThreads[next])
+  }
+
+  // Jump to a page and bring the top of the list back into view — scrollIntoView
+  // reaches whichever ancestor is the scroller (desktop board column or phone page).
+  const handlePageChange = (_: ChangeEvent<unknown>, value: number) => {
+    setPage(value)
+    listTopRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
 
   const detailView = (
@@ -1581,55 +1607,39 @@ function FeedbackPage() {
             <Box sx={{ flexGrow: 1, minWidth: 0 }}>
               {/* The "Feedback" heading lives in the dialog's title bar. */}
               <Typography variant="body2" color="text.secondary">
-                Report a problem, suggest an improvement or ask a question. Everything here
-                is visible to every user of this app.
+                {t('board.intro')}
               </Typography>
             </Box>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                flexWrap: 'wrap',
-                justifyContent: { xs: 'flex-start', sm: 'flex-end' },
-              }}
-            >
-              {/* One control that flips between the two layouts; the icon is
-                  the view it switches to, so the label is never ambiguous. */}
-              <Tooltip title={view === 'list' ? 'Switch to card view' : 'Switch to list view'}>
-                <IconButton
-                  aria-label={view === 'list' ? 'Switch to card view' : 'Switch to list view'}
-                  aria-pressed={view === 'card'}
-                  onClick={() => setView(view === 'list' ? 'card' : 'list')}
-                  sx={{ flexShrink: 0 }}
-                >
-                  {view === 'list' ? <GridViewIcon /> : <ViewListIcon />}
-                </IconButton>
-              </Tooltip>
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => {
-                  setEditing(null)
-                  setComposerOpen(true)
-                }}
-                sx={{
-                  // Compact beside the toolbar text on a mouse-driven desktop,
-                  // but still a full touch target on a phone.
-                  minHeight: { xs: 48, sm: 32 },
-                  minWidth: 0,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                New feedback
-              </Button>
-            </Box>
+            {/* The "New feedback" button is portaled into the shell's board
+                header so it shares the title row. */}
+            {headerActions &&
+              createPortal(
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => {
+                      setEditing(null)
+                      setComposerOpen(true)
+                    }}
+                    sx={{
+                      // Compact beside the toolbar text on a mouse-driven desktop,
+                      // but still a full touch target on a phone.
+                      minHeight: { xs: 48, sm: 32 },
+                      minWidth: 0,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {t('board.newFeedback')}
+                  </Button>
+                </Box>,
+                headerActions,
+              )}
           </Box>
 
           <Alert severity="info" icon={false} sx={{ mb: 1.5 }}>
-            No sign-in is required, so please do not paste confidential data (customer
-            names, credentials, proprietary process details) into a post or an attachment.
+            {t('board.privacy')}
           </Alert>
 
           <Box
@@ -1645,13 +1655,13 @@ function FeedbackPage() {
               id="feedback-search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search feedback"
+              placeholder={t('board.searchPlaceholder')}
               sx={{
                 width: { xs: '100%', sm: 220 },
                 '& .MuiOutlinedInput-root': { minHeight: 48 },
               }}
               slotProps={{
-                htmlInput: { 'aria-label': 'Search feedback' },
+                htmlInput: { 'aria-label': t('board.searchAria') },
                 input: {
                   startAdornment: (
                     <InputAdornment position="start">
@@ -1662,7 +1672,7 @@ function FeedbackPage() {
               }}
             />
             <Chip
-              label="All"
+              label={t('board.all')}
               color={category === null ? 'primary' : 'default'}
               variant={category === null ? 'filled' : 'outlined'}
               onClick={() => setCategory(null)}
@@ -1671,7 +1681,7 @@ function FeedbackPage() {
             {CATEGORY_META.map((entry) => (
               <Chip
                 key={entry.value}
-                label={entry.label}
+                label={t(`category.${entry.value}`)}
                 color={category === entry.value ? entry.color : 'default'}
                 variant={category === entry.value ? 'filled' : 'outlined'}
                 onClick={() => setCategory(category === entry.value ? null : entry.value)}
@@ -1682,10 +1692,10 @@ function FeedbackPage() {
             <Chip
               label={
                 status === 'open'
-                  ? 'Open only'
+                  ? t('board.openOnly')
                   : status === 'resolved'
-                    ? 'Resolved only'
-                    : 'Any status'
+                    ? t('board.resolvedOnly')
+                    : t('board.anyStatus')
               }
               variant="outlined"
               onClick={() =>
@@ -1694,23 +1704,23 @@ function FeedbackPage() {
               sx={{ minHeight: 36 }}
             />
             <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel id="feedback-sort-label">Sort</InputLabel>
+              <InputLabel id="feedback-sort-label">{t('board.sortLabel')}</InputLabel>
               <Select
                 labelId="feedback-sort-label"
-                label="Sort"
+                label={t('board.sortLabel')}
                 value={sort}
                 onChange={(event) => setSort(event.target.value as FeedbackSort)}
               >
                 {SORT_OPTIONS.map((option) => (
                   <MenuItem key={option.value} value={option.value}>
-                    {option.label}
+                    {t(`sort.${option.value}`)}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
-            <Tooltip title="Refresh">
+            <Tooltip title={t('board.refresh')}>
               <IconButton
-                aria-label="Refresh feedback"
+                aria-label={t('board.refreshAria')}
                 onClick={() => {
                   void loadThreads()
                   if (selectedId) void loadDetail(selectedId)
@@ -1728,7 +1738,7 @@ function FeedbackPage() {
               sx={{ mt: 1.5 }}
               action={
                 <Button color="inherit" size="small" onClick={() => void loadThreads()}>
-                  Retry
+                  {t('detail.retry')}
                 </Button>
               }
             >
@@ -1759,26 +1769,26 @@ function FeedbackPage() {
             pr: isDesktop ? 0.5 : 0,
           }}
         >
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            {threadCountLabel}
-          </Typography>
+          <Box ref={listTopRef} sx={{ mb: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              {threadCountLabel}
+            </Typography>
+          </Box>
 
           {listLoading && threads.length === 0 ? (
             <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'minmax(0, 1fr)' }}>
-              <Skeleton variant="rounded" height={view === 'list' ? 44 : 112} />
-              <Skeleton variant="rounded" height={view === 'list' ? 44 : 112} />
-              <Skeleton variant="rounded" height={view === 'list' ? 44 : 112} />
+              <Skeleton variant="rounded" height={44} />
+              <Skeleton variant="rounded" height={44} />
+              <Skeleton variant="rounded" height={44} />
             </Box>
           ) : visibleThreads.length === 0 && !listError ? (
             <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
               <ForumOutlinedIcon sx={{ fontSize: 36, color: 'text.disabled' }} />
               <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 700 }}>
-                {filtered ? 'No matching post' : 'Nothing here yet'}
+                {filtered ? t('board.emptyFilteredTitle') : t('board.emptyTitle')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {filtered
-                  ? 'Try another word, or clear the search and the filters.'
-                  : 'Start the conversation: report a problem or suggest an idea.'}
+                {filtered ? t('board.emptyFilteredBody') : t('board.emptyBody')}
               </Typography>
               {/* An empty screen must always offer the way out of it. */}
               <Button
@@ -1797,12 +1807,12 @@ function FeedbackPage() {
                 }}
                 sx={{ mt: 2, minHeight: 48, minWidth: { xs: '100%', sm: 180 } }}
               >
-                {filtered ? 'Clear search and filters' : 'New feedback'}
+                {filtered ? t('board.clearFilters') : t('board.newFeedback')}
               </Button>
             </Paper>
-          ) : view === 'list' && isDesktop ? (
+          ) : isDesktop ? (
             <ThreadTable
-              threads={visibleThreads}
+              threads={pagedThreads}
               selectedId={selectedId}
               likePending={likePending}
               onOpen={openThread}
@@ -1812,24 +1822,50 @@ function FeedbackPage() {
             <Box
               sx={{
                 display: 'grid',
-                gap: view === 'list' ? 1 : 2,
+                gap: 1,
                 alignItems: 'start',
                 pb: 1,
-                // Cards tile into two columns on a desktop; a list stays in one.
-                gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' },
+                gridTemplateColumns: 'minmax(0, 1fr)',
               }}
             >
-              {visibleThreads.map((thread) => (
+              {pagedThreads.map((thread) => (
                 <ThreadCard
                   key={thread.id}
                   thread={thread}
                   active={thread.id === selectedId}
-                  compact={view === 'list'}
                   onOpen={() => openThread(thread)}
                   onToggleLike={() => void toggleLike(thread)}
                   likePending={likePending === thread.id}
                 />
               ))}
+            </Box>
+          )}
+
+          {pageCount > 1 && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', pt: 2, pb: 1 }}>
+              <Pagination
+                count={pageCount}
+                page={safePage}
+                onChange={handlePageChange}
+                getItemAriaLabel={(type, itemPage) => {
+                  if (type === 'page') return t('pagination.page', { page: itemPage })
+                  if (type === 'first') return t('pagination.first')
+                  if (type === 'last') return t('pagination.last')
+                  if (type === 'next') return t('pagination.next')
+                  return t('pagination.previous')
+                }}
+                showFirstButton
+                showLastButton
+                variant="outlined"
+                shape="rounded"
+                // 48px touch targets on a phone, compact once there is a pointer.
+                sx={{
+                  '& .MuiPaginationItem-root': {
+                    minWidth: { xs: 48, sm: 32 },
+                    height: { xs: 48, sm: 32 },
+                  },
+                }}
+              />
             </Box>
           )}
         </Box>
@@ -1858,7 +1894,7 @@ function FeedbackPage() {
               // The panel needs a definite height so the thread can scroll
               // inside it while the reply box stays put at the bottom.
               height: { xs: '100%', md: 'min(1150px, 92vh)' },
-              maxWidth: { md: 'min(1400px, 96vw)' },
+              maxWidth: { md: 'min(1000px, 96vw)' },
             },
           },
         }}
@@ -1876,12 +1912,12 @@ function FeedbackPage() {
             flexShrink: 0,
           }}
         >
-          <Box component="span">Discussion</Box>
+          <Box component="span">{t('board.discussion')}</Box>
           {/* A normal flex child, so the bar's own `alignItems: center` is what
               centres it. Absolute positioning was the bug: with no positioned
               ancestor nearby the offsets resolved against the whole window. */}
           <IconButton
-            aria-label="Close discussion"
+            aria-label={t('board.closeDiscussion')}
             onClick={() => setDetailOpen(false)}
             size="small"
             sx={{ color: 'text.secondary' }}
@@ -1922,7 +1958,7 @@ function FeedbackPage() {
               disabled={selectedIndex <= 0}
               sx={{ minHeight: 48 }}
             >
-              Previous
+              {t('board.previous')}
             </Button>
             <Typography
               variant="body2"
@@ -1938,7 +1974,7 @@ function FeedbackPage() {
               disabled={selectedIndex < 0 || selectedIndex >= visibleThreads.length - 1}
               sx={{ minHeight: 48 }}
             >
-              Next
+              {t('board.next')}
             </Button>
           </Box>
           <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -1962,7 +1998,7 @@ function FeedbackPage() {
           setEditing(null)
           setNotice({
             severity: 'success',
-            message: created ? 'Feedback posted.' : 'Feedback updated.',
+            message: created ? t('board.posted') : t('board.updated'),
           })
           await loadThreads({ silent: true })
           setSelectedId(thread.id)
@@ -1973,13 +2009,15 @@ function FeedbackPage() {
 
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)} maxWidth="xs" fullWidth>
         <DialogTitle>
-          {pendingDelete?.kind === 'reply' ? 'Delete reply?' : 'Delete feedback?'}
+          {pendingDelete?.kind === 'reply'
+            ? t('board.deleteReplyTitle')
+            : t('board.deleteThreadTitle')}
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2">
             {pendingDelete?.kind === 'reply'
-              ? 'This reply will be removed for everyone. This cannot be undone.'
-              : 'The post, its replies and its votes will be removed for everyone. This cannot be undone.'}
+              ? t('board.deleteReplyBody')
+              : t('board.deleteThreadBody')}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2 }}>
@@ -1989,7 +2027,7 @@ function FeedbackPage() {
             disabled={deleteBusy}
             sx={{ minHeight: 48 }}
           >
-            Cancel
+            {t('board.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -1999,7 +2037,7 @@ function FeedbackPage() {
             startIcon={deleteBusy ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
             sx={{ minHeight: 48 }}
           >
-            Delete
+            {t('board.delete')}
           </Button>
         </DialogActions>
       </Dialog>

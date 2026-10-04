@@ -34,7 +34,6 @@ import Alert from '@mui/material/Alert'
 import Badge from '@mui/material/Badge'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Dialog from '@mui/material/Dialog'
@@ -43,7 +42,6 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import FormControl from '@mui/material/FormControl'
-import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
 import InputLabel from '@mui/material/InputLabel'
 import LinearProgress from '@mui/material/LinearProgress'
@@ -71,6 +69,7 @@ import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { alpha } from '@mui/material/styles'
 import type { EChartsOption } from 'echarts'
+import { Trans, useTranslation } from 'react-i18next'
 import { api, downloadBlob } from '../api/client'
 import type { DownloadResult, SnapshotMeta } from '../api/client'
 import type {
@@ -124,9 +123,9 @@ interface ScriptPageProps {
 /** Ready-to-run snippets that work on any grid table. They never reference a
  *  specific column name — instead they detect text/numeric columns from the
  *  data itself (data is a list of row dicts). */
-const SCRIPT_EXAMPLES: { label: string; code: string }[] = [
+const SCRIPT_EXAMPLES: { labelKey: string; code: string }[] = [
   {
-    label: 'Overview & basic statistics',
+    labelKey: 'examples.overview',
     code: `# data = the queried rows (a list of row dicts)
 import pandas as pd
 
@@ -157,7 +156,7 @@ if not num.empty:
 `,
   },
   {
-    label: 'Group by a category (mean of a numeric column)',
+    labelKey: 'examples.groupBy',
     code: `import pandas as pd
 
 df = pd.DataFrame(data)
@@ -174,7 +173,7 @@ else:
 `,
   },
   {
-    label: 'Correlation between numeric columns',
+    labelKey: 'examples.correlation',
     code: `import pandas as pd
 
 df = pd.DataFrame(data)
@@ -187,7 +186,7 @@ else:
 `,
   },
   {
-    label: 'Find outliers (IQR) in numeric columns',
+    labelKey: 'examples.outliers',
     code: `import pandas as pd
 
 df = pd.DataFrame(data)
@@ -202,7 +201,7 @@ for col in num.columns:
 `,
   },
   {
-    label: 'Export grid to Excel (Downloads folder)',
+    labelKey: 'examples.exportExcel',
     code: `import pandas as pd
 
 df = pd.DataFrame(data)
@@ -212,24 +211,6 @@ print(f'Saved \${len(df)} rows to \${path} (in your Downloads folder)')
 `,
   },
 ]
-
-/**
- * Ready-to-paste prompt for an external LLM (Copilot, ChatGPT, ...) that
- * generates a script matching this page's execution contract. Shown inside
- * the how-to pop-up with a one-click copy button.
- */
-const COPILOT_PROMPT = `Write a Python 3 script for the ODBC Query App "Script" tab.
-
-Contract:
-- My query result is already loaded in a variable called data — a list of dicts, one dict per row, e.g. [{'LOT_ID': 'A123', 'QTY': 10}, ...].
-- pandas is available (import pandas as pd). Built-ins like math/json are fine.
-- Show every result with print() — that output is exactly what the app displays.
-- Use plain Python/pandas only; do not install packages, open dialogs, or touch the database.
-
-Task: <describe what you want, e.g. "count rows per HOLD_CODE, sort by count, show the top 10">
-
-My data (columns plus a few sample rows, copied from the grid):
-<paste a handful of rows here>`
 
 const FILE_URI_RE = /file:\/\/[^\s"'<>)]+/g
 
@@ -276,6 +257,7 @@ function renderOutputLinks(text: string): ReactNode[] {
 }
 
 function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
+  const { t } = useTranslation('script')
   const [tab, setTab] = useState<ScriptTab>('script')
   /** ECharts option pushed in from the AI sidebar's Chart assistant. */
   const [aiOption, setAiOption] = useState<{ option: EChartsOption; nonce: number } | null>(null)
@@ -295,6 +277,19 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
   /** Anchor for the "Insert example" dropdown menu. */
   const [exampleMenuAnchor, setExampleMenuAnchor] = useState<HTMLElement | null>(null)
 
+  // ---- Snackbar notice ----
+  const [notice, setNotice] = useState<string | null>(null)
+  /** Severity for the notice snackbar — explicit, since translated messages
+   *  no longer start with "Deleted"/"Updated" for the code to sniff. */
+  const [noticeSeverity, setNoticeSeverity] = useState<'success' | 'error'>('error')
+  const showNotice = useCallback(
+    (message: string, severity: 'success' | 'error' = 'error') => {
+      setNotice(message)
+      setNoticeSeverity(severity)
+    },
+    [],
+  )
+
   // ---- Script data source ----
   /** Where the script's rows come from: the Query grid (default) or a snapshot. */
   const [dataSource, setDataSource] = useState<'grid' | 'snapshot'>('grid')
@@ -312,9 +307,6 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
   const [snapshotRowsLoading, setSnapshotRowsLoading] = useState(false)
 
   // ---- Template scripts (Supabase ``templates/`` catalog, bundled fallback) ----
-  /** Whether the "use template" toggle is on. On by default so the Script tab
-   *  opens with the template list ready instead of an empty editor. */
-  const [useTemplate, setUseTemplate] = useState(true)
   /** Available template scripts, as published in the bucket's catalog. */
   const [templates, setTemplates] = useState<ScriptTemplate[]>([])
   /** Currently selected template (file stem). */
@@ -344,17 +336,17 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
     try {
       setTemplates(await api.listScriptTemplates())
     } catch (err) {
-      setTemplateError(err instanceof Error ? err.message : 'Failed to load templates')
+      setTemplateError(err instanceof Error ? err.message : t('notices.failedToLoadTemplates'))
     } finally {
       setTemplatesLoading(false)
     }
-  }, [])
+  }, [t])
 
-  // Load the template list when the toggle is switched on.
+  // Load the template list once on mount so the dropdown is ready.
   useEffect(() => {
-    if (!useTemplate || templates.length > 0) return
+    if (templates.length > 0) return
     void loadTemplates()
-  }, [useTemplate, templates.length, loadTemplates])
+  }, [templates.length, loadTemplates])
 
   /** Load a template's source into the script editor (replaces current content). */
   const loadTemplateIntoEditor = useCallback(async (name: string) => {
@@ -367,12 +359,14 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
       setScriptResult(null)
       return true
     } catch (err) {
-      setTemplateError(err instanceof Error ? err.message : `Failed to load template '${name}'`)
+      setTemplateError(
+        err instanceof Error ? err.message : t('notices.failedToLoadTemplate', { name }),
+      )
       return false
     } finally {
       setTemplateBusy('')
     }
-  }, [])
+  }, [t])
 
   /** Dropdown handler: selecting a template copies its code into the editor. */
   const handleSelectTemplate = (name: string) => {
@@ -388,7 +382,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
   const handleUseTemplate = async (tmpl: ScriptTemplate) => {
     setTemplateOpen(false)
     if (await loadTemplateIntoEditor(tmpl.name)) {
-      setNotice(`Loaded “${tmpl.title || tmpl.name}” into the editor`)
+      showNotice(t('notices.loadedTemplate', { name: tmpl.title || tmpl.name }), 'success')
     }
   }
 
@@ -412,13 +406,15 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
       // Release the blob once the new tab has had time to load it.
       setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
     } catch (err) {
-      setNotice(
-        `Could not open the example dashboard: ${err instanceof Error ? err.message : 'download failed'}`,
+      showNotice(
+        t('notices.exampleFailed', {
+          error: err instanceof Error ? err.message : t('notices.downloadFailed'),
+        }),
       )
     } finally {
       setExampleBusy('')
     }
-  }, [])
+  }, [t, showNotice])
 
   // Keep the live log scrolled to the bottom as new output streams in.
   useEffect(() => {
@@ -457,8 +453,6 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
   const [editDescription, setEditDescription] = useState('')
   const [editing, setEditing] = useState(false)
 
-  const [notice, setNotice] = useState<string | null>(null)
-
   // ---- Pre-defined scripts list ----
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -468,11 +462,11 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
       setScripts(list)
       setConnections(connectionList)
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Failed to load pre-defined scripts')
+      setLoadError(err instanceof Error ? err.message : t('notices.failedToLoadScripts'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void refresh()
@@ -494,11 +488,11 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
       setSnapshotRows({ id, rows: detail.rows })
     } catch (err) {
       setSnapshotRows(null)
-      setSnapshotError(err instanceof Error ? err.message : 'Failed to load the snapshot')
+      setSnapshotError(err instanceof Error ? err.message : t('notices.failedToLoadSnapshot'))
     } finally {
       setSnapshotRowsLoading(false)
     }
-  }, [])
+  }, [t])
 
   /** Fetch the snapshot list lazily — only once the snapshot source is picked. */
   const loadSnapshotList = useCallback(async () => {
@@ -507,11 +501,11 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
     try {
       setSnapshots(await api.listSnapshots())
     } catch (err) {
-      setSnapshotError(err instanceof Error ? err.message : 'Failed to load snapshots')
+      setSnapshotError(err instanceof Error ? err.message : t('notices.failedToLoadSnapshots'))
     } finally {
       setSnapshotsLoading(false)
     }
-  }, [])
+  }, [t])
 
   const handleDataSourceChange = (value: 'grid' | 'snapshot') => {
     setDataSource(value)
@@ -532,7 +526,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
   }> => {
     if (dataSource === 'snapshot') {
       if (!snapshotId) {
-        return { error: 'Choose a snapshot under Analyze → Script → Snapshot data first.' }
+        return { error: t('notices.chooseSnapshot') }
       }
       const rows =
         snapshotRows?.id === snapshotId
@@ -544,17 +538,19 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                 return detail.rows
               })
               .catch((err: unknown) => {
-                setSnapshotError(err instanceof Error ? err.message : 'Failed to load the snapshot')
+                setSnapshotError(
+                  err instanceof Error ? err.message : t('notices.failedToLoadSnapshot'),
+                )
                 return null
               })
-      if (rows === null) return { error: `Could not load snapshot "${snapshotId}".` }
+      if (rows === null) return { error: t('notices.couldNotLoadSnapshot', { id: snapshotId }) }
       return rows.length > 0
         ? { rows }
-        : { error: 'The selected snapshot has no stored rows.' }
+        : { error: t('notices.snapshotNoRows') }
     }
     const snapshotNow = getWorkspaceSnapshot()
     if (!snapshotNow.rows || snapshotNow.rows.length === 0) {
-      return { error: 'No grid data — run a query or upload a file in the Query tab first.' }
+      return { error: t('notices.noGridData') }
     }
     return { rows: snapshotNow.rows }
   }
@@ -574,17 +570,24 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
         }
         saved.push({ filename: file.filename, path: result.savedPath })
       } catch (err) {
-        setNotice(err instanceof Error ? err.message : `Failed to save "${file.filename}"`)
+        showNotice(
+          err instanceof Error ? err.message : t('notices.failedToSaveFile', { filename: file.filename }),
+        )
         return
       }
     }
     if (cancelled && saved.length === 0) {
-      setNotice('Export cancelled.')
+      showNotice(t('notices.exportCancelled'))
     } else if (saved.length === 1) {
       const { filename, path } = saved[0]
-      setNotice(path ? `Saved "${filename}" to ${path}` : `Saved "${filename}".`)
+      showNotice(
+        path
+          ? t('notices.savedFileTo', { filename, path })
+          : t('notices.savedFile', { filename }),
+        'success',
+      )
     } else if (saved.length > 1) {
-      setNotice(`Saved ${saved.length} files to Downloads.`)
+      showNotice(t('notices.savedFiles', { count: saved.length }), 'success')
     }
   }
 
@@ -613,7 +616,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
       setScriptResult({
         ok: false,
         stdout: '',
-        stderr: err instanceof Error ? err.message : 'Script failed',
+        stderr: err instanceof Error ? err.message : t('notices.scriptFailed'),
         elapsed_ms: 0,
         row_count: 0,
         timed_out: false,
@@ -629,7 +632,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
       setScriptResult({
         ok: false,
         stdout: '',
-        stderr: 'Enter a script to run.',
+        stderr: t('notices.enterScript'),
         elapsed_ms: 0,
         row_count: 0,
         timed_out: false,
@@ -686,7 +689,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
   const handleSaveScript = async () => {
     const name = saveScriptName.trim()
     if (!name) {
-      setSaveScriptError('Enter a name for the script.')
+      setSaveScriptError(t('notices.enterScriptName'))
       return
     }
     const resolved = await resolveScriptData()
@@ -725,14 +728,15 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
         })
       }
       setSaveScriptDialogOpen(false)
-      setNotice(
+      showNotice(
         selectedScriptId
-          ? `Updated pre-defined script "${name}".`
-          : `Saved as pre-defined script "${name}".`,
+          ? t('notices.updatedPredefined', { name })
+          : t('notices.savedPredefined', { name }),
+        'success',
       )
       void refresh()
     } catch (err) {
-      setSaveScriptError(err instanceof Error ? err.message : 'Failed to save script')
+      setSaveScriptError(err instanceof Error ? err.message : t('notices.failedToSaveScript'))
     } finally {
       setSavingScript(false)
     }
@@ -805,10 +809,10 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
     try {
       await api.deleteScript(deleteTarget.id)
       setScripts((current) => current.filter((s) => s.id !== deleteTarget.id))
-      setNotice(`Deleted "${deleteTarget.name}".`)
+      showNotice(t('notices.deleted', { name: deleteTarget.name }), 'success')
       setDeleteTarget(null)
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Failed to delete')
+      showNotice(err instanceof Error ? err.message : t('notices.failedToDelete'))
     } finally {
       setDeleting(false)
     }
@@ -824,7 +828,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
     if (!editTarget) return
     const name = editName.trim()
     if (!name) {
-      setNotice('Enter a name.')
+      showNotice(t('notices.enterName'))
       return
     }
     setEditing(true)
@@ -835,10 +839,10 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
         description: editDescription,
       })
       setScripts((current) => current.map((s) => (s.id === editTarget.id ? updated : s)))
-      setNotice(`Updated "${name}".`)
+      showNotice(t('notices.updated', { name }), 'success')
       setEditTarget(null)
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Failed to update')
+      showNotice(err instanceof Error ? err.message : t('notices.failedToUpdate'))
     } finally {
       setEditing(false)
     }
@@ -848,12 +852,12 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
   const connectionLabel = useMemo(() => {
     const map = new Map(connections.map((c) => [c.id, c]))
     return (connectionId?: string | null): string => {
-      if (!connectionId) return 'No connection'
+      if (!connectionId) return t('common.noConnection')
       const conn = map.get(connectionId)
-      if (!conn) return 'Deleted connection'
-      return conn.name || conn.dsn || 'Unnamed connection'
+      if (!conn) return t('common.deletedConnection')
+      return conn.name || conn.dsn || t('common.unnamedConnection')
     }
-  }, [connections])
+  }, [connections, t])
 
   const snapshotForSubtitle = getWorkspaceSnapshot()
 
@@ -911,12 +915,13 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
 
   // ---- Copy the Copilot prompt from the how-to pop-up ----
   const copyPrompt = useCallback(async () => {
+    const prompt = t('help.copilotPrompt')
     try {
-      await navigator.clipboard.writeText(COPILOT_PROMPT)
+      await navigator.clipboard.writeText(prompt)
     } catch {
       // Fallback for restricted contexts (same as copyScriptOutput).
       const textarea = document.createElement('textarea')
-      textarea.value = COPILOT_PROMPT
+      textarea.value = prompt
       textarea.style.position = 'fixed'
       textarea.style.opacity = '0'
       document.body.appendChild(textarea)
@@ -926,17 +931,15 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
     }
     setPromptCopied(true)
     window.setTimeout(() => setPromptCopied(false), 1500)
-  }, [])
+  }, [t])
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', width: '100%' }}>
       <Stack spacing={2}>
         <Box>
-          <Typography variant="h5">Analyze</Typography>
+          <Typography variant="h5">{t('page.title')}</Typography>
           <Typography variant="body2" color="text.secondary">
-            Script, chart or summarize the rows currently in the grid. Scripts
-            run in Python with the rows passed as <b>data</b> (a list of row
-            dicts), and the Summary tab aggregates them in the browser.
+            <Trans ns="script" i18nKey="page.subtitle" components={{ b: <b /> }} />
           </Typography>
         </Box>
 
@@ -947,9 +950,14 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
           scrollButtons="auto"
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
-          <Tab value="script" icon={<TerminalIcon />} iconPosition="start" label="Script" />
-          <Tab value="chart" icon={<BarChartIcon />} iconPosition="start" label="Chart" />
-          <Tab value="summary" icon={<FunctionsIcon />} iconPosition="start" label="Summary" />
+          <Tab value="script" icon={<TerminalIcon />} iconPosition="start" label={t('tabs.script')} />
+          <Tab value="chart" icon={<BarChartIcon />} iconPosition="start" label={t('tabs.chart')} />
+          <Tab
+            value="summary"
+            icon={<FunctionsIcon />}
+            iconPosition="start"
+            label={t('tabs.summary')}
+          />
         </Tabs>
 
         {tab === 'script' && (
@@ -977,24 +985,24 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                     onChange={(_event, value: 'grid' | 'snapshot' | null) => {
                       if (value) handleDataSourceChange(value)
                     }}
-                    aria-label="Script data source"
+                    aria-label={t('dataSource.aria')}
                     sx={{
                       flexShrink: 0,
                       '& .MuiToggleButton-root': { minHeight: 48, px: 1.5, textTransform: 'none' },
                     }}
                   >
-                    <ToggleButton value="grid" aria-label="Use grid data">
+                    <ToggleButton value="grid" aria-label={t('dataSource.gridAria')}>
                       <GridOnIcon fontSize="small" sx={{ mr: 0.5 }} />
-                      Grid data
+                      {t('dataSource.grid')}
                     </ToggleButton>
-                    <ToggleButton value="snapshot" aria-label="Use snapshot data">
+                    <ToggleButton value="snapshot" aria-label={t('dataSource.snapshotAria')}>
                       <StorageIcon fontSize="small" sx={{ mr: 0.5 }} />
-                      Snapshot data
+                      {t('dataSource.snapshot')}
                     </ToggleButton>
                   </ToggleButtonGroup>
-                  <Tooltip title="How to use this page">
+                  <Tooltip title={t('help.openTooltip')}>
                     <IconButton
-                      aria-label="How to use this page"
+                      aria-label={t('help.openAria')}
                       onClick={() => setHelpOpen(true)}
                       sx={{ flexShrink: 0, minWidth: 48, minHeight: 48 }}
                     >
@@ -1005,22 +1013,27 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
 
                 {dataSource === 'snapshot' && (
                   <FormControl size="small" sx={{ minWidth: '100%' }}>
-                    <InputLabel shrink>Snapshot</InputLabel>
+                    <InputLabel shrink>{t('dataSource.snapshotLabel')}</InputLabel>
                     <Select
                       value={snapshotId}
                       onChange={(e: SelectChangeEvent) => handleSelectSnapshot(e.target.value)}
-                      label="Snapshot"
+                      label={t('dataSource.snapshotLabel')}
                       displayEmpty
                       disabled={snapshotsLoading || snapshots.length === 0}
                       renderValue={(v) => {
                         const found = snapshots.find((s) => s.id === v)
                         if (found) return found.name
-                        return snapshotsLoading ? 'Loading…' : 'Select a snapshot…'
+                        return snapshotsLoading
+                          ? t('common.loading')
+                          : t('dataSource.selectSnapshot')
                       }}
                     >
                       {snapshots.map((s) => (
                         <MenuItem key={s.id} value={s.id}>
-                          {`${s.name} — ${s.row_count.toLocaleString()} rows`}
+                          {t('dataSource.snapshotOption', {
+                            name: s.name,
+                            rows: s.row_count.toLocaleString(),
+                          })}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1030,42 +1043,38 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                 <Typography variant="body2" color="text.secondary" sx={{ minWidth: 0 }}>
                   {dataSource === 'grid' ? (
                     snapshotForSubtitle.rows.length > 0 ? (
-                      <>
-                        Data source: <b>all grid table data</b> —{' '}
-                        {snapshotForSubtitle.rows.length.toLocaleString()} row
-                        {snapshotForSubtitle.rows.length === 1 ? '' : 's'} in the grid.
-                      </>
+                      <Trans
+                        ns="script"
+                        i18nKey="dataSource.gridRows"
+                        count={snapshotForSubtitle.rows.length}
+                        components={{ b: <b /> }}
+                      />
                     ) : (
-                      'Data source: grid table data — no rows yet. Run a query or upload a file in the Query tab first.'
+                      t('dataSource.gridEmpty')
                     )
                   ) : selectedSnapshot ? (
-                    <>
-                      Data source: <b>{selectedSnapshot.name}</b> —{' '}
-                      {snapshotRowsLoading
-                        ? 'loading rows…'
-                        : `${selectedSnapshotRowCount.toLocaleString()} stored row${
-                            selectedSnapshotRowCount === 1 ? '' : 's'
-                          }.`}
-                    </>
+                    snapshotRowsLoading ? (
+                      <Trans
+                        ns="script"
+                        i18nKey="dataSource.snapshotLoading"
+                        values={{ name: selectedSnapshot.name }}
+                        components={{ b: <b /> }}
+                      />
+                    ) : (
+                      <Trans
+                        ns="script"
+                        i18nKey="dataSource.snapshotRows"
+                        count={selectedSnapshotRowCount}
+                        values={{ name: selectedSnapshot.name }}
+                        components={{ b: <b /> }}
+                      />
+                    )
                   ) : (
-                    'Data source: stored snapshot — pick one to run the script against it.'
+                    t('dataSource.snapshotEmpty')
                   )}
                 </Typography>
 
                 <Stack data-tour="script-template" spacing={1} useFlexGap>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={useTemplate}
-                        onChange={(e) => {
-                          setUseTemplate(e.target.checked)
-                          if (!e.target.checked) setSelectedTemplate('')
-                        }}
-                        sx={{ '& .MuiSvgIcon-root': { fontSize: 24 } }}
-                      />
-                    }
-                    label="Use template"
-                  />
                   {/* Wide screens: the dropdown grows to fill the row and the
                       View button stays beside it. Phones: the 100% minWidth
                       wraps the button onto its own row, as before. */}
@@ -1075,29 +1084,32 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                     useFlexGap
                     sx={{ alignItems: 'center', flexWrap: 'wrap' }}
                   >
-                    {useTemplate && (
-                      <FormControl
-                        size="small"
-                        sx={{ flexGrow: 1, minWidth: { xs: '100%', md: 0 } }}
+                    <FormControl
+                      size="small"
+                      sx={{ flexGrow: 1, minWidth: { xs: '100%', md: 0 } }}
+                    >
+                      <InputLabel shrink>{t('templates.label')}</InputLabel>
+                      <Select
+                        value={selectedTemplate}
+                        onChange={(e: SelectChangeEvent) => handleSelectTemplate(e.target.value)}
+                        label={t('templates.label')}
+                        displayEmpty
+                        sx={{ height: 48 }}
+                        renderValue={(v) =>
+                          v !== ''
+                            ? v
+                            : templatesLoading
+                              ? t('common.loading')
+                              : t('templates.select')
+                        }
                       >
-                        <InputLabel shrink>Template</InputLabel>
-                        <Select
-                          value={selectedTemplate}
-                          onChange={(e: SelectChangeEvent) => handleSelectTemplate(e.target.value)}
-                          label="Template"
-                          displayEmpty
-                          renderValue={(v) =>
-                            v !== '' ? v : templatesLoading ? 'Loading…' : 'Select a template…'
-                          }
-                        >
-                          {templates.map((t) => (
-                            <MenuItem key={t.name} value={t.name}>
-                              {t.title ? `${t.title} (${t.name})` : t.name}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    )}
+                        {templates.map((tmpl) => (
+                          <MenuItem key={tmpl.name} value={tmpl.name}>
+                            {tmpl.title ? `${tmpl.title} (${tmpl.name})` : tmpl.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                     <Button
                       variant="outlined"
                       startIcon={<VisibilityIcon />}
@@ -1108,7 +1120,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                       sx={{ flexShrink: 0, minHeight: 48 }}
                       aria-haspopup="dialog"
                     >
-                      View
+                      {t('common.view')}
                     </Button>
                   </Stack>
                 </Stack>
@@ -1132,14 +1144,14 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                   color="text.secondary"
                   sx={{ display: 'block', mb: 0.5 }}
                 >
-                  Python script
+                  {t('script.pythonLabel')}
                 </Typography>
                 <CodeEditor
-                  ariaLabel="Python script"
+                  ariaLabel={t('script.pythonLabel')}
                   language="python"
                   value={scriptText}
                   onChange={setScriptText}
-                  placeholder="# data is the queried rows (list of dicts) — use 'Insert example' below for ready-to-run code"
+                  placeholder={t('script.placeholder')}
                 />
                 {/* Progress indicator while a template's source is fetched —
                     shown for both the template picker and the template library. */}
@@ -1164,7 +1176,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                   >
                     <CircularProgress size={28} />
                     <Typography variant="body2" color="text.secondary">
-                      Loading template…
+                      {t('script.loadingTemplate')}
                     </Typography>
                   </Box>
                 )}
@@ -1185,7 +1197,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                   disabled={scriptRunning || !scriptText.trim()}
                   sx={{ minHeight: 48 }}
                 >
-                  {scriptRunning ? 'Running…' : 'Run script'}
+                  {scriptRunning ? t('script.running') : t('script.run')}
                 </Button>
                 <>
                   <Button
@@ -1195,7 +1207,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                     disabled={scriptRunning}
                     sx={{ minHeight: 48 }}
                   >
-                    Insert example
+                    {t('script.insertExample')}
                   </Button>
                   <Menu
                     anchorEl={exampleMenuAnchor}
@@ -1203,8 +1215,11 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                     onClose={() => setExampleMenuAnchor(null)}
                   >
                     {SCRIPT_EXAMPLES.map((example) => (
-                      <MenuItem key={example.label} onClick={() => handleInsertExample(example.code)}>
-                        {example.label}
+                      <MenuItem
+                        key={example.labelKey}
+                        onClick={() => handleInsertExample(example.code)}
+                      >
+                        {t(example.labelKey)}
                       </MenuItem>
                     ))}
                   </Menu>
@@ -1216,7 +1231,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                   disabled={scriptRunning}
                   sx={{ minHeight: 48 }}
                 >
-                  AI assist
+                  {t('script.aiAssist')}
                 </Button>
                 <Button
                   variant="outlined"
@@ -1225,7 +1240,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                   disabled={savingScript || !scriptText.trim()}
                   sx={{ minHeight: 48 }}
                 >
-                  Save
+                  {t('script.save')}
                 </Button>
                 {/* The count rides in the button's top-right corner, matching the
                     Custom button on the Query tab. */}
@@ -1246,7 +1261,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                       onClick={() => setCustomOpen(true)}
                       sx={{ minHeight: 48, width: { xs: '100%', sm: 'auto' } }}
                     >
-                      Custom
+                      {t('script.custom')}
                     </Button>
                   </Badge>
                 </span>
@@ -1257,7 +1272,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                   <Stack spacing={1}>
                     <LinearProgress />
                     <Typography variant="caption" color="text.secondary">
-                      Script running… output appears below as it is produced.
+                      {t('script.runningLog')}
                     </Typography>
                     {liveOutput && (
                       <Box
@@ -1297,11 +1312,13 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                         size="small"
                         color={scriptResult.ok ? 'success' : 'error'}
                         variant="outlined"
-                        label={scriptResult.ok ? 'Finished' : 'Failed'}
+                        label={scriptResult.ok ? t('script.finished') : t('script.failed')}
                       />
                       <Typography variant="caption" color="text.secondary">
-                        {scriptResult.row_count.toLocaleString()} data rows ·{' '}
-                        {scriptResult.elapsed_ms.toLocaleString()} ms
+                        {t('script.resultMeta', {
+                          rows: scriptResult.row_count.toLocaleString(),
+                          ms: scriptResult.elapsed_ms.toLocaleString(),
+                        })}
                       </Typography>
                       <Box sx={{ flexGrow: 1 }} />
                       <Button
@@ -1312,7 +1329,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                         disabled={!scriptResult.stdout && !scriptResult.stderr}
                         sx={{ minHeight: 36 }}
                       >
-                        {copiedOutput ? 'Copied!' : 'Copy output'}
+                        {copiedOutput ? t('script.copied') : t('script.copyOutput')}
                       </Button>
                     </Stack>
                     {scriptResult.message && (
@@ -1361,7 +1378,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                     )}
                     {!scriptResult.stdout && !scriptResult.stderr && (
                       <Typography variant="body2" color="text.secondary">
-                        Script finished with no output.
+                        {t('script.noOutput')}
                       </Typography>
                     )}
                   </Stack>
@@ -1385,11 +1402,10 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
               <Box sx={{ textAlign: 'center', py: 6, px: 2 }}>
                 <BarChartIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
                 <Typography variant="h6" gutterBottom>
-                  Nothing to chart yet
+                  {t('chart.emptyTitle')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Run a query or upload a file in the Query tab — the Analyze
-                  chart uses the rows currently loaded in the grid.
+                  {t('chart.emptyBody')}
                 </Typography>
               </Box>
             )}
@@ -1414,8 +1430,8 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
           <BookmarksIcon color="primary" />
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>Custom scripts</Box>
-          <IconButton onClick={() => setCustomOpen(false)} aria-label="Close custom scripts">
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>{t('custom.title')}</Box>
+          <IconButton onClick={() => setCustomOpen(false)} aria-label={t('custom.closeAria')}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -1427,7 +1443,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                 severity="error"
                 action={
                   <Button color="inherit" size="small" onClick={() => void refresh()}>
-                    Retry
+                    {t('common.retry')}
                   </Button>
                 }
               >
@@ -1438,33 +1454,32 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
               <Paper variant="outlined" sx={{ textAlign: 'center', py: 6, px: 2 }}>
                 <TerminalIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
                 <Typography variant="h6" gutterBottom>
-                  No pre-defined scripts saved
+                  {t('custom.emptyTitle')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Write a Python script in the Script tab and press “Save as
-                  custom”. Queried data is passed to the script automatically.
+                  {t('custom.emptyBody')}
                 </Typography>
               </Paper>
             )}
             {scripts.length > 0 && (
               <TableContainer component={Paper} variant="outlined">
-                <Table size="small" aria-label="Custom scripts">
+                <Table size="small" aria-label={t('custom.tableAria')}>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Connection</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('custom.colConnection')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('custom.colName')}</TableCell>
                       <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        Language
+                        {t('custom.colLanguage')}
                       </TableCell>
                       <TableCell
                         sx={{ fontWeight: 600, display: { xs: 'none', md: 'table-cell' } }}
                       >
-                        Data source
+                        {t('custom.colDataSource')}
                       </TableCell>
                       <TableCell
                         sx={{ fontWeight: 600, display: { xs: 'none', sm: 'table-cell' } }}
                       >
-                        Description
+                        {t('custom.colDescription')}
                       </TableCell>
                       <TableCell
                         sx={{
@@ -1473,10 +1488,10 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        Updated
+                        {t('custom.colUpdated')}
                       </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        Actions
+                        {t('custom.colActions')}
                       </TableCell>
                     </TableRow>
                   </TableHead>
@@ -1503,10 +1518,10 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                             sx={{ display: { xs: 'block', md: 'none' } }}
                           >
                             {script.query
-                              ? `Table: ${script.query.table}`
+                              ? t('custom.tableSource', { table: script.query.table })
                               : script.sql
-                                ? 'Custom SQL data source'
-                                : 'No data source'}
+                                ? t('custom.customSqlSource')
+                                : t('custom.noDataSource')}
                           </Typography>
                           {script.description && (
                             <Typography
@@ -1522,7 +1537,9 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                             color="text.disabled"
                             sx={{ display: { xs: 'block', md: 'none' } }}
                           >
-                            Updated {new Date(script.updated_at).toLocaleDateString()}
+                            {t('custom.updatedDate', {
+                              date: new Date(script.updated_at).toLocaleDateString(),
+                            })}
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -1530,17 +1547,17 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                             size="small"
                             color={script.language === 'python' ? 'success' : 'warning'}
                             variant="outlined"
-                            label={script.language === 'python' ? 'Python' : 'JS'}
+                            label={script.language === 'python' ? t('custom.langPython') : t('custom.langJs')}
                           />
                         </TableCell>
                         <TableCell
                           sx={{ display: { xs: 'none', md: 'table-cell' }, color: 'text.secondary' }}
                         >
                           {script.query
-                            ? `Table: ${script.query.table}`
+                            ? t('custom.tableSource', { table: script.query.table })
                             : script.sql
-                              ? 'Custom SQL data source'
-                              : 'No data source'}
+                              ? t('custom.customSqlSource')
+                              : t('custom.noDataSource')}
                         </TableCell>
                         <TableCell
                           sx={{
@@ -1562,32 +1579,32 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                             spacing={0.5}
                             sx={{ justifyContent: 'flex-end', alignItems: 'center' }}
                           >
-                            <Tooltip title="Open in editor">
+                            <Tooltip title={t('custom.openInEditor')}>
                               <IconButton
                                 size="small"
                                 color="primary"
-                                aria-label={`Open ${script.name} in editor`}
+                                aria-label={t('custom.openAria', { name: script.name })}
                                 onClick={() => openInEditor(script)}
                                 sx={{ width: 48, height: 48 }}
                               >
                                 <FileOpenIcon />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Edit">
+                            <Tooltip title={t('custom.edit')}>
                               <IconButton
                                 size="small"
-                                aria-label={`Edit ${script.name}`}
+                                aria-label={t('custom.editAria', { name: script.name })}
                                 onClick={() => openEdit(script)}
                                 sx={{ width: 48, height: 48 }}
                               >
                                 <EditIcon />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Delete">
+                            <Tooltip title={t('custom.delete')}>
                               <IconButton
                                 size="small"
                                 color="error"
-                                aria-label={`Delete ${script.name}`}
+                                aria-label={t('custom.deleteAria', { name: script.name })}
                                 onClick={() => setDeleteTarget({ id: script.id, name: script.name })}
                                 sx={{ width: 48, height: 48 }}
                               >
@@ -1620,23 +1637,22 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
         >
           <CodeIcon color="primary" sx={{ mt: { xs: 1, sm: 0 } }} />
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            Script templates
+            {t('templates.dialogTitle')}
             <Typography variant="caption" component="div" color="text.secondary">
-              Discovered in the Supabase <code>templates/</code> folder — pick one to load into the
-              editor.
+              <Trans ns="script" i18nKey="templates.dialogSubtitle" components={{ code: <code /> }} />
             </Typography>
           </Box>
           <IconButton
             onClick={() => void loadTemplates()}
             disabled={templatesLoading}
-            aria-label="Refresh templates"
+            aria-label={t('templates.refreshAria')}
             sx={{ width: 48, height: 48 }}
           >
             {templatesLoading ? <CircularProgress size={20} /> : <RefreshIcon />}
           </IconButton>
           <IconButton
             onClick={() => setTemplateOpen(false)}
-            aria-label="Close script templates"
+            aria-label={t('templates.closeAria')}
             sx={{ width: 48, height: 48 }}
           >
             <CloseIcon />
@@ -1649,7 +1665,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
               severity="error"
               action={
                 <Button color="inherit" size="small" onClick={() => void loadTemplates()}>
-                  Retry
+                  {t('common.retry')}
                 </Button>
               }
               sx={{ mb: 2 }}
@@ -1661,21 +1677,20 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
             <Paper variant="outlined" sx={{ textAlign: 'center', py: 6, px: 2 }}>
               <CodeIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
               <Typography variant="h6" gutterBottom>
-                No templates published
+                {t('templates.emptyTitle')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Publish scripts with <code>backend/publish_templates.py</code>. They appear
-                here automatically — no new app build needed.
+                <Trans ns="script" i18nKey="templates.emptyBody" components={{ code: <code /> }} />
               </Typography>
             </Paper>
           )}
           {templates.length > 0 && (
             <TableContainer component={Paper} variant="outlined">
-              <Table size="small" aria-label="Script templates">
+              <Table size="small" aria-label={t('templates.tableAria')}>
                 <TableHead>
                   <TableRow>
                     <TableCell padding="checkbox" />
-                    <TableCell sx={{ fontWeight: 600 }}>Template</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('templates.colTemplate')}</TableCell>
                     <TableCell
                       sx={{
                         fontWeight: 600,
@@ -1683,17 +1698,17 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      File name
+                      {t('templates.colFile')}
                     </TableCell>
                     <TableCell
                       sx={{ fontWeight: 600, display: { xs: 'none', sm: 'table-cell' } }}
                     >
-                      Applicable data
+                      {t('templates.colApplicable')}
                     </TableCell>
                     <TableCell
                       sx={{ fontWeight: 600, display: { xs: 'none', md: 'table-cell' } }}
                     >
-                      Description
+                      {t('templates.colDescription')}
                     </TableCell>
                     <TableCell
                       align="right"
@@ -1703,10 +1718,10 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      Size
+                      {t('templates.colSize')}
                     </TableCell>
                     <TableCell align="right" sx={{ fontWeight: 600 }}>
-                      Use template
+                      {t('templates.colUse')}
                     </TableCell>
                     <TableCell
                       align="right"
@@ -1717,29 +1732,31 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                         whiteSpace: { xs: 'normal', sm: 'nowrap' },
                       }}
                     >
-                      Example output
+                      {t('templates.colExample')}
                     </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {templates.map((t) => {
-                    const busy = templateBusy === t.name
-                    const expanded = expandedTemplate === t.name
-                    const requires = t.details?.requires ?? []
-                    const optional = t.details?.optional ?? []
-                    const outputs = t.details?.outputs ?? []
+                  {templates.map((tmpl) => {
+                    const busy = templateBusy === tmpl.name
+                    const expanded = expandedTemplate === tmpl.name
+                    const requires = tmpl.details?.requires ?? []
+                    const optional = tmpl.details?.optional ?? []
+                    const outputs = tmpl.details?.outputs ?? []
                     const hasDetails =
                       requires.length > 0 || optional.length > 0 || outputs.length > 0
-                    const label = t.title || t.name
-                    const detailId = `template-details-${t.name}`
+                    const label = tmpl.title || tmpl.name
+                    const detailId = `template-details-${tmpl.name}`
                     return (
-                      <Fragment key={t.name}>
+                      <Fragment key={tmpl.name}>
                         <TableRow hover>
                           <TableCell padding="checkbox">
                             <IconButton
-                              onClick={() => setExpandedTemplate(expanded ? '' : t.name)}
+                              onClick={() => setExpandedTemplate(expanded ? '' : tmpl.name)}
                               aria-label={
-                                expanded ? `Hide details for ${label}` : `Show details for ${label}`
+                                expanded
+                                  ? t('templates.hideDetails', { label })
+                                  : t('templates.showDetails', { label })
                               }
                               aria-expanded={expanded}
                               aria-controls={expanded ? detailId : undefined}
@@ -1757,7 +1774,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                               color="text.secondary"
                               sx={{ display: { xs: 'block', md: 'none' }, wordBreak: 'break-word' }}
                             >
-                              {[t.filename, t.size].filter(Boolean).join(' · ')}
+                              {[tmpl.filename, tmpl.size].filter(Boolean).join(' · ')}
                             </Typography>
                           </TableCell>
                           <TableCell
@@ -1767,15 +1784,15 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {t.filename}
+                            {tmpl.filename}
                           </TableCell>
                           <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                            {t.appliesTo || '—'}
+                            {tmpl.appliesTo || '—'}
                           </TableCell>
                           <TableCell
                             sx={{ display: { xs: 'none', md: 'table-cell' }, color: 'text.secondary' }}
                           >
-                            {t.description || '—'}
+                            {tmpl.description || '—'}
                           </TableCell>
                           <TableCell
                             align="right"
@@ -1784,17 +1801,17 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {t.size || '—'}
+                            {tmpl.size || '—'}
                           </TableCell>
                           <TableCell align="right">
-                            <Tooltip title="Use template">
+                            <Tooltip title={t('templates.useTooltip')}>
                               {/* A disabled IconButton swallows mouse events, so it is
                                   wrapped in a span for the tooltip to still fire. */}
                               <span>
                                 <IconButton
-                                  onClick={() => void handleUseTemplate(t)}
+                                  onClick={() => void handleUseTemplate(tmpl)}
                                   disabled={busy}
-                                  aria-label={`Use template: ${label}`}
+                                  aria-label={t('templates.useAria', { label })}
                                   sx={{ width: 48, height: 48 }}
                                 >
                                   {busy ? (
@@ -1807,13 +1824,13 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                             </Tooltip>
                           </TableCell>
                           <TableCell align="right">
-                            {t.example ? (
-                              <Tooltip title={t.example.label || 'Sample dashboard'}>
+                            {tmpl.example ? (
+                              <Tooltip title={tmpl.example.label || t('templates.sampleDashboard')}>
                                 <Link
                                   component="button"
                                   type="button"
-                                  onClick={() => void openExample(t)}
-                                  disabled={exampleBusy === t.name}
+                                  onClick={() => void openExample(tmpl)}
+                                  disabled={exampleBusy === tmpl.name}
                                   underline="hover"
                                   sx={{
                                     display: 'inline-flex',
@@ -1823,12 +1840,12 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                                     whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {exampleBusy === t.name ? (
+                                  {exampleBusy === tmpl.name ? (
                                     <CircularProgress size={16} color="inherit" />
                                   ) : (
                                     <OpenInNewIcon fontSize="small" />
                                   )}
-                                  View
+                                  {t('common.view')}
                                 </Link>
                               </Tooltip>
                             ) : (
@@ -1846,8 +1863,8 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                               sx={{ bgcolor: 'action.hover', py: 2.5 }}
                             >
                               <Stack spacing={2}>
-                                {t.description && (
-                                  <Typography variant="body2">{t.description}</Typography>
+                                {tmpl.description && (
+                                  <Typography variant="body2">{tmpl.description}</Typography>
                                 )}
                                 {hasDetails ? (
                                   <Box
@@ -1860,7 +1877,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                                     {requires.length > 0 && (
                                       <Box>
                                         <Typography variant="subtitle2" gutterBottom>
-                                          Requires these columns
+                                          {t('templates.requires')}
                                         </Typography>
                                         <Stack
                                           direction="row"
@@ -1882,7 +1899,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                                     {optional.length > 0 && (
                                       <Box>
                                         <Typography variant="subtitle2" gutterBottom>
-                                          Optional columns
+                                          {t('templates.optional')}
                                         </Typography>
                                         <Stack
                                           direction="row"
@@ -1904,7 +1921,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                                     {outputs.length > 0 && (
                                       <Box sx={{ gridColumn: { sm: '1 / -1' } }}>
                                         <Typography variant="subtitle2" gutterBottom>
-                                          What it outputs
+                                          {t('templates.outputs')}
                                         </Typography>
                                         <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
                                           {outputs.map((output) => (
@@ -1918,12 +1935,12 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                                   </Box>
                                 ) : (
                                   <Typography variant="body2" color="text.secondary">
-                                    No extra details published for this template.
+                                    {t('templates.noDetails')}
                                   </Typography>
                                 )}
-                                {t.updated && (
+                                {tmpl.updated && (
                                   <Typography variant="caption" color="text.secondary">
-                                    Updated {t.updated}
+                                    {t('templates.updated', { date: tmpl.updated })}
                                   </Typography>
                                 )}
                               </Stack>
@@ -1952,10 +1969,10 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
           <HelpOutlineOutlinedIcon color="primary" />
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>How to use this page</Box>
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>{t('help.title')}</Box>
           <IconButton
             onClick={() => setHelpOpen(false)}
-            aria-label="Close help"
+            aria-label={t('help.closeAria')}
             sx={{ width: 48, height: 48 }}
           >
             <CloseIcon />
@@ -1964,54 +1981,45 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
         <DialogContent dividers>
           <Stack spacing={2}>
             <Typography variant="body2">
-              Run a <b>Python</b> snippet against your data and see whatever it <code>print()</code>
-              s — quick stats, grouping, exports, anything pandas can do.
+              <Trans ns="script" i18nKey="help.intro" components={{ b: <b />, code: <code /> }} />
             </Typography>
             <Box component="ol" sx={{ m: 0, pl: 3, '& li': { mb: 1, typography: 'body2', pl: 0.5 } }}>
               <li>
-                <b>Pick the data</b> — <b>Grid data</b> uses every row currently in the Query tab's
-                table (query result or uploaded file); <b>Snapshot data</b> runs against a stored
-                snapshot instead.
+                <Trans ns="script" i18nKey="help.step1" components={{ b: <b />, code: <code /> }} />
               </li>
               <li>
-                <b>Write Python</b> — your rows arrive in a variable named <code>data</code> (a list
-                of dicts, one per row). pandas is pre-installed: <code>import pandas as pd</code>.
+                <Trans ns="script" i18nKey="help.step2" components={{ b: <b />, code: <code /> }} />
               </li>
               <li>
-                <b>Run script</b> — the output panel shows what the script printed (errors
-                included). Files the script saves land in your Downloads folder — see the Excel
-                example.
+                <Trans ns="script" i18nKey="help.step3" components={{ b: <b />, code: <code /> }} />
               </li>
               <li>
-                <b>Reuse</b> — <b>Insert example</b> loads ready-made snippets,{' '}
-                <b>Use template / View</b> opens the shared template library, and <b>Save</b> +{' '}
-                <b>Custom</b> keep your own scripts one click away.
+                <Trans ns="script" i18nKey="help.step4" components={{ b: <b />, code: <code /> }} />
               </li>
             </Box>
             <Divider />
             <Stack spacing={1}>
-              <Typography variant="subtitle2">
-                Tip — let Copilot (or any AI) write the script for you
-              </Typography>
+              <Typography variant="subtitle2">{t('help.tipTitle')}</Typography>
               <Typography variant="body2" color="text.secondary">
-                Ask an external LLM such as <b>GitHub Copilot Chat</b> or <b>ChatGPT</b>, and give
-                it three things:
+                <Trans ns="script" i18nKey="help.tipIntro" components={{ b: <b /> }} />
               </Typography>
               <Box component="ol" sx={{ m: 0, pl: 3, '& li': { typography: 'body2', pl: 0.5 } }}>
                 <li>
-                  the <b>task</b> you want done — e.g. “top 10 HOLD_CODEs by row count”,
+                  <Trans ns="script" i18nKey="help.tipTask" components={{ b: <b />, code: <code /> }} />
                 </li>
                 <li>
-                  the <b>contract</b> — rows come in <code>data</code> (a list of dicts), pandas is
-                  available, results are shown via <code>print()</code>,
+                  <Trans
+                    ns="script"
+                    i18nKey="help.tipContract"
+                    components={{ b: <b />, code: <code /> }}
+                  />
                 </li>
                 <li>
-                  a <b>sample of your data</b> — copy a few rows from the grid and paste them in.
+                  <Trans ns="script" i18nKey="help.tipSample" components={{ b: <b />, code: <code /> }} />
                 </li>
               </Box>
               <Typography variant="body2" color="text.secondary">
-                The prompt below already covers the contract — fill in the task and paste your
-                sample rows:
+                {t('help.tipOutro')}
               </Typography>
             </Stack>
             <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'action.hover' }}>
@@ -2030,10 +2038,10 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                     color: 'text.secondary',
                   }}
                 >
-                  Prompt for Copilot
+                  {t('help.promptHeading')}
                 </Typography>
                 <Button size="small" startIcon={<ContentCopyIcon />} onClick={() => void copyPrompt()}>
-                  {promptCopied ? 'Copied' : 'Copy'}
+                  {promptCopied ? t('help.copied') : t('help.copy')}
                 </Button>
               </Stack>
               <Box
@@ -2047,7 +2055,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
                   userSelect: 'text',
                 }}
               >
-                {COPILOT_PROMPT}
+                {t('help.copilotPrompt')}
               </Box>
             </Paper>
           </Stack>
@@ -2056,20 +2064,20 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
 
       {/* Save script as pre-defined */}
       <Dialog open={saveScriptDialogOpen} onClose={() => setSaveScriptDialogOpen(false)}>
-        <DialogTitle>Save script as pre-defined</DialogTitle>
+        <DialogTitle>{t('saveDialog.title')}</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={1.5}>
             <FormControl fullWidth size="small">
-              <InputLabel id="save-script-select-label">Existing script (optional)</InputLabel>
+              <InputLabel id="save-script-select-label">{t('saveDialog.existingLabel')}</InputLabel>
               <Select
                 labelId="save-script-select-label"
-                label="Existing script (optional)"
+                label={t('saveDialog.existingLabel')}
                 value={selectedScriptId}
                 onChange={handleScriptSelectChange}
                 disabled={scriptsLoading}
               >
                 <MenuItem value="">
-                  <em>None — save as new</em>
+                  <em>{t('saveDialog.noneNew')}</em>
                 </MenuItem>
                 {existingScripts.map((s) => (
                   <MenuItem key={s.id} value={s.id}>
@@ -2079,26 +2087,25 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
               </Select>
             </FormControl>
             <TextField
-              label="Script name"
+              label={t('saveDialog.nameLabel')}
               value={saveScriptName}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setSaveScriptName(event.target.value)}
               fullWidth
               required
               autoFocus
-              placeholder="e.g. Yield SPC by lot"
+              placeholder={t('saveDialog.namePlaceholder')}
             />
             <TextField
-              label="Description (optional)"
+              label={t('saveDialog.descriptionLabel')}
               value={saveScriptDescription}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setSaveScriptDescription(event.target.value)}
               fullWidth
               multiline
               minRows={2}
-              placeholder="What this script is for — shown on the pre-defined card."
+              placeholder={t('saveDialog.descriptionPlaceholder')}
             />
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              Saved to Analyze → Script → Custom. Running it later re-runs the current data source and
-              passes the rows to the script.
+              {t('saveDialog.hint')}
             </Typography>
           </Stack>
           {saveScriptError && (
@@ -2109,7 +2116,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setSaveScriptDialogOpen(false)} disabled={savingScript} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -2118,18 +2125,18 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
             startIcon={savingScript ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
             sx={{ minHeight: 44 }}
           >
-            {selectedScriptId ? 'Update' : 'Save'}
+            {selectedScriptId ? t('saveDialog.update') : t('common.save')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Edit script name, connection & description */}
       <Dialog open={editTarget !== null} onClose={() => setEditTarget(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Edit pre-defined script</DialogTitle>
+        <DialogTitle>{t('editDialog.title')}</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={1.5}>
             <TextField
-              label="Script name"
+              label={t('editDialog.nameLabel')}
               value={editName}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setEditName(event.target.value)}
               fullWidth
@@ -2137,19 +2144,19 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
               autoFocus
             />
             <TextField
-              label="Description (optional)"
+              label={t('editDialog.descriptionLabel')}
               value={editDescription}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setEditDescription(event.target.value)}
               fullWidth
               multiline
               minRows={2}
-              placeholder="What this script is for — shown on the pre-defined card."
+              placeholder={t('editDialog.descriptionPlaceholder')}
             />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setEditTarget(null)} disabled={editing} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -2158,22 +2165,20 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
             startIcon={editing ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
             sx={{ minHeight: 44 }}
           >
-            Save
+            {t('common.save')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Delete confirmation */}
       <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)} maxWidth="xs">
-        <DialogTitle>Delete “{deleteTarget?.name}”?</DialogTitle>
+        <DialogTitle>{t('deleteDialog.title', { name: deleteTarget?.name })}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2">
-            This pre-defined script will be permanently deleted.
-          </Typography>
+          <Typography variant="body2">{t('deleteDialog.body')}</Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDeleteTarget(null)} disabled={deleting} sx={{ minHeight: 44 }}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             color="error"
@@ -2183,7 +2188,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
             startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
             sx={{ minHeight: 44 }}
           >
-            Delete
+            {t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2195,15 +2200,7 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
-          severity={
-            notice?.startsWith('Deleted') ||
-            notice?.startsWith('Updated') ||
-            notice?.startsWith('Saved') ||
-            notice?.startsWith('Loaded') ||
-            notice?.startsWith('Copied')
-              ? 'success'
-              : 'error'
-          }
+          severity={noticeSeverity}
           variant="filled"
           onClose={() => setNotice(null)}
         >
