@@ -1,8 +1,8 @@
 {
-  "version": "2.3.0",
+  "version": "2.3.1",
   "min_version": "1.0.0",
   "notes": "1. Updates no longer start by themselves: checking for updates (on startup, via \"Check now\", or the automatic background check) now only shows the update banner and the About card. The download and install begin only when you click \"Update now\" — in the top banner, under Settings → About, or in the \"Update required\" dialog — so an update can never interrupt queries, uploads or other work in progress.\n2. Removed the small reconnect button in the top-right corner of the title bar. The app reconnects to its local server automatically (it keeps probing every few seconds while offline and the moment you return to the tab), and the \"Lost connection\" banner at the top still offers a manual \"Retry now\". The red/green icon had become redundant clutter.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "a6b292c51b42ab06c0bf455ee5060b21d07979891f67983f5fcf8f3597e73143",
+  "sha256": "506f17954bf2099e516a0be4033dc04cb496ddaa16ae64e1f49aa81eb0846203",
   "installer": "ODBCQueryApp-Setup-latest.exe"
 }

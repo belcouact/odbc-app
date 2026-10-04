@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import ErrorIcon from '@mui/icons-material/Error'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'

@@ -1,5 +1,10 @@
 [
   {
+    "version": "2.3.1",
+    "date": "2026-10-04",
+    "notes": "1. Updates no longer start by themselves: checking for updates (on startup, via \"Check now\", or the automatic background check) now only shows the update banner and the About card. The download and install begin only when you click \"Update now\" — in the top banner, under Settings → About, or in the \"Update required\" dialog — so an update can never interrupt queries, uploads or other work in progress.\n2. Removed the small reconnect button in the top-right corner of the title bar. The app reconnects to its local server automatically (it keeps probing every few seconds while offline and the moment you return to the tab), and the \"Lost connection\" banner at the top still offers a manual \"Retry now\". The red/green icon had become redundant clutter."
+  },
+  {
     "version": "2.3.0",
     "date": "2026-10-04",
     "notes": "1. Updates no longer start by themselves: checking for updates (on startup, via \"Check now\", or the automatic background check) now only shows the update banner and the About card. The download and install begin only when you click \"Update now\" — in the top banner, under Settings → About, or in the \"Update required\" dialog — so an update can never interrupt queries, uploads or other work in progress.\n2. Removed the small reconnect button in the top-right corner of the title bar. The app reconnects to its local server automatically (it keeps probing every few seconds while offline and the moment you return to the tab), and the \"Lost connection\" banner at the top still offers a manual \"Retry now\". The red/green icon had become redundant clutter."
@@ -18,10 +23,5 @@
     "version": "2.2.7",
     "date": "2026-10-03",
     "notes": "1. Opening the app from the shortcut now shows a small \"Starting ODBC Query App…\" window straight away, so the launch no longer looks frozen for a couple of seconds while it boots. The window closes on its own as soon as the browser opens.\n2. Startup is quicker: the backend now prepares its secure credential store in the background instead of holding up the first screen, and it notices the app is ready sooner."
-  },
-  {
-    "version": "2.2.6",
-    "date": "2026-10-03",
-    "notes": "1. Fixed the in-app updater hanging on \"Verifying the download…\" — the helper that swaps in a new build was launched in a way Windows PowerShell refused to run, so the update silently stopped and the app closed. Updates now complete and restart into the new version.\n2. This build also carries the fixes published as 2.2.5: the packaged app now bundles pandas and numpy so CSV / Excel uploads (and the charts, exports and summaries built on them) work; the SQL editor suggests functions for the selected connection's server type (Oracle, PostgreSQL, MySQL, SQL Server); and the AI statistical summary window no longer shows a duplicate Close button."
   }
 ]
