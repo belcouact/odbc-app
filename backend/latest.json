@@ -1,8 +1,8 @@
 {
-  "version": "2.2.9",
+  "version": "2.3.0",
   "min_version": "1.0.0",
-  "notes": "1. Fixed losing the app after briefly visiting another website: navigating away used to be mistaken for closing the app, so the background server shut down after about 10 seconds and coming back showed a \"Lost connection\" banner whose \"Retry now\" button could not help. The server now waits up to 2 minutes before treating a goodbye as a real quit — returning within that window brings the app back instantly with all work intact. If you stay away longer, launching ODBCQueryApp.exe again reconnects the open page without a refresh.",
+  "notes": "1. Updates no longer start by themselves: checking for updates (on startup, via \"Check now\", or the automatic background check) now only shows the update banner and the About card. The download and install begin only when you click \"Update now\" — in the top banner, under Settings → About, or in the \"Update required\" dialog — so an update can never interrupt queries, uploads or other work in progress.\n2. Removed the small reconnect button in the top-right corner of the title bar. The app reconnects to its local server automatically (it keeps probing every few seconds while offline and the moment you return to the tab), and the \"Lost connection\" banner at the top still offers a manual \"Retry now\". The red/green icon had become redundant clutter.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "7551e0cc85c7cd32ea432c3b393db12aa4a07fc5f9cb887a2845632ceb108a34",
+  "sha256": "a6b292c51b42ab06c0bf455ee5060b21d07979891f67983f5fcf8f3597e73143",
   "installer": "ODBCQueryApp-Setup-latest.exe"
 }

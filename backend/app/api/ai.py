@@ -926,6 +926,26 @@ def update_ai_settings(payload: SettingsUpdate):
     return settings
 
 
+@router.delete("/ai/settings/profile")
+def delete_ai_settings_profile(label: str):
+    """Remove one saved configuration snapshot from the settings dropdown.
+
+    The API key filed under the same "brand · model" label is deliberately
+    kept: it still applies if the user re-creates that endpoint configuration
+    and saves it again.
+    """
+    settings = _load_settings()
+    profiles = [
+        p for p in (settings.get(_SAVED_PROFILES_FIELD) or []) if isinstance(p, dict)
+    ]
+    kept = [p for p in profiles if p.get("label") != label]
+    if len(kept) == len(profiles):
+        raise HTTPException(status_code=404, detail=f'No saved setting named "{label}"')
+    settings[_SAVED_PROFILES_FIELD] = kept
+    _save_settings(settings)
+    return settings
+
+
 @router.post("/ai/test")
 def test_ai(payload: TestRequest):
     """Test connectivity to the LLM endpoint (never raises on AI errors).

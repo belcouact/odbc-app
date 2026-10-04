@@ -1058,6 +1058,10 @@ export const api = {
     settings: Partial<AiSettings> & { key_label?: string; profile_label?: string },
   ): Promise<AiSettings> => apiFetch(client.put('/ai/settings', settings)),
 
+  /** Deletes one saved-settings snapshot from the AI settings dropdown. */
+  deleteAiSettingsProfile: (label: string): Promise<AiSettings> =>
+    apiFetch(client.delete('/ai/settings/profile', { params: { label } })),
+
   testAi: (overrides?: Partial<AiSettings>): Promise<{ ok: boolean; message: string }> =>
     apiFetch(
       client.post('/ai/test', {

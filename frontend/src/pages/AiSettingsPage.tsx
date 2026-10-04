@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ErrorIcon from '@mui/icons-material/Error'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
@@ -10,6 +11,11 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogContentText from '@mui/material/DialogContentText'
+import DialogTitle from '@mui/material/DialogTitle'
 import FormControl from '@mui/material/FormControl'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
@@ -185,6 +191,9 @@ export default function AiSettingsPage() {
   const [savedProfiles, setSavedProfiles] = useState<AiSettingsProfile[]>([])
   /** Label picked in the "Saved settings" dropdown ('' = nothing picked). */
   const [pickedProfile, setPickedProfile] = useState('')
+  /** Saved setting queued for deletion, confirmed via a dialog before removal. */
+  const [pendingDelete, setPendingDelete] = useState<AiSettingsProfile | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
 
   const [saving, setSaving] = useState(false)
@@ -280,6 +289,26 @@ export default function AiSettingsPage() {
     })
     setShowApiKey(false)
     setTestResult(null)
+  }
+
+  /** Deletes the confirmed saved setting. The keyring entry stays on file so
+   *  re-creating the same endpoint configuration restores its key. */
+  const handleDeleteConfirmed = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    try {
+      const saved = await api.deleteAiSettingsProfile(pendingDelete.label)
+      setSavedProfiles(saved?.saved_profiles ?? [])
+      setNotice({ severity: 'success', message: `Saved setting "${pendingDelete.label}" deleted.` })
+    } catch (err) {
+      setNotice({
+        severity: 'error',
+        message: err instanceof Error ? err.message : 'Failed to delete saved setting',
+      })
+    } finally {
+      setDeleting(false)
+      setPendingDelete(null)
+    }
   }
 
   const updateField =
@@ -405,8 +434,12 @@ export default function AiSettingsPage() {
                     </em>
                   </MenuItem>
                   {savedProfiles.map((profile) => (
-                    <MenuItem key={profile.label} value={profile.label}>
-                      <Box sx={{ py: 0.25 }}>
+                    <MenuItem
+                      key={profile.label}
+                      value={profile.label}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                    >
+                      <Box sx={{ py: 0.25, minWidth: 0, flexGrow: 1 }}>
                         <Typography variant="body2" component="div">
                           {profile.label}
                         </Typography>
@@ -415,7 +448,7 @@ export default function AiSettingsPage() {
                           color="text.secondary"
                           component="div"
                           sx={{
-                            maxWidth: { xs: '68vw', sm: 420 },
+                            maxWidth: { xs: '60vw', sm: 360 },
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
@@ -427,6 +460,20 @@ export default function AiSettingsPage() {
                             : ''}
                         </Typography>
                       </Box>
+                      <IconButton
+                        aria-label={`Delete saved setting ${profile.label}`}
+                        title={`Delete saved setting "${profile.label}"`}
+                        onClick={(event) => {
+                          // Stop the click so the Select does not treat it as
+                          // picking this profile, and the menu stays open.
+                          event.stopPropagation()
+                          setPendingDelete(profile)
+                        }}
+                        size="small"
+                        sx={{ flexShrink: 0, width: 48, height: 48, mr: -1.5 }}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
                     </MenuItem>
                   ))}
                 </Select>
@@ -610,6 +657,35 @@ export default function AiSettingsPage() {
           </Paper>
         )}
       </Stack>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onClose={() => (deleting ? undefined : setPendingDelete(null))}
+        aria-labelledby="ai-profile-delete-title"
+      >
+        <DialogTitle id="ai-profile-delete-title">Delete saved setting?</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            <strong>{pendingDelete?.label}</strong> will be removed from the
+            "Saved settings" dropdown. Its API key stays on file, so re-saving
+            the same endpoint configuration restores it.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingDelete(null)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            startIcon={deleting ? <CircularProgress size={18} color="inherit" /> : undefined}
+            disabled={deleting}
+            onClick={() => void handleDeleteConfirmed()}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={notice !== null}

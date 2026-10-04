@@ -30,7 +30,6 @@ import DashboardIcon from '@mui/icons-material/Dashboard'
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
 import InfoIcon from '@mui/icons-material/Info'
 import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew'
-import RefreshIcon from '@mui/icons-material/Refresh'
 import ReplayIcon from '@mui/icons-material/Replay'
 import SettingsIcon from '@mui/icons-material/Settings'
 import StorageIcon from '@mui/icons-material/Storage'
@@ -1340,22 +1339,13 @@ function AppShell() {
               </MenuItem>
             ))}
           </Menu>
-          <Tooltip title="How to use this app">
-            <IconButton
-              aria-label="How to use this app"
-              onClick={() => setHelpOpen(true)}
-              sx={{ flexShrink: 0, ml: 'auto', color: 'secondary.main' }}
-            >
-              <InfoIcon color="secondary" />
-            </IconButton>
-          </Tooltip>
           {/* AI assistant: opens the sidebar on the general Chat tab, which
               answers any question without needing a query in the editor. */}
           <Tooltip title="Open AI assistant">
             <IconButton
               aria-label="Open AI assistant"
               onClick={() => openAi('chat')}
-              sx={{ flexShrink: 0, ml: 0.5, color: 'primary.main' }}
+              sx={{ flexShrink: 0, ml: 'auto', color: 'primary.main' }}
             >
               <AutoAwesomeIcon />
             </IconButton>
@@ -1402,36 +1392,13 @@ function AppShell() {
               </Badge>
             </IconButton>
           </Tooltip>
-          {/* Server status doubles as a reconnect button: the refresh icon is
-              green while the heartbeat keeps the backend in touch, and turns
-              red the moment the local server stops answering (the same signal
-              that raises the offline banner at the very top). Clicking it probes the
-              server right away — the banner reports the attempt and verdict. */}
-          <Tooltip
-            title={
-              connection.online
-                ? 'Local server connected — click to reconnect'
-                : 'Local server not responding — click to reconnect'
-            }
-          >
+          <Tooltip title="How to use this app">
             <IconButton
-              aria-label={
-                connection.online
-                  ? 'Local server connected, reconnect now'
-                  : 'Local server not responding, reconnect now'
-              }
-              onClick={connection.retryNow}
-              sx={{
-                flexShrink: 0,
-                ml: 0.5,
-                color: connection.online ? 'success.main' : 'error.main',
-              }}
+              aria-label="How to use this app"
+              onClick={() => setHelpOpen(true)}
+              sx={{ flexShrink: 0, ml: 0.5, color: 'secondary.main' }}
             >
-              {connection.retrying ? (
-                <CircularProgress size={20} color="inherit" />
-              ) : (
-                <RefreshIcon />
-              )}
+              <InfoIcon color="secondary" />
             </IconButton>
           </Tooltip>
         </Box>
