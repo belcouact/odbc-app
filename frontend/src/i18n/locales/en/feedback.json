@@ -92,6 +92,8 @@
     "submit": "Reply"
   },
   "board": {
+    "title": "Feedback",
+    "close": "Close feedback",
     "intro": "Report a problem, suggest an improvement or ask a question. Everything here is visible to every user of this app.",
     "newFeedback": "New feedback",
     "privacy": "No sign-in is required, so please do not paste confidential data (customer names, credentials, proprietary process details) into a post or an attachment.",

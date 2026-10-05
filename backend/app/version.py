@@ -5,4 +5,4 @@ Supabase Storage.  The value is reported by ``/api/health`` and compared
 against the ``latest.json`` manifest by :mod:`app.update`.
 """
 
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"

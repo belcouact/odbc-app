@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import AddIcon from '@mui/icons-material/Add'
 import AttachFileIcon from '@mui/icons-material/AttachFile'
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
@@ -36,6 +35,7 @@ import LinearProgress from '@mui/material/LinearProgress'
 import MenuItem from '@mui/material/MenuItem'
 import Pagination from '@mui/material/Pagination'
 import Paper from '@mui/material/Paper'
+import Portal from '@mui/material/Portal'
 import Select from '@mui/material/Select'
 import Skeleton from '@mui/material/Skeleton'
 import Snackbar from '@mui/material/Snackbar'
@@ -77,9 +77,8 @@ const ATTACHMENT_EXTENSIONS = [
 ]
 const ATTACHMENT_ACCEPT = ATTACHMENT_EXTENSIONS.join(',')
 
-/** The board is one workspace: full-bleed bands, centred content, square corners. */
+/** The board is one centred column, matching the width of the other pages. */
 const PAGE_MAX_WIDTH = 1200
-const PAGE_GUTTER = { xs: 1.5, sm: 2, md: 3 }
 
 type CategoryColor = 'error' | 'warning' | 'info' | 'default'
 
@@ -96,7 +95,7 @@ const SORT_OPTIONS: { value: FeedbackSort }[] = [
   { value: 'top' },
 ]
 
-type Notice = { severity: 'success' | 'error' | 'info'; message: string } | null
+type Notice = { severity: 'success' | 'warning' | 'error' | 'info'; message: string } | null
 
 function categoryMeta(value: FeedbackCategory) {
   return CATEGORY_META.find((entry) => entry.value === value) ?? CATEGORY_META[3]
@@ -257,11 +256,11 @@ function AttachmentField({
     const normalised = nameForUpload(file)
     const extension = normalised.name.slice(normalised.name.lastIndexOf('.')).toLowerCase()
     if (!ATTACHMENT_EXTENSIONS.includes(extension)) {
-      onNotice({ severity: 'error', message: t('attachments.unsupportedType') })
+      onNotice({ severity: 'warning', message: t('attachments.unsupportedType') })
       return null
     }
     if (normalised.size > MAX_ATTACHMENT_BYTES) {
-      onNotice({ severity: 'error', message: t('attachments.tooLarge') })
+      onNotice({ severity: 'warning', message: t('attachments.tooLarge') })
       return null
     }
     setUploading(0)
@@ -280,14 +279,14 @@ function AttachmentField({
     const room = MAX_ATTACHMENTS - attachments.length
     if (room <= 0) {
       onNotice({
-        severity: 'error',
+        severity: 'warning',
         message: t('attachments.maxReached', { max: MAX_ATTACHMENTS }),
       })
       return
     }
     if (files.length > room) {
       onNotice({
-        severity: 'info',
+        severity: 'warning',
         message: t('attachments.onlyFirstAdded', { added: room, total: files.length }),
       })
     }
@@ -814,14 +813,14 @@ function ThreadComposerDialog({
 
   const submit = async () => {
     if (!title.trim() || !body.trim()) {
-      onNotice({ severity: 'error', message: t('composer.needTitleBody') })
+      onNotice({ severity: 'warning', message: t('composer.needTitleBody') })
       return
     }
     // The name is part of this machine's identity, not of the post, so an edit
     // never rewrites the byline of something already published.
     const authorName = name.trim()
     if (!editing && !authorName) {
-      onNotice({ severity: 'error', message: t('composer.needName') })
+      onNotice({ severity: 'warning', message: t('composer.needName') })
       return
     }
     setSaving(true)
@@ -875,8 +874,7 @@ function ThreadComposerDialog({
             <TextField
               label={t('composer.nameLabel')}
               value={name}
-              onChange={(event) => setName(event.target.value)}
-              slotProps={{ htmlInput: { maxLength: 40 } }}
+              slotProps={{ htmlInput: { maxLength: 40, readOnly: true } }}
               fullWidth
               required
               helperText={t('composer.nameHelper')}
@@ -888,9 +886,10 @@ function ThreadComposerDialog({
             onChange={(event) => setTitle(event.target.value)}
             slotProps={{ htmlInput: { maxLength: 200 } }}
             fullWidth
+            required
             autoFocus
           />
-          <FormControl fullWidth>
+          <FormControl fullWidth required>
             <InputLabel id="feedback-category-label">{t('composer.categoryLabel')}</InputLabel>
             <Select
               labelId="feedback-category-label"
@@ -913,6 +912,7 @@ function ThreadComposerDialog({
             multiline
             minRows={5}
             fullWidth
+            required
             helperText={t('composer.descriptionHelper')}
           />
           {!editing && (
@@ -1288,7 +1288,7 @@ function ReplyDialog({
   )
 }
 
-function FeedbackPage() {
+function FeedbackPage({ onClose }: { onClose: () => void }) {
   const theme = useTheme()
   // A desktop shows an open post in a large centred window; a phone gets the
   // same window full-screen.
@@ -1307,15 +1307,8 @@ function FeedbackPage() {
   const [query, setQuery] = useState('')
   // The board is paginated in pages of POSTS_PER_PAGE posts.
   const [page, setPage] = useState(1)
-  // The composer entry point is rendered into the shell's board header (same
-  // row as the "Feedback" title) via this portal target.
-  const [headerActions, setHeaderActions] = useState<HTMLElement | null>(null)
-  // Top of the list: a page jump scrolls it back into view, whichever box is
-  // the scroller (the desktop board column or the phone page itself).
+  // Top of the list: a page jump scrolls it back into view.
   const listTopRef = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    setHeaderActions(document.getElementById('feedback-header-actions'))
-  }, [])
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<FeedbackThreadDetail | null>(null)
@@ -1563,81 +1556,57 @@ function FeedbackPage() {
   )
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        minHeight: 0,
-        bgcolor: 'background.default',
-        // On a phone the board scrolls as one page, so the toolbar gives its
-        // height back to the list; from md up the band is fixed and each column
-        // scrolls on its own.
-        overflowY: { xs: 'auto', md: 'hidden' },
-      }}
-    >
-      {/* One band owns the whole toolbar, so the filters and the composer entry
-          point stay in reach while the board below scrolls. */}
-      <Box
-        sx={{
-          flexShrink: 0,
-          bgcolor: 'background.paper',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
+    <Box sx={{ maxWidth: PAGE_MAX_WIDTH, mx: 'auto', width: '100%' }}>
+      <Stack spacing={2}>
+        {/* Page header — the same title scale and position as the Analyze page:
+            an h5 title with a body2 subtitle, actions pushed to the right. */}
         <Box
           sx={{
-            maxWidth: PAGE_MAX_WIDTH,
-            mx: 'auto',
-            px: PAGE_GUTTER,
-            pt: { xs: 1.5, sm: 2 },
-            pb: 1.5,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 1.5,
+            flexWrap: 'wrap',
           }}
         >
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              alignItems: { xs: 'stretch', sm: 'flex-start' },
-              gap: 1.5,
-              mb: 1.5,
-            }}
-          >
-            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              {/* The "Feedback" heading lives in the dialog's title bar. */}
-              <Typography variant="body2" color="text.secondary">
-                {t('board.intro')}
-              </Typography>
-            </Box>
-            {/* The "New feedback" button is portaled into the shell's board
-                header so it shares the title row. */}
-            {headerActions &&
-              createPortal(
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => {
-                      setEditing(null)
-                      setComposerOpen(true)
-                    }}
-                    sx={{
-                      // Compact beside the toolbar text on a mouse-driven desktop,
-                      // but still a full touch target on a phone.
-                      minHeight: { xs: 48, sm: 32 },
-                      minWidth: 0,
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {t('board.newFeedback')}
-                  </Button>
-                </Box>,
-                headerActions,
-              )}
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            <Typography variant="h5">{t('board.title')}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t('board.intro')}
+            </Typography>
           </Box>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0 }}>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setEditing(null)
+                setComposerOpen(true)
+              }}
+              sx={{
+                // Compact on a mouse-driven desktop, a full touch target on a phone.
+                minHeight: { xs: 48, sm: 36 },
+                minWidth: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t('board.newFeedback')}
+            </Button>
+            <Tooltip title={t('board.close')}>
+              <IconButton
+                aria-label={t('board.close')}
+                onClick={onClose}
+                sx={{ minWidth: 44, minHeight: 44, color: 'text.secondary' }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Box>
 
+        {/* The filters and the privacy note sit in an outlined card, matching
+            the Analyze page's control panel. */}
+        <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
           <Alert severity="info" icon={false} sx={{ mb: 1.5 }}>
             {t('board.privacy')}
           </Alert>
@@ -1745,30 +1714,11 @@ function FeedbackPage() {
               {listError}
             </Alert>
           )}
-        </Box>
-      </Box>
+        </Paper>
 
-      {/* The board is only the collection: everything about a single post opens
-          in its own window, so no post ever has to share the page width. */}
-      <Box
-        sx={{
-          flexGrow: 1,
-          minHeight: 0,
-          width: '100%',
-          maxWidth: PAGE_MAX_WIDTH,
-          mx: 'auto',
-          px: PAGE_GUTTER,
-          pb: 2,
-        }}
-      >
-        <Box
-          sx={{
-            minHeight: 0,
-            height: isDesktop ? '100%' : 'auto',
-            overflowY: isDesktop ? 'auto' : 'visible',
-            pr: isDesktop ? 0.5 : 0,
-          }}
-        >
+        {/* The board is only the collection: everything about a single post opens
+            in its own window, so no post ever has to share the page width. */}
+        <Box>
           <Box ref={listTopRef} sx={{ mb: 1 }}>
             <Typography variant="caption" color="text.secondary">
               {threadCountLabel}
@@ -1869,7 +1819,7 @@ function FeedbackPage() {
             </Box>
           )}
         </Box>
-      </Box>
+      </Stack>
 
       {/* One post, one window: a full-screen sheet on a phone and a near-full
           workspace panel on a desktop. The window is deliberately as large as
@@ -2042,21 +1992,26 @@ function FeedbackPage() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={notice !== null}
-        autoHideDuration={5000}
-        onClose={() => setNotice(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          severity={notice?.severity ?? 'info'}
-          variant="filled"
+      {/* Portalled to <body>: the board lives in a z-index:20 stacking context,
+          while MUI dialogs portal to the body at z-index:1300. Without this the
+          toast would be trapped under an open composer dialog. */}
+      <Portal>
+        <Snackbar
+          open={notice !== null}
+          autoHideDuration={5000}
           onClose={() => setNotice(null)}
-          sx={{ width: '100%' }}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
-          {notice?.message}
-        </Alert>
-      </Snackbar>
+          <Alert
+            severity={notice?.severity ?? 'info'}
+            variant="filled"
+            onClose={() => setNotice(null)}
+            sx={{ width: '100%' }}
+          >
+            {notice?.message}
+          </Alert>
+        </Snackbar>
+      </Portal>
     </Box>
   )
 }

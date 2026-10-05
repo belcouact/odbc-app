@@ -21,6 +21,7 @@ import Snackbar from '@mui/material/Snackbar'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import AppsIcon from '@mui/icons-material/Apps'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
@@ -28,7 +29,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CodeIcon from '@mui/icons-material/Code'
 import CloseIcon from '@mui/icons-material/Close'
 import DashboardIcon from '@mui/icons-material/Dashboard'
-import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
+import ForumIcon from '@mui/icons-material/Forum'
 import InfoIcon from '@mui/icons-material/Info'
 import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew'
 import ReplayIcon from '@mui/icons-material/Replay'
@@ -654,11 +655,24 @@ function useAppUpdate(online: boolean) {
       })
   }, [apply])
 
-  // First paint: read status, then nudge a fresh check shortly after mount.
+  // First paint: read the status only once the browser is idle, so this request
+  // stays off the page-load critical path — the bundle and the first view's data
+  // get the connections first, and the version badge simply fills in when it
+  // lands. The timeout guarantees the read still happens on a permanently busy
+  // page (so an update banner can never be starved). A fresh manifest check is
+  // nudged shortly after, unchanged.
   useEffect(() => {
-    refresh()
+    const read = () => refresh()
+    const idleId =
+      typeof window.requestIdleCallback === 'function'
+        ? window.requestIdleCallback(read, { timeout: 2000 })
+        : window.setTimeout(read, 200)
     const timer = window.setTimeout(check, 1500)
-    return () => window.clearTimeout(timer)
+    return () => {
+      if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleId)
+      else window.clearTimeout(idleId)
+      window.clearTimeout(timer)
+    }
   }, [refresh, check])
 
   const busy = !!status && UPDATE_BUSY_STATES.includes(status.state)
@@ -669,7 +683,15 @@ function useAppUpdate(online: boolean) {
   }, [busy, refresh])
 
   // Coming back online (e.g. the updater's restart finished) — re-read at once.
+  // Skipped on the initial mount: `online` starts true, and the idle read above
+  // already covers boot, so this must stay edge-triggered or it would put a
+  // second status request back into the page-load burst.
+  const settledRef = useRef(false)
   useEffect(() => {
+    if (!settledRef.current) {
+      settledRef.current = true
+      return
+    }
     if (online) refresh()
   }, [online, refresh])
 
@@ -956,12 +978,18 @@ function AppShell() {
   // Opening the board reads everything on it; closing re-reads, so a post that
   // arrived while the board was open is not left flagged as unread.
   const openFeedback = useCallback(() => {
-    // Toggles: with no close button on the board itself, clicking the
-    // top-bar icon again is one way out (tab switch is the other).
+    // Toggles: clicking the top-bar icon again, the board's close button, or
+    // switching tabs are all ways out.
     setFeedbackOpen((open) => {
       if (!open) void markBoardRead()
       return !open
     })
+  }, [markBoardRead])
+  // Closing re-reads the board, so a post that arrived while it was open does
+  // not stay flagged as unread on the top-bar badge.
+  const closeFeedback = useCallback(() => {
+    setFeedbackOpen(false)
+    void markBoardRead()
   }, [markBoardRead])
   const replayTour = useCallback(() => {
     setHelpOpen(false)
@@ -1338,7 +1366,7 @@ function AppShell() {
                   : t('bar.openFeedback')
               }
               onClick={openFeedback}
-              sx={{ flexShrink: 0, ml: 0.5 }}
+              sx={{ flexShrink: 0, ml: 0.5, color: 'primary.main' }}
             >
               <Badge
                 badgeContent={feedbackUnread}
@@ -1347,48 +1375,55 @@ function AppShell() {
                 invisible={feedbackUnread === 0}
                 sx={{ '& .MuiBadge-badge': { fontWeight: 700, fontSize: 11 } }}
               >
-                <ForumOutlinedIcon color="warning" />
+                <ForumIcon />
               </Badge>
             </IconButton>
           </Tooltip>
-          {/* Boxed version badge: version number only. Clicking it opens
-              Settings -> About with the updates panel expanded. */}
-          {updateStatus?.current_version && (
-            <Tooltip title={t('bar.updates')}>
-              <Box
-                component="button"
-                type="button"
-                aria-label={t('bar.updates')}
-                onClick={() => {
-                  setSettingsSection('about')
-                  setView('settings')
-                  setExpandUpdatesTick((t) => t + 1)
-                }}
-                sx={{
-                  flexShrink: 0,
-                  ml: 0.5,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  height: 34,
-                  px: 1,
-                  borderRadius: 1,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  bgcolor: 'transparent',
-                  font: 'inherit',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  color: 'primary.main',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.15s ease',
-                  '&:hover': { bgcolor: 'action.hover' },
-                  '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
-                }}
-              >
-                v{updateStatus.current_version}
-              </Box>
-            </Tooltip>
-          )}
+          {/* Boxed version badge: the box itself renders on the first paint — a
+              skeleton holds the slot — so the app bar's right side never shifts
+              when the number arrives (the status read is deliberately deferred
+              to idle). Clicking it opens Settings -> About with the updates
+              panel expanded. */}
+          <Tooltip title={t('bar.updates')}>
+            <Box
+              component="button"
+              type="button"
+              aria-label={t('bar.updates')}
+              onClick={() => {
+                setSettingsSection('about')
+                setView('settings')
+                setExpandUpdatesTick((t) => t + 1)
+              }}
+              sx={{
+                flexShrink: 0,
+                ml: 0.5,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: 58,
+                height: 34,
+                px: 1,
+                borderRadius: 1,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'transparent',
+                font: 'inherit',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                color: 'primary.main',
+                cursor: 'pointer',
+                transition: 'background-color 0.15s ease',
+                '&:hover': { bgcolor: 'action.hover' },
+                '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+              }}
+            >
+              {updateStatus?.current_version ? (
+                `v${updateStatus.current_version}`
+              ) : (
+                <Skeleton variant="rounded" width={34} height={12} />
+              )}
+            </Box>
+          </Tooltip>
         </Box>
       </AppBar>
 
@@ -1468,46 +1503,14 @@ function AppShell() {
               // small z-indexes), far below MUI portals (~1300).
               zIndex: 20,
               bgcolor: 'background.default',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
+              overflowY: 'auto',
+              // The shell's <main> padding, so the board's title lands in the
+              // same place as every other page's (e.g. Analyze).
+              p: { xs: 1.5, sm: 2, md: 3 },
             }}
           >
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                px: { xs: 1.5, sm: 2 },
-                py: 0.75,
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                bgcolor: 'background.paper',
-                flexShrink: 0,
-              }}
-            >
-              <ForumOutlinedIcon color="warning" />
-              <Typography variant="h6" component="div" sx={{ minWidth: 0 }}>
-                {t('bar.feedbackBoard')}
-              </Typography>
-              <Box sx={{ flexGrow: 1 }} />
-              {/* Slot: FeedbackPage portals its view toggle and "New feedback"
-                  button here so they share the title row. */}
-              <Box id="feedback-header-actions" sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }} />
-            </Box>
-            {/* The board draws its own gutter, bands and scrolling regions, so
-                this wrapper only constrains the height. */}
-            <Box
-              sx={{
-                flexGrow: 1,
-                minHeight: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-            >
-              <FeedbackPage />
-            </Box>
+            {/* The board draws its own centred column, title and cards. */}
+            <FeedbackPage onClose={closeFeedback} />
           </Box>
         )}
       </Box>

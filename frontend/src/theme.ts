@@ -31,6 +31,8 @@ const SAGE_DARK = '#44562e'
 const SUCCESS_GREEN = '#47d359'
 /** Red for error toasts — matches the palette's error colour. */
 const ERROR_RED = '#c0392b'
+/** Yellow for warning toasts — dark ink text keeps the contrast legible. */
+const WARNING_YELLOW = '#eab308'
 const MID_GRAY = '#b0aea5'
 const LIGHT_GRAY = '#e8e6dc'
 
@@ -255,49 +257,72 @@ const theme = createTheme({
               padding: '0 0 0 8px',
               margin: 0,
               '& .MuiIconButton-root': {
+                position: 'relative',
                 width: 36,
                 height: 36,
                 padding: 0,
                 borderRadius: '50%',
                 color: '#ffffff',
                 opacity: 0.9,
-                transition: 'background-color 160ms ease, opacity 160ms ease',
-                '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.18)', opacity: 1 },
-                '&:active': { backgroundColor: 'rgba(255, 255, 255, 0.30)' },
-                '& .MuiSvgIcon-root': { fontSize: 20 },
+                // No full-size hover fill — MUI's default paints the whole 36px
+                // box, which reads as a big halo around a 20px glyph. The shade
+                // is drawn by ::before as a smaller circle that hugs the icon.
+                backgroundColor: 'transparent',
+                transition: 'opacity 160ms ease, transform 120ms ease',
+                '&:hover': { backgroundColor: 'transparent', opacity: 1 },
+                '&:active': { transform: 'scale(0.94)' },
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  width: 26,
+                  height: 26,
+                  marginTop: -13,
+                  marginLeft: -13,
+                  borderRadius: '50%',
+                  // Inherits the button colour, so the shade is white on the
+                  // success/error toasts and dark ink on the warning toast.
+                  backgroundColor: 'currentColor',
+                  opacity: 0,
+                  transform: 'scale(0.8)',
+                  transition: 'opacity 140ms ease, transform 140ms ease',
+                  pointerEvents: 'none',
+                },
+                '&:hover::before': { opacity: 0.18, transform: 'scale(1)' },
+                '&:active::before': { opacity: 0.28, transform: 'scale(0.9)' },
+                '& .MuiSvgIcon-root': { position: 'relative', fontSize: 20 },
               },
             },
             // Success toasts: the bright green swatch with white text and
-            // icon — the close button's hover glows white instead of dark.
-            '&.MuiAlert-success': {
+            // icon — the close button's hover shade is drawn white.
+            '&.MuiAlert-colorSuccess': {
               backgroundColor: SUCCESS_GREEN,
               borderColor: SUCCESS_GREEN,
               color: '#ffffff',
               '& .MuiAlert-icon': { color: '#ffffff', opacity: 0.95 },
-              '& .MuiAlert-action': {
-                color: '#ffffff',
-                '& .MuiIconButton-root': {
-                  color: '#ffffff',
-                  opacity: 0.9,
-                  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.18)', opacity: 1 },
-                  '&:active': { backgroundColor: 'rgba(255, 255, 255, 0.30)' },
-                },
-              },
+              '& .MuiAlert-action': { color: '#ffffff' },
             },
             // Error toasts: red background with white text and icon.
-            '&.MuiAlert-error': {
+            '&.MuiAlert-colorError': {
               backgroundColor: ERROR_RED,
               borderColor: ERROR_RED,
               color: '#ffffff',
               '& .MuiAlert-icon': { color: '#ffffff', opacity: 0.95 },
+              '& .MuiAlert-action': { color: '#ffffff' },
+            },
+            // Warning toasts: yellow background with dark ink text and icon —
+            // white on yellow would fail contrast.
+            '&.MuiAlert-colorWarning': {
+              backgroundColor: WARNING_YELLOW,
+              borderColor: WARNING_YELLOW,
+              color: INK,
+              '& .MuiAlert-icon': { color: INK, opacity: 0.95 },
+              // Override the base white button colour so the ::before shade and
+              // the glyph both follow the dark ink instead.
               '& .MuiAlert-action': {
-                color: '#ffffff',
-                '& .MuiIconButton-root': {
-                  color: '#ffffff',
-                  opacity: 0.9,
-                  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.18)', opacity: 1 },
-                  '&:active': { backgroundColor: 'rgba(255, 255, 255, 0.30)' },
-                },
+                color: INK,
+                '& .MuiIconButton-root': { color: INK },
               },
             },
           },

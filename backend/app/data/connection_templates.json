@@ -54,9 +54,9 @@
         "name": "Lot_Genealogy",
         "require_filter": true,
         "fields": [
-          { "key": "lot_number", "alias": "lot_number", "label": "mesa_event_history.lot_number", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "from_lot", "alias": "from_lot", "label": "mesa_event_history.from_lot", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "product", "alias": "product", "label": "lm.product", "type": "varchar", "operator": "like", "optional": true }
+          { "key": "lot_number", "alias": "WOL", "label": "mesa_event_history.lot_number", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "from_lot", "alias": "LSN", "label": "mesa_event_history.from_lot", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product", "alias": "Product", "label": "lm.product", "type": "varchar", "operator": "like", "optional": true }
         ]
       },
       {
@@ -89,9 +89,9 @@
       {
         "name": "Machine_Uptime",
         "fields": [
-          { "key": "plant", "alias": "plant", "label": "rsc.plant", "type": "varchar", "operator": "=", "optional": true, "default": "B180" },
-          { "key": "mes_resource", "alias": "mes_resource", "label": "rsc.mes_resource", "type": "varchar", "operator": "=", "optional": true, "placeholder": "180L26C" },
-          { "key": "event_start_date", "alias": "event_start_date", "label": "rsc.event_start_date", "type": "datetime", "operator": ">=", "optional": true }
+          { "key": "plant", "alias": "Plant", "label": "rsc.plant", "type": "varchar", "operator": "=", "optional": true, "default": "B180" },
+          { "key": "mes_resource", "alias": "MES_Resource", "label": "rsc.mes_resource", "type": "varchar", "operator": "=", "optional": true, "placeholder": "180L26C" },
+          { "key": "event_start_date", "alias": "Event_Start_Date", "label": "rsc.event_start_date", "type": "datetime", "operator": ">=", "optional": true }
         ]
       }
     ]
@@ -102,11 +102,11 @@
       {
         "name": "Tautona_Test_Result",
         "fields": [
-          { "key": "mfg_date", "label": "MFG_DATE", "type": "datetime", "operator": ">=", "optional": true },
-          { "key": "mg_desc", "label": "MG_DESC", "type": "varchar", "optional": true },
-          { "key": "analysis", "label": "ANALYSIS", "type": "varchar", "optional": true },
-          { "key": "result_name", "label": "RESULT_NAME", "type": "varchar", "optional": true },
-          { "key": "wo", "label": "WOL", "type": "varchar", "optional": true }
+          { "key": "mfg_date", "alias": "Mfg_Date", "label": "MFG_DATE", "type": "datetime", "operator": ">=", "optional": true },
+          { "key": "mg_desc", "alias": "Mg_Desc", "label": "MG_DESC", "type": "varchar", "optional": true },
+          { "key": "analysis", "alias": "Analysis", "label": "ANALYSIS", "type": "varchar", "optional": true },
+          { "key": "result_name", "alias": "Result_Name", "label": "RESULT_NAME", "type": "varchar", "optional": true },
+          { "key": "wol", "alias": "WOL", "label": "WOL", "type": "varchar", "optional": true }
         ]
       },
       {
@@ -122,7 +122,7 @@
           },
           {
             "key": "pack_date",
-            "alias": "Package finished local time",
+            "alias": "Package_Finished_Time",
             "label": "GM_WOL.G_MAN_DATE",
             "column": "(GM_WOL.G_MAN_DATE + 0.5)",
             "type": "datetime",
@@ -144,7 +144,7 @@
           },
           {
             "key": "raw_issue_date",
-            "alias": "Raw_issue_date",
+            "alias": "Raw_Issue_Date",
             "label": "gm_batch.CHANGED_ON",
             "type": "datetime",
             "operator": ">=",
@@ -193,20 +193,20 @@
         "name": "Hold_Trace",
         "fields": [
           { "key": "wo", "alias": "WO", "label": "g_lsn.G_WO", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "item", "alias": "ITEM", "label": "g_lsn.G_ITEM", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "main_group", "alias": "MAIN_GROUP", "label": "s.G_MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "main_group_description", "alias": "MAIN_GROUP_DESCRIPTION", "label": "gmp.DESCRIPTION", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "manuf_date", "alias": "Manuf. Date", "label": "g_lsn.G_MAN_DATE", "type": "datetime", "operator": ">=", "optional": false }
+          { "key": "item", "alias": "Item", "label": "g_lsn.G_ITEM", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group", "alias": "Main_Group", "label": "s.G_MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group_description", "alias": "Main_Group_Description", "label": "gmp.DESCRIPTION", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "manuf_date", "alias": "Manuf_Date", "label": "g_lsn.G_MAN_DATE", "type": "datetime", "operator": ">=", "optional": false }
         ]
       },
       {
         "name": "LIMS_Scrap",
         "fields": [
           { "key": "wo", "alias": "WO", "label": "s.G_WO", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "item", "alias": "ITEM", "label": "s.G_ITEM", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "main_group", "alias": "MAIN_GROUP", "label": "s.G_MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "product_description", "alias": "PRODUCT_DESCRIPTION", "label": "s.DESCRIPTION", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "manuf_date", "alias": "Manuf. Date", "label": "s.G_MAN_DATE", "type": "datetime", "operator": ">=", "optional": false }
+          { "key": "item", "alias": "Item", "label": "s.G_ITEM", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group", "alias": "Main_Group", "label": "s.G_MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product_description", "alias": "Product_Description", "label": "s.DESCRIPTION", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "manuf_date", "alias": "Manuf_Date", "label": "s.G_MAN_DATE", "type": "datetime", "operator": ">=", "optional": false }
         ]
       },
       {
@@ -214,10 +214,10 @@
         "fields": [
           { "key": "wo", "alias": "WO", "label": "g_lsn.G_WO", "type": "varchar", "operator": "like", "optional": true },
           { "key": "item", "alias": "Item", "label": "g_lsn.G_ITEM", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "main_group", "alias": "Main Group", "label": "s.G_MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "product_description", "alias": "Product Description", "label": "s.DESCRIPTION", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "hold_code", "alias": "HOLD_CODE", "label": "g_lsn.HOLD_CODE", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "manuf_date", "alias": "Manuf. Date", "label": "g_lsn.G_MAN_DATE", "type": "datetime", "operator": ">=", "optional": true }
+          { "key": "main_group", "alias": "Main_Group", "label": "s.G_MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product_description", "alias": "Product_Description", "label": "s.DESCRIPTION", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "hold_code", "alias": "Hold_Code", "label": "g_lsn.HOLD_CODE", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "manuf_date", "alias": "Manuf_Date", "label": "g_lsn.G_MAN_DATE", "type": "datetime", "operator": ">=", "optional": true }
         ]
       }
     ]
@@ -228,28 +228,28 @@
       {
         "name": "Defect_Summary",
         "fields": [
-          { "key": "piece_name", "alias": "piece_name", "label": "p.name", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "class_name", "alias": "class_name", "label": "c.name", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "layer_name", "alias": "layer_name", "label": "l.name", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "job_recipe", "alias": "job_recipe", "label": "j.recipe", "type": "varchar", "operator": "like", "optional": true }
+          { "key": "piece_name", "alias": "Piece_Name", "label": "p.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "class_name", "alias": "Class_Name", "label": "c.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "layer_name", "alias": "Layer_Name", "label": "l.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "job_recipe", "alias": "Job_Recipe", "label": "j.recipe", "type": "varchar", "operator": "like", "optional": true }
         ]
       },
       {
         "name": "Defects_With_Images",
         "fields": [
-          { "key": "job_name", "alias": "job_name", "label": "j.name", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "piece_name", "alias": "piece_name", "label": "p.name", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "class_name", "alias": "class_name", "label": "c.name", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "layer_name", "alias": "layer_name", "label": "l.name", "type": "varchar", "operator": "like", "optional": true }
+          { "key": "job_name", "alias": "Job_Name", "label": "j.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "piece_name", "alias": "Piece_Name", "label": "p.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "class_name", "alias": "Class_Name", "label": "c.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "layer_name", "alias": "Layer_Name", "label": "l.name", "type": "varchar", "operator": "like", "optional": true }
         ]
       },
       {
         "name": "Defects_Without_Images",
         "fields": [
-          { "key": "job_name", "alias": "job_name", "label": "j.name", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "piece_name", "alias": "piece_name", "label": "p.name", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "class_name", "alias": "class_name", "label": "c.name", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "layer_name", "alias": "layer_name", "label": "l.name", "type": "varchar", "operator": "like", "optional": true }
+          { "key": "job_name", "alias": "Job_Name", "label": "j.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "piece_name", "alias": "Piece_Name", "label": "p.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "class_name", "alias": "Class_Name", "label": "c.name", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "layer_name", "alias": "Layer_Name", "label": "l.name", "type": "varchar", "operator": "like", "optional": true }
         ]
       }
     ]

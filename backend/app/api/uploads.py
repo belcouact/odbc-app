@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import io
 import json
-import math
 import threading
 import time
 import uuid
@@ -18,8 +17,7 @@ from app import logging_utils
 from app.lazy import lazy_module
 from app.xpt_export import XPT_MEDIA_TYPE, dataframe_to_xpt
 
-# numpy/pandas load on first use (deferred so the app window appears faster).
-np = lazy_module("numpy")
+# pandas loads on first use (deferred so the app window appears faster).
 pd = lazy_module("pandas")
 
 router = APIRouter()
@@ -27,38 +25,66 @@ router = APIRouter()
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-def _json_safe(value):
-    """Convert a pandas/numpy value to a JSON-serializable Python value."""
-    if value is None:
-        return None
-    if isinstance(value, (bool, str, int)):
-        return value
-    if isinstance(value, (float, np.floating)):
-        f = float(value)
-        # NaN / Infinity are not JSON-compliant (Starlette uses allow_nan=False).
-        if math.isnan(f) or math.isinf(f):
-            return None
-        return f
+def _df_records_json(df: pd.DataFrame) -> str:
+    """JSON array of row objects, encoded by pandas' native serializer.
+
+    ``to_json`` maps NaN/NaT to null and timestamps to ISO strings, and is
+    roughly an order of magnitude faster than walking every cell in Python —
+    which dominated upload latency on large files.
+    """
+    return df.to_json(orient="records", force_ascii=False, date_format="iso")
+
+
+def _upload_payload_bytes(
+    df: pd.DataFrame,
+    columns: list[dict],
+    row_count: int,
+    elapsed_ms: int,
+    truncated: bool,
+) -> bytes:
+    """Assemble the /upload/parse JSON body around the pre-encoded rows."""
+    return (
+        '{"rows":'
+        + _df_records_json(df)
+        + ',"columns":'
+        + json.dumps(columns, ensure_ascii=False)
+        + ',"row_count":'
+        + str(row_count)
+        + ',"elapsed_ms":'
+        + str(elapsed_ms)
+        + ',"truncated":'
+        + ("true" if truncated else "false")
+        + "}"
+    ).encode("utf-8")
+
+
+def _xlsx_active_sheet_index(raw: bytes) -> int:
+    """Index of the workbook's active sheet, or 0 if it cannot be determined.
+
+    calamine (unlike openpyxl's ``wb.active``) does not surface which sheet was
+    active when the file was saved. That flag lives in ``xl/workbook.xml`` as
+    ``<bookViews><workbookView activeTab="N">``; read it straight from the zip
+    so multi-sheet workbooks still open on the same tab the user left off.
+    """
+    import xml.etree.ElementTree as ET
+    import zipfile
+
     try:
-        if pd.isna(value):
-            return None
-    except (TypeError, ValueError):
-        pass
-    if isinstance(value, np.integer):
-        return int(value)
-    if isinstance(value, (pd.Timestamp, np.datetime64)):
-        return pd.Timestamp(value).isoformat()
-    if isinstance(value, np.bool_):
-        return bool(value)
-    return str(value)
-
-
-def _rows_json_safe(df: pd.DataFrame) -> list[dict]:
-    """Serialize a DataFrame to a list of row dicts with JSON-safe values."""
-    return [
-        {str(col): _json_safe(row[col]) for col in df.columns}
-        for row in df.to_dict("records")
-    ]
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            with zf.open("xl/workbook.xml") as fh:
+                root = ET.parse(fh).getroot()
+    except Exception:  # noqa: BLE001 - fall back to the first sheet
+        return 0
+    for el in root.iter():
+        if el.tag.rsplit("}", 1)[-1] == "workbookView":
+            active = el.get("activeTab")
+            if active is not None:
+                try:
+                    return max(int(active), 0)
+                except ValueError:
+                    return 0
+            break
+    return 0
 
 
 def _parse_upload(raw: bytes, filename: str) -> pd.DataFrame:
@@ -99,29 +125,22 @@ async def upload_parse(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="The file contains no rows.")
     # No row cap: all uploaded rows are passed through to the grid.
     truncated = False
-    rows = await run_in_threadpool(_rows_json_safe, df)
     columns = [{"name": str(col), "type": str(df[col].dtype)} for col in df.columns]
+    row_count = int(len(df))
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     logging_utils.log_info(
         "upload.parse",
-        f"parsed {len(rows)} rows from {file.filename}",
+        f"parsed {row_count} rows from {file.filename}",
         details=(
-            f"rows={len(rows)}, columns={len(columns)}, truncated={truncated}, "
+            f"rows={row_count}, columns={len(columns)}, truncated={truncated}, "
             f"elapsed_ms={elapsed_ms}"
         ),
     )
-    payload = {
-        "rows": rows,
-        "columns": columns,
-        "row_count": len(rows),
-        "elapsed_ms": elapsed_ms,
-        "truncated": truncated,
-    }
-    # Serialize manually (values are already JSON-safe): skips FastAPI's
-    # jsonable_encoder pass, which is very slow for hundreds of thousands of
-    # rows and a major part of the upload latency.
+    # Encode the rows with pandas' native serializer and splice them into the
+    # payload by hand — skips both the per-cell Python pass and FastAPI's
+    # jsonable_encoder, which are the dominant cost for large row counts.
     content = await run_in_threadpool(
-        lambda: json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        _upload_payload_bytes, df, columns, row_count, elapsed_ms, truncated
     )
     return Response(content=content, media_type="application/json")
 
@@ -146,7 +165,6 @@ _UPLOAD_SPOOL_LOCK = threading.Lock()
 
 _CSV_CHUNK_ROWS = 50_000
 _RESULT_ROWS_PER_EVENT = 10_000
-_XLSX_PROGRESS_ROWS = 5_000
 
 
 def _spool_put(raw: bytes, filename: str) -> str:
@@ -205,59 +223,58 @@ def _iter_parse_events(raw: bytes, filename: str):
                 yield _ndjson({"type": "progress", "stage": "read", "rows": rows_so_far})
             df = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
         elif filename.endswith(".xlsx"):
-            # openpyxl in read-only mode streams the sheet row by row, so we
-            # can emit live row counts while reading (like the CSV path)
-            # instead of waiting on one monolithic pd.read_excel call.
-            from openpyxl import load_workbook
+            # calamine reads the whole sheet in one shot — roughly 5x faster
+            # than openpyxl's row-by-row iteration on large sheets. The bytes
+            # are already in memory (spooled), so there is no disk streaming to
+            # preserve; we emit one read event and let the import batches below
+            # drive the live counter.
+            import python_calamine
 
-            col_names: list[str] = []
-            data_rows: list[tuple] = []
-            header: tuple | None = None
-            rows_so_far = 0
-            last_emitted = 0
-            wb = load_workbook(
-                io.BytesIO(raw), read_only=True, data_only=True, keep_links=False
-            )
+            yield _ndjson({"type": "progress", "stage": "read"})
+            wb = python_calamine.CalamineWorkbook.from_filelike(io.BytesIO(raw))
             try:
-                ws = wb.active
-                for row in ws.iter_rows(values_only=True):
-                    if header is None:
-                        # Skip fully blank leading rows instead of turning
-                        # them into a sheet of "Unnamed" columns.
-                        if all(c is None or str(c) == "" for c in row):
-                            continue
-                        header = row
-                        seen: dict[str, int] = {}
-                        for i, c in enumerate(row):
-                            name = (
-                                str(c)
-                                if c is not None and str(c) != ""
-                                else f"Unnamed: {i}"
-                            )
-                            if name in seen:
-                                seen[name] += 1
-                                name = f"{name}.{seen[name]}"
-                            else:
-                                seen[name] = 0
-                            col_names.append(name)
-                        continue
-                    # Normalize width: pad short rows, trim long ones.
-                    if len(row) < len(col_names):
-                        row = row + (None,) * (len(col_names) - len(row))
-                    elif len(row) > len(col_names):
-                        row = row[: len(col_names)]
-                    data_rows.append(row)
-                    rows_so_far += 1
-                    if rows_so_far - last_emitted >= _XLSX_PROGRESS_ROWS:
-                        last_emitted = rows_so_far
-                        yield _ndjson(
-                            {"type": "progress", "stage": "read", "rows": rows_so_far}
-                        )
+                sheet_names = wb.sheet_names
+                idx = _xlsx_active_sheet_index(raw)
+                if idx >= len(sheet_names):
+                    idx = 0
+                matrix = wb.get_sheet_by_index(idx).to_python(skip_empty_area=False)
             finally:
                 wb.close()
-            if rows_so_far != last_emitted:
-                yield _ndjson({"type": "progress", "stage": "read", "rows": rows_so_far})
+
+            col_names: list[str] = []
+            data_rows: list[list] = []
+            header: list | None = None
+            for row in matrix:
+                if header is None:
+                    # Skip fully blank leading rows instead of turning
+                    # them into a sheet of "Unnamed" columns.
+                    if all(c is None or str(c) == "" for c in row):
+                        continue
+                    header = row
+                    seen: dict[str, int] = {}
+                    for i, c in enumerate(row):
+                        name = (
+                            str(c)
+                            if c is not None and str(c) != ""
+                            else f"Unnamed: {i}"
+                        )
+                        if name in seen:
+                            seen[name] += 1
+                            name = f"{name}.{seen[name]}"
+                        else:
+                            seen[name] = 0
+                        col_names.append(name)
+                    continue
+                # Normalize width: pad short rows, trim long ones.
+                if len(row) < len(col_names):
+                    row = list(row) + [None] * (len(col_names) - len(row))
+                elif len(row) > len(col_names):
+                    row = list(row)[: len(col_names)]
+                # calamine reports empty cells as "" — map them to null so
+                # blanks stay blank and numeric columns keep their dtype.
+                data_rows.append([None if c == "" else c for c in row])
             df = pd.DataFrame(data_rows, columns=col_names)
+            yield _ndjson({"type": "progress", "stage": "read", "rows": int(len(df))})
         elif filename.endswith(".xls"):
             # Legacy format needs xlrd, which loads the whole workbook at
             # once — report the phase only; live counts resume below.
@@ -281,12 +298,13 @@ def _iter_parse_events(raw: bytes, filename: str):
         )
         # Ship the grid rows in batches: the client counts them as they arrive
         # for a live "imported N / total" counter, and no single giant JSON
-        # blob has to be buffered anywhere.
+        # blob has to be buffered anywhere. Each batch is encoded by pandas
+        # directly (no per-cell Python pass).
         imported = 0
         for i in range(0, row_count, _RESULT_ROWS_PER_EVENT):
-            batch = _rows_json_safe(df.iloc[i : i + _RESULT_ROWS_PER_EVENT])
-            imported += len(batch)
-            yield _ndjson({"type": "result_rows", "rows": batch})
+            batch = df.iloc[i : i + _RESULT_ROWS_PER_EVENT]
+            imported += int(len(batch))
+            yield '{"type":"result_rows","rows":' + _df_records_json(batch) + "}\n"
             yield _ndjson({"type": "progress", "stage": "import", "rows": imported})
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         yield _ndjson({"type": "result_end", "elapsed_ms": elapsed_ms})
