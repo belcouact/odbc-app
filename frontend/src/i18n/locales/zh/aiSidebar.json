@@ -22,6 +22,14 @@
     "chart": {
       "label": "图表",
       "hint": "描述一个图表（ECharts）并应用到分析页，也可以随意提问，可在多轮对话中逐步完善。"
+    },
+    "insight": {
+      "label": "洞察",
+      "hint": "基于当前网格数据生成 AI 洞察卡片 — 数据概览、关键发现、异常与数据质量问题、后续建议。"
+    },
+    "analyze": {
+      "label": "深度分析",
+      "hint": "描述分析目标后一键跑完整流水线 — 叙事分析、图表与统计，随后还能在同一份数据上继续追问。"
     }
   },
   "context": {
@@ -36,7 +44,43 @@
     "chat": "随意提问，例如：“这个应用能做什么？”、“解释一下标准差”或“用通俗的话总结这些数据”。",
     "sql": "例如：“解释这段 SQL 的作用”、“修复这个错误：…”或“为……编写一个查询”。",
     "script": "例如：“编写一个 Python 脚本，按地区对行分组并打印每个地区的总金额。”",
-    "chart": "例如：“按地区统计总金额的柱状图，标题为“按地区销售额”，蓝色柱子。” — 也可以直接提问，例如“哪种图表类型适合这些数据？”"
+    "chart": "例如：“按地区统计总金额的柱状图，标题为“按地区销售额”，蓝色柱子。” — 也可以直接提问，例如“哪种图表类型适合这些数据？”",
+    "insight": "先执行一次查询，然后生成 AI 洞察卡片 — 包含数据概览、关键发现、异常与后续建议。可在上方填写可选的关注点来引导分析。",
+    "analyze": "在上方描述你的分析目标（可选），然后运行流水线 — 针对当前网格数据生成文字分析、图表与统计。追问时会沿用同一份数据上下文。"
+  },
+  "insight": {
+    "cardTitle": "数据洞察",
+    "generating": "正在分析当前数据…",
+    "profileSummary": "已分析 {{total}} 行中的 {{profiled}} 行，共 {{columns}} 列",
+    "copy": "复制",
+    "download": "下载 .md",
+    "generate": "生成洞察",
+    "regenerate": "重新生成",
+    "focusLabel": "关注点（可选）",
+    "focusPlaceholder": "例如：重点关注地区销售趋势或数据质量问题…",
+    "questionsTitle": "推荐问题",
+    "exportReport": "导出报告"
+  },
+  "analyze": {
+    "cardTitle": "深度分析",
+    "running": "正在运行分析流水线…",
+    "profileSummary": "已分析 {{total}} 行中的 {{profiled}} 行，共 {{columns}} 列",
+    "chartsTitle": "图表",
+    "noChartData": "无法基于当前数据生成图表。",
+    "statsTitle": "统计输出",
+    "questionsTitle": "后续问题",
+    "goalLabel": "分析目标（可选）",
+    "goalPlaceholder": "例如：找出地区销售的主要驱动因素，并标记数据质量问题…",
+    "run": "运行分析",
+    "rerun": "重新分析",
+    "copy": "复制",
+    "download": "下载 .md",
+    "exportReport": "导出报告"
+  },
+  "questions": {
+    "suggest": "推荐问题",
+    "suggesting": "正在思考问题…",
+    "title": "试着问"
   },
   "apply": {
     "sql": "应用到 SQL 编辑器",
@@ -59,7 +103,35 @@
     "sqlApplied": "SQL 已应用到 SQL 编辑器。",
     "scriptInserted": "脚本已插入分析编辑器。",
     "chartAppliedScript": "图表已应用到分析页。",
-    "chartAppliedBi": "图表已应用到仪表盘的图表构建器。"
+    "chartAppliedBi": "图表已应用到仪表盘的图表构建器。",
+    "insightCopied": "洞察内容已复制到剪贴板。",
+    "insightDownloaded": "洞察内容已下载为 Markdown 文件。",
+    "reportExported": "报告已导出为 HTML 文件。",
+    "analyzeCopied": "分析内容已复制到剪贴板。",
+    "analyzeDownloaded": "分析内容已下载为 Markdown 文件。"
+  },
+  "report": {
+    "title": "数据分析报告",
+    "generated": "生成时间",
+    "source": "数据来源",
+    "connection": "连接",
+    "table": "数据表",
+    "rows": "行数",
+    "columns": "列数",
+    "profile": "数据画像",
+    "column": "列名",
+    "type": "类型",
+    "nonNull": "非空值",
+    "missing": "缺失",
+    "unique": "唯一值",
+    "range": "取值范围",
+    "topValues": "高频取值",
+    "insights": "AI 洞察",
+    "findings": "分析结论",
+    "charts": "图表",
+    "stats": "统计输出",
+    "questions": "推荐后续问题",
+    "noQuestions": "本次未生成后续问题。"
   },
   "errors": {
     "scriptEmpty": "脚本为空 — 没有可应用的内容。",
@@ -68,6 +140,10 @@
     "emptyResponse": "AI 返回了空响应，请重试。",
     "aiRequestFailed": "AI 请求失败",
     "notConfigured": "AI 尚未配置 — 请在 AI 设置页中进行设置。",
-    "parseChartFailed": "解析图表脚本失败"
+    "parseChartFailed": "解析图表脚本失败",
+    "noGridData": "没有可分析的数据 — 请先执行一次查询。",
+    "copyFailed": "复制失败 — 剪贴板不可用。",
+    "noQuestions": "本次未生成后续问题，请重试。",
+    "reportFailed": "生成报告失败"
   }
 }

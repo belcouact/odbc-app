@@ -3,6 +3,10 @@
     "title": "AI 设置",
     "subtitle": "配置用于自然语言转 SQL 和 AI 摘要的 OpenAI 兼容 LLM 端点。"
   },
+  "tabs": {
+    "configuration": "配置",
+    "usage": "Token 用量"
+  },
   "actions": {
     "retry": "重试",
     "save": "保存",
@@ -12,6 +16,8 @@
   },
   "form": {
     "enableLabel": "启用 AI（LLM）",
+    "shareDataStatsLabel": "允许向 AI 提供数据统计信息",
+    "shareDataStatsHelper": "开启后，对话与「洞察」卡片会附带当前网格数据的精简统计画像（各列计数、范围与高频取值）。仅发送聚合后的元数据，绝不发送完整记录。关闭后将只发送表结构信息。",
     "savedSettingsLabel": "已保存的设置",
     "loadSavedPlaceholder": "加载已保存的设置…",
     "noSavedSettings": "暂无已保存的设置 —— 点击「保存」后它们会出现在这里",
@@ -70,5 +76,62 @@
     "saved": "AI 设置已保存 —— 助手将在你下次发送消息时使用它们。",
     "saveFailed": "保存 AI 设置失败",
     "testFailed": "连接测试失败"
+  },
+  "usage": {
+    "title": "Token 用量",
+    "subtitle": "数据仅记录在本机 —— 监控绝不会影响 AI 功能。",
+    "refreshAria": "刷新用量",
+    "loadFailed": "加载 Token 用量失败",
+    "empty": "还没有任何 AI 调用记录。",
+    "tiles": {
+      "today": "今天",
+      "last7": "近 7 天",
+      "allTime": "累计",
+      "requests": "{{n}} 次请求"
+    },
+    "breakdown": {
+      "title": "按功能",
+      "byModel": "按模型"
+    },
+    "chart": {
+      "title": "近 14 天 · 按模型"
+    },
+    "recent": {
+      "colTime": "时间",
+      "colFeature": "功能",
+      "colModel": "模型",
+      "colInput": "输入",
+      "colOutput": "输出",
+      "colElapsed": "耗时",
+      "pageInfo": "第 {{from}}–{{to}} 条 / 共 {{total}} 条",
+      "rowsPerPage": "每页",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "elapsed": "{{ms}} ms"
+    },
+    "reset": {
+      "button": "重置用量",
+      "title": "重置 Token 用量？",
+      "body": "将清空本机记录的所有 Token 用量，此操作无法撤销。",
+      "confirm": "重置",
+      "success": "Token 用量已清空。",
+      "failed": "重置 Token 用量失败"
+    },
+    "features": {
+      "chat": "对话",
+      "test": "连接测试",
+      "nl_to_sql": "自然语言转 SQL",
+      "summary": "AI 摘要",
+      "insights": "洞察",
+      "questions": "推荐问题",
+      "script": "脚本生成",
+      "grid_clarify": "网格澄清",
+      "grid_script": "网格脚本",
+      "echart": "图表生成",
+      "dashboard": "仪表盘",
+      "stats": "数据统计",
+      "analyze": "数据分析",
+      "dictionary": "数据字典"
+    }
   }
 }

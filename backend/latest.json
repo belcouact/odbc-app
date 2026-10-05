@@ -1,8 +1,8 @@
 {
-  "version": "2.4.1",
+  "version": "2.5.0",
   "min_version": "1.0.0",
-  "notes": "1. Uploading spreadsheets is much faster: .xlsx files are now read by a native parser (roughly 5× quicker) and the grid rows are serialized by pandas, so large Excel and CSV uploads reach the screen in a fraction of the time.\n2. The in-app assistant now stays on topic: it helps with querying, data and statistical analysis, scripting, charts and how to use the app, and politely declines unrelated questions. It also no longer invents table or column names when it has no schema.\n3. The feedback board is now a full page: it scrolls like every other view, carries its own \"Feedback\" title and a Close button, and the unread badge clears as soon as you close it.\n4. The feedback icon in the top bar now matches the AI assistant icon — same filled glyph and app-blue colour.\n5. The top bar no longer shifts on load: the version badge shows a placeholder immediately and the update status is read once the browser is idle, so the first paint stays stable and quick.\n6. New feedback posts pre-fill and lock your name, while the title, description and category are required — anything missing is flagged with a warning, and toast messages are colour-coded by type (green success, yellow warning, red error).",
+  "notes": "1. New \"Token usage\" tab under Settings → AI Assistant shows how many tokens the AI assistant uses: totals for today, the last 7 days and all time, donut charts breaking usage down by feature and by model, and a 14-day bar chart per model.\n2. The tab lists recent AI calls in a table — time, feature, model, input tokens, output tokens and latency — with previous/next page buttons and a selector for how many rows to show per page (10/25/50). The table is always visible; no extra clicks needed.\n3. A refresh button reloads the numbers on demand and \"Reset usage\" clears the locally recorded history. Usage is recorded only on this machine and monitoring never blocks AI features.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "60f510d79d62e890bd33e8925ba56ddf83e5c27831a7b1ae050002d73188fef2",
+  "sha256": "9222d0c678532ebb4fc6955dea557b963eab0b1977b45d77633717c0714a5998",
   "installer": "ODBCQueryApp-Setup-latest.exe"
 }

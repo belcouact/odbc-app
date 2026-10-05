@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -32,6 +33,11 @@ _DEFAULT_SETTINGS = {
     "api_key": "",
     "model": "gpt-5.6-luna",
     "temperature": 0.2,
+    # When on, chat turns also send a compact statistical profile of the loaded
+    # grid (per-column counts, ranges, top values) so the assistant can reason
+    # about the actual data. It is aggregated metadata only — never full rows —
+    # and the user can switch it off to keep every turn to schema + samples.
+    "share_data_stats": True,
 }
 
 # API keys kept per "brand · model" label, alongside the key in effect. A key
@@ -193,6 +199,7 @@ def _upsert_saved_profile(settings: dict, label: str, fields: dict) -> None:
         "api_key": str(fields.get("api_key") or ""),
         "model": str(fields.get("model") or ""),
         "temperature": fields.get("temperature", settings.get("temperature", 0.2)),
+        "share_data_stats": bool(settings.get("share_data_stats", True)),
         "saved_at": datetime.now(timezone.utc).isoformat(),
     }
     profiles = [p for p in profiles if p.get("label") != entry["label"]]
@@ -283,15 +290,152 @@ def _post_json(url: str, body: dict, headers: dict, timeout: float = 300.0) -> d
         ) from exc
 
 
-def _chat_completion(settings: dict, messages: list, max_tokens: int = 600) -> str:
+# ---- Token usage monitor ----------------------------------------------------
+# Every LLM call records the tokens the endpoint reports so the AI Setting page
+# can show Today / 7-day / all-time totals, a per-feature breakdown and a
+# 14-day history. Data lives in ai_usage.json next to ai_settings.json.
+_AI_USAGE_FILE = "ai_usage.json"
+_AI_USAGE_RECENT_CAP = 100
+_AI_USAGE_DAY_RETENTION = 90
+
+
+def _usage_int(value) -> int:
+    """Coerce a possibly-missing/string token count to a non-negative int."""
+    try:
+        return max(0, int(float(value)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _response_usage(settings: dict, payload: dict) -> tuple[int, int]:
+    """(prompt, completion) tokens reported by a non-streaming LLM response."""
+    usage = payload.get("usage") or {}
+    if _is_anthropic(settings):
+        return _usage_int(usage.get("input_tokens")), _usage_int(usage.get("output_tokens"))
+    return _usage_int(usage.get("prompt_tokens")), _usage_int(usage.get("completion_tokens"))
+
+
+def _load_usage() -> dict:
+    """Load usage data normalized to the expected shape and pruned to the
+    daily retention window, so readers never see missing/malformed buckets."""
+    raw = storage.load_json(_AI_USAGE_FILE, {}) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    cutoff = (datetime.now() - timedelta(days=_AI_USAGE_DAY_RETENTION)).strftime("%Y-%m-%d")
+
+    def _bucket(value) -> dict:
+        src = value if isinstance(value, dict) else {}
+        return {
+            "requests": _usage_int(src.get("requests")),
+            "prompt_tokens": _usage_int(src.get("prompt_tokens")),
+            "completion_tokens": _usage_int(src.get("completion_tokens")),
+        }
+
+    daily = {
+        day: _bucket(value)
+        for day, value in (raw.get("daily") or {}).items()
+        if isinstance(day, str) and day >= cutoff
+    }
+    by_feature = {
+        name: _bucket(value)
+        for name, value in (raw.get("by_feature") or {}).items()
+        if isinstance(name, str)
+    }
+    by_model = {
+        name: _bucket(value)
+        for name, value in (raw.get("by_model") or {}).items()
+        if isinstance(name, str)
+    }
+    daily_by_model: dict[str, dict] = {}
+    for day, models in (raw.get("daily_by_model") or {}).items():
+        if isinstance(day, str) and day >= cutoff and isinstance(models, dict):
+            daily_by_model[day] = {
+                str(name): _bucket(value) for name, value in models.items()
+            }
+    recent = [e for e in (raw.get("recent") or []) if isinstance(e, dict)][-_AI_USAGE_RECENT_CAP:]
+    return {
+        "daily": daily,
+        "by_feature": by_feature,
+        "by_model": by_model,
+        "daily_by_model": daily_by_model,
+        "recent": recent,
+    }
+
+
+def _record_usage(
+    settings: dict,
+    feature: str,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    elapsed_ms: int = 0,
+    ok: bool = True,
+) -> None:
+    """Add one LLM call to the usage store (never raises).
+
+    Monitoring must not break an AI request, so persistence problems are only
+    logged. Usage is aggregated per day, per feature, per model and per
+    day-per-model, plus kept as a capped list of recent calls for the
+    monitor's detail view.
+    """
+    try:
+        data = _load_usage()
+        day = datetime.now().strftime("%Y-%m-%d")
+        model = str(settings.get("model") or "unknown")
+        for target, key in (
+            (data["daily"], day),
+            (data["by_feature"], feature),
+            (data["by_model"], model),
+        ):
+            bucket = target.setdefault(
+                key, {"requests": 0, "prompt_tokens": 0, "completion_tokens": 0}
+            )
+            bucket["requests"] += 1
+            bucket["prompt_tokens"] += int(prompt_tokens)
+            bucket["completion_tokens"] += int(completion_tokens)
+        day_models = data["daily_by_model"].setdefault(day, {})
+        model_bucket = day_models.setdefault(
+            model, {"requests": 0, "prompt_tokens": 0, "completion_tokens": 0}
+        )
+        model_bucket["requests"] += 1
+        model_bucket["prompt_tokens"] += int(prompt_tokens)
+        model_bucket["completion_tokens"] += int(completion_tokens)
+        data["recent"].append(
+            {
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "feature": feature,
+                "model": model,
+                "prompt_tokens": int(prompt_tokens),
+                "completion_tokens": int(completion_tokens),
+                "elapsed_ms": int(elapsed_ms),
+                "ok": bool(ok),
+            }
+        )
+        data["recent"] = data["recent"][-_AI_USAGE_RECENT_CAP:]
+        storage.save_json(_AI_USAGE_FILE, data)
+    except Exception as exc:  # noqa: BLE001 - monitoring must never break AI calls
+        logging_utils.log_warning("ai.usage", "failed to record token usage", details=str(exc))
+
+
+def _chat_completion(
+    settings: dict, messages: list, max_tokens: int = 600, feature: str = "chat"
+) -> str:
     """Call the configured LLM endpoint; return the generated text.
 
     OpenAI-compatible endpoints use ``/chat/completions``; Anthropic uses its
     Messages API. An API key is optional for both — it is sent only when
-    present, so keyless endpoints (e.g. local Ollama) also work.
+    present, so keyless endpoints (e.g. local Ollama) also work. ``feature``
+    tags the call in the token usage monitor (e.g. "nl_to_sql", "summary").
     """
     url = _endpoint_url(settings)
     api_key = settings.get("api_key") or ""
+    # Token usage is summed across retry attempts so the monitor reflects what
+    # the endpoint actually billed for one logical request.
+    usage_totals = {"prompt": 0, "completion": 0}
+
+    def _capture_usage(payload: dict) -> None:
+        prompt_tokens, completion_tokens = _response_usage(settings, payload)
+        usage_totals["prompt"] += prompt_tokens
+        usage_totals["completion"] += completion_tokens
 
     def _call(msgs: list, tokens: int) -> tuple[str, bool]:
         """POST once and return ``(reply_text, truncated)``.
@@ -321,6 +465,7 @@ def _chat_completion(settings: dict, messages: list, max_tokens: int = 600) -> s
             if system:
                 body["system"] = system
             payload = _post_json(url, body, headers)
+            _capture_usage(payload)
             try:
                 # Join every text block; extended-thinking responses prepend
                 # non-text (thinking) blocks that must be skipped, not used.
@@ -346,6 +491,7 @@ def _chat_completion(settings: dict, messages: list, max_tokens: int = 600) -> s
             "max_tokens": tokens,
         }
         payload = _post_json(url, body, headers)
+        _capture_usage(payload)
         try:
             choice = payload["choices"][0]
             message = choice.get("message") or {}
@@ -403,32 +549,57 @@ def _chat_completion(settings: dict, messages: list, max_tokens: int = 600) -> s
     }
     tokens = int(max_tokens)
     last_reply = ""
-    for attempt in range(3):
-        if attempt > 0:
-            time.sleep(2)
-            tokens = min(tokens * 2, 16384)
-        reply, truncated = _call(messages + [nudge] if attempt == 2 else messages, tokens)
-        if reply:
-            last_reply = reply
-            if not truncated:
-                return reply
-            # A truncated reply is incomplete (e.g. Python code cut off
-            # mid-statement). Keep it as a fallback and retry with more room.
-            logging_utils.log_warning(
-                "ai.chat_completion",
-                "response hit the token limit; retrying with a larger budget",
-                details=f"attempt={attempt + 1}, tokens={tokens}",
+    started = time.perf_counter()
+    try:
+        for attempt in range(3):
+            if attempt > 0:
+                time.sleep(2)
+                tokens = min(tokens * 2, 16384)
+            reply, truncated = _call(messages + [nudge] if attempt == 2 else messages, tokens)
+            if reply:
+                last_reply = reply
+                if not truncated:
+                    break
+                # A truncated reply is incomplete (e.g. Python code cut off
+                # mid-statement). Keep it as a fallback and retry with more room.
+                logging_utils.log_warning(
+                    "ai.chat_completion",
+                    "response hit the token limit; retrying with a larger budget",
+                    details=f"attempt={attempt + 1}, tokens={tokens}",
+                )
+        if not last_reply:
+            raise HTTPException(
+                status_code=502,
+                detail="The AI returned an empty response. Please try again.",
             )
-    if last_reply:
+        _record_usage(
+            settings,
+            feature,
+            usage_totals["prompt"],
+            usage_totals["completion"],
+            elapsed_ms=int((time.perf_counter() - started) * 1000),
+            ok=True,
+        )
         return last_reply
-    raise HTTPException(
-        status_code=502,
-        detail="The AI returned an empty response. Please try again.",
-    )
+    except HTTPException:
+        # Failed calls still land in the monitor (with whatever tokens the
+        # endpoint reported across attempts) so totals stay honest.
+        _record_usage(
+            settings,
+            feature,
+            usage_totals["prompt"],
+            usage_totals["completion"],
+            elapsed_ms=int((time.perf_counter() - started) * 1000),
+            ok=False,
+        )
+        raise
 
 
 def _stream_chat_completion(
-    settings: dict, messages: list, max_tokens: int = 600
+    settings: dict,
+    messages: list,
+    max_tokens: int = 600,
+    usage_out: Optional[dict] = None,
 ) -> Iterator[str]:
     """Call the configured LLM endpoint with streaming enabled; yield text deltas.
 
@@ -437,6 +608,10 @@ def _stream_chat_completion(
     (``content_block_delta``). Transport or API errors raise HTTPException.
     Callers must fall back to ``_chat_completion`` when nothing is yielded
     (some endpoints ignore ``stream: true`` and answer in one JSON body).
+
+    When ``usage_out`` is given, token totals reported by the endpoint are
+    written into it (keys ``prompt`` / ``completion`` / ``captured``) so the
+    caller can count streamed usage too.
     """
     url = _endpoint_url(settings)
     api_key = settings.get("api_key") or ""
@@ -478,31 +653,58 @@ def _stream_chat_completion(
             "stream": True,
         }
 
+    def _open(req: urllib.request.Request):
+        try:
+            return urllib.request.urlopen(req, timeout=300.0)
+        except urllib.error.HTTPError as exc:
+            snippet = exc.read().decode("utf-8", errors="replace")[:300]
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"AI request failed: HTTP {exc.code} {exc.reason} (URL: {url}) "
+                    f"- {snippet}".strip()
+                ),
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"AI request failed: {exc.reason} (URL: {url})"
+            ) from exc
+        except OSError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"AI request failed: {exc} (URL: {url})"
+            ) from exc
+
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
         headers={**_DEFAULT_HEADERS, **headers},
         method="POST",
     )
-    try:
-        resp = urllib.request.urlopen(req, timeout=300.0)
-    except urllib.error.HTTPError as exc:
-        snippet = exc.read().decode("utf-8", errors="replace")[:300]
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"AI request failed: HTTP {exc.code} {exc.reason} (URL: {url}) "
-                f"- {snippet}".strip()
-            ),
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"AI request failed: {exc.reason} (URL: {url})"
-        ) from exc
-    except OSError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"AI request failed: {exc} (URL: {url})"
-        ) from exc
+    if anthropic:
+        resp = _open(req)
+    else:
+        # Ask for a final usage-only chunk so streamed calls are counted too.
+        body["stream_options"] = {"include_usage": True}
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={**_DEFAULT_HEADERS, **headers},
+            method="POST",
+        )
+        try:
+            resp = _open(req)
+        except HTTPException:
+            # Strict gateways reject the unknown parameter with HTTP 400;
+            # retry once without it (usage then goes uncounted rather than
+            # breaking the stream).
+            body.pop("stream_options", None)
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(body).encode("utf-8"),
+                headers={**_DEFAULT_HEADERS, **headers},
+                method="POST",
+            )
+            resp = _open(req)
 
     reasoning_parts: list[str] = []
     produced_text = False
@@ -523,6 +725,20 @@ def _stream_chat_completion(
                 continue
             if anthropic:
                 evt_type = evt.get("type")
+                if evt_type == "message_start":
+                    # Input tokens arrive once, up front, in the message meta.
+                    if usage_out is not None:
+                        msg_usage = ((evt.get("message") or {}).get("usage")) or {}
+                        usage_out["prompt"] = _usage_int(msg_usage.get("input_tokens"))
+                        usage_out["completion"] = _usage_int(msg_usage.get("output_tokens"))
+                        usage_out["captured"] = True
+                elif evt_type == "message_delta":
+                    # output_tokens here is cumulative for the whole message.
+                    if usage_out is not None and evt.get("usage"):
+                        usage_out["completion"] = _usage_int(
+                            evt["usage"].get("output_tokens")
+                        )
+                        usage_out["captured"] = True
                 if evt_type == "content_block_delta":
                     delta = evt.get("delta") or {}
                     text = delta.get("text") or ""
@@ -542,6 +758,15 @@ def _stream_chat_completion(
                     raise HTTPException(
                         status_code=400, detail=f"AI stream error: {msg}"
                     )
+                if usage_out is not None and evt.get("usage"):
+                    # Final include_usage chunk (choices empty); some gateways
+                    # attach usage to the last content chunk instead — last
+                    # value wins either way since totals are cumulative.
+                    usage_out["prompt"] = _usage_int(evt["usage"].get("prompt_tokens"))
+                    usage_out["completion"] = _usage_int(
+                        evt["usage"].get("completion_tokens")
+                    )
+                    usage_out["captured"] = True
                 choices = evt.get("choices") or []
                 if choices:
                     delta = choices[0].get("delta") or {}
@@ -610,6 +835,39 @@ def _cached_describe_schema(conn: dict, connection_id: Optional[str]) -> list[st
     return summary
 
 
+# The dictionary needs complete column lists with types, unlike the prompt-sized
+# schema summary above (which is capped so chat prompts stay small).
+_DICTIONARY_TABLE_CAP = 60
+
+
+def _describe_schema_detailed(conn: dict, table: Optional[str] = None) -> list[dict]:
+    """Return ``[{name, columns: [{name, type}]}]`` for the data dictionary.
+
+    Lists up to ``_DICTIONARY_TABLE_CAP`` tables with every column and its DB
+    type, or a single table (exact, case-insensitive name match) when ``table``
+    is given.
+    """
+    tables = odbc.list_tables(conn)
+    if table:
+        wanted = table.strip().lower()
+        tables = [t for t in tables if str(t.get("name", "")).lower() == wanted]
+    else:
+        tables = tables[:_DICTIONARY_TABLE_CAP]
+    out: list[dict] = []
+    for entry in tables:
+        name = str(entry.get("name"))
+        try:
+            cols = odbc.list_columns(conn, name)
+            columns = [
+                {"name": str(c.get("name")), "type": str(c.get("data_type") or "")}
+                for c in cols
+            ]
+        except Exception:  # noqa: BLE001 - keep going if one table fails
+            columns = []
+        out.append({"name": name, "columns": columns})
+    return out
+
+
 def _grid_column_names(columns: list) -> list[str]:
     """Extract column names from the grid output metadata.
 
@@ -624,6 +882,168 @@ def _grid_column_names(columns: list) -> list[str]:
         if name is not None:
             names.append(str(name))
     return names
+
+
+# The grid can hold far more rows than an LLM context can use. The profile is
+# an aggregate view, so a bounded sample gives the same statistics in practice
+# (counts, ranges, top values) while keeping the prompt small and fast.
+_PROFILE_ROW_CAP = 2000
+_PROFILE_COLUMN_CAP = 40
+_PROFILE_TOP_VALUES = 5
+# Cap on AI-suggested follow-up questions returned to the UI.
+_QUESTIONS_MAX = 6
+
+
+def _profile_number(value) -> Optional[float | int]:
+    """Round a profiled number for prompt display (ints stay ints)."""
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:  # NaN
+        return None
+    if number == int(number) and abs(number) < 1e15:
+        return int(number)
+    return round(number, 4)
+
+
+def _data_profile(columns: list, rows: list) -> dict:
+    """Build a compact statistical profile of the grid rows.
+
+    Aggregated metadata only — per-column counts, ranges and top values — so a
+    chat turn can reason about the data without sending raw records. Reuses
+    ``analytics.profile_dataframe``. Returns ``{}`` when there is nothing to
+    profile or the analysis stack is unavailable.
+    """
+    rows = rows or []
+    if not rows:
+        return {}
+    col_names = _grid_column_names(columns or [])
+    if not col_names:
+        col_names = [str(k) for k in rows[0].keys()] if isinstance(rows[0], dict) else []
+    if not col_names:
+        return {}
+    col_names = col_names[:_PROFILE_COLUMN_CAP]
+
+    columns_meta = []
+    if columns and isinstance(columns[0], dict):
+        for col in columns[: _PROFILE_COLUMN_CAP]:
+            columns_meta.append({"name": str(col.get("name")), "type": str(col.get("type") or "")})
+    else:
+        columns_meta = [{"name": name, "type": ""} for name in col_names]
+
+    sample = rows[:_PROFILE_ROW_CAP]
+    try:
+        from app import analytics  # deferred: heavy pandas stack loaded lazily
+
+        frame = analytics.pd.DataFrame(sample)
+        keep = [name for name in col_names if name in frame.columns]
+        if keep:
+            frame = frame[keep]
+        profiled = analytics.profile_dataframe(frame, columns_meta)
+    except Exception:  # noqa: BLE001 - profiling is best-effort context
+        return {}
+
+    out_columns: list[dict] = []
+    for row in profiled:
+        total = int(row.get("total") or 0)
+        missing = int(row.get("missing") or 0)
+        entry: dict = {
+            "name": row.get("column"),
+            "type": row.get("db_type") or None,
+            "non_null": int(row.get("non_null") or 0),
+            "missing": missing,
+            "missing_pct": round(missing / total * 100, 1) if total else 0.0,
+            "unique": int(row.get("distinct") or 0),
+            "top": [
+                {"value": item.get("value"), "count": item.get("count")}
+                for item in (row.get("top_values") or [])[:_PROFILE_TOP_VALUES]
+            ],
+        }
+        numeric = {
+            key: _profile_number(row.get(key))
+            for key in ("min", "max", "mean", "median", "std")
+        }
+        if any(value is not None for value in numeric.values()):
+            entry["numeric"] = {k: v for k, v in numeric.items() if v is not None}
+        out_columns.append(entry)
+
+    return {
+        "row_total": len(rows),
+        "rows_profiled": len(sample),
+        "columns": out_columns,
+    }
+
+
+def _profile_text(profile: dict) -> str:
+    """Render a data profile as a compact multi-line block for a prompt."""
+    if not profile or not profile.get("columns"):
+        return ""
+    lines = [
+        "Data profile — aggregated statistics of the result set currently loaded "
+        "in the grid (summaries only; no raw records are shared):",
+    ]
+    profiled = profile.get("rows_profiled")
+    total = profile.get("row_total")
+    if profiled and total and profiled < total:
+        lines.append(f"- Profiled {profiled} of {total} loaded rows.")
+    elif total:
+        lines.append(f"- Profiled all {total} loaded rows.")
+    for col in profile["columns"]:
+        bits = [f"{col['non_null']} non-null"]
+        if col.get("missing"):
+            bits.append(f"{col['missing']} missing ({col['missing_pct']}%)")
+        bits.append(f"{col['unique']} distinct")
+        type_label = f" ({col['type']})" if col.get("type") else ""
+        line = f"- {col['name']}{type_label}: " + ", ".join(bits)
+        numeric = col.get("numeric") or {}
+        if numeric:
+            stat_bits = [f"{key}={value}" for key, value in numeric.items()]
+            line += "; " + ", ".join(stat_bits)
+        top = col.get("top") or []
+        if top:
+            rendered = ", ".join(f"{item['value']}({item['count']})" for item in top)
+            line += f"; top: {rendered}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _parse_question_list(text: str) -> list[str]:
+    """Pull a bulleted/numbered list of questions out of a model response."""
+    questions: list[str] = []
+    for line in text.splitlines():
+        bullet = re.match(r"^\s*(?:[-*+]|\d+[.)])\s+(.*\S)\s*$", line)
+        if bullet:
+            question = bullet.group(1).strip()
+            if question:
+                questions.append(question)
+        elif questions and line.strip():
+            # A trailing prose line — stop once the list has started.
+            break
+    if not questions:
+        # Fall back to any line that simply reads like a question.
+        questions = [ln.strip() for ln in text.splitlines() if ln.strip().endswith("?")]
+    return questions[:_QUESTIONS_MAX]
+
+
+def _split_followups(text: str) -> tuple[str, list[str]]:
+    """Split an insight response into (narrative, follow-up questions).
+
+    The insight prompt finishes with a ``## Follow-up questions`` section of
+    bulleted questions. Those are lifted out so the UI can render them as
+    tappable suggestions; the rest stays as the insight body. If the section is
+    missing, the full text is returned unchanged with no questions.
+    """
+    match = re.search(
+        r"^#{2,4}\s*follow[\s-]*up\s+questions?\s*$", text, re.IGNORECASE | re.MULTILINE
+    )
+    if not match:
+        return text.strip(), []
+    body = text[: match.start()].strip()
+    questions = _parse_question_list(text[match.end():])
+    return (body or text.strip()), questions
 
 
 # Shared behavior: ask before acting when key details are missing. Used by the
@@ -806,6 +1226,107 @@ _STATS_ASSISTANT_SYSTEM_PROMPT = (
     "outside it."
 )
 
+_INSIGHT_SYSTEM_PROMPT = (
+    "You are a data-insight analyst for quality/process engineers. You are given "
+    "an aggregated statistical profile of a dataset (per-column counts, missing "
+    "values, distinct counts, numeric ranges and top values) — NOT the raw rows. "
+    "Write a concise, decision-oriented analysis in markdown.\n"
+    "Rules:\n"
+    "1. Base every statement ONLY on the numbers in the profile. Never invent "
+    "records, values, categories or trends that the profile does not support. If "
+    "an insight would need the raw data to confirm, say what to check instead.\n"
+    "2. Use exactly these five sections, each as a level-2 markdown heading:\n"
+    "   ## Overview — what the dataset appears to be, its size and shape.\n"
+    "   ## Key findings — the most notable patterns, distributions and standout "
+    "columns (bullets).\n"
+    "   ## Anomalies & data-quality issues — missing values, high cardinality, "
+    "skew, suspicious constants or outliers implied by the stats (bullets).\n"
+    "   ## Suggested next steps — 3-5 concrete, actionable checks the user should "
+    "run next (bullets).\n"
+    "   ## Follow-up questions — 3-5 short questions the user could ask next about "
+    "this dataset, each ending with '?' (bullets).\n"
+    "3. Be specific and quantitative: cite the actual counts, ranges and top values "
+    "you were given (e.g. '13.4% missing'). Prefer short bullet points over prose.\n"
+    "4. Keep the whole response tight and skimmable. Do not add extra sections, "
+    "preamble or closing remarks."
+)
+
+_QUESTIONS_SYSTEM_PROMPT = (
+    "You are a data-insight analyst for quality/process engineers. You are given "
+    "an aggregated statistical profile of a dataset (per-column counts, missing "
+    "values, distinct counts, numeric ranges and top values) — NOT the raw rows. "
+    "Suggest the most valuable follow-up questions the user could ask about THIS "
+    "data.\n"
+    "Rules:\n"
+    "1. Base every question ONLY on the columns, counts and values in the profile. "
+    "Never invent columns, categories or values that are not shown.\n"
+    "2. Output 4-6 short questions, one per line, each prefixed with '- ' and "
+    "ending with '?'.\n"
+    "3. Make them specific and actionable — reference actual column names and the "
+    "patterns the statistics hint at (e.g. suspicious missingness, wide ranges, "
+    "uneven categories).\n"
+    "4. Output ONLY the bulleted list — no heading, preamble, numbering or closing "
+    "remarks."
+)
+
+_ANALYZE_SYSTEM_PROMPT = (
+    "You are a data-analysis co-pilot for quality/process engineers. The user is "
+    "analysing a dataset loaded in the grid; you are given its aggregated "
+    "statistical profile (per-column counts, missing values, distinct counts, "
+    "numeric ranges and top values) — NOT the raw rows. Hold a focused analytical "
+    "conversation: answer the user's questions, explain what the numbers mean, "
+    "point out patterns, trade-offs and caveats, and recommend the most useful "
+    "next analyses or charts.\n"
+    "Rules:\n"
+    "1. Base every statement ONLY on the numbers in the profile. Never invent "
+    "records, values, categories or trends it does not support. If a question "
+    "truly needs the raw data, say what to check instead.\n"
+    "2. Be concise and quantitative — cite the actual counts, ranges and top "
+    "values you were given. Prefer short paragraphs and bullets.\n"
+    "3. When a chart or a deeper statistic would help, name the exact columns and "
+    "the analysis to run so the user can generate it in one step.\n"
+    "4. Use markdown (small tables, bullets) when it makes the answer clearer.\n"
+    "5. Never reply with an empty message."
+)
+
+_ANALYZE_PIPELINE_SYSTEM_PROMPT = (
+    "You are a data-analysis co-pilot for quality/process engineers. You are given "
+    "an aggregated statistical profile of a dataset (per-column counts, missing "
+    "values, distinct counts, numeric ranges and top values) — NOT the raw rows — "
+    "and the user's analysis goal. Write a decision-oriented analysis in markdown.\n"
+    "Rules:\n"
+    "1. Base every statement ONLY on the numbers in the profile. Never invent "
+    "records, values, categories or trends it does not support.\n"
+    "2. Use exactly these five sections, each a level-2 markdown heading:\n"
+    "   ## Summary — what the dataset appears to be and the headline read.\n"
+    "   ## Key findings — the most notable patterns and standout columns (bullets).\n"
+    "   ## Risks & data-quality checks — missingness, high cardinality, skew, "
+    "suspicious constants or outliers implied by the stats (bullets).\n"
+    "   ## Recommended next steps — 3-5 concrete, actionable checks (bullets).\n"
+    "   ## Follow-up questions — 3-5 short questions each ending with '?' (bullets).\n"
+    "3. Be specific and quantitative: cite the actual counts, ranges and top values "
+    "(e.g. '13.4% missing').\n"
+    "4. Keep the whole response tight and skimmable. Do not add extra sections, "
+    "preamble or closing remarks."
+)
+
+_DICTIONARY_SYSTEM_PROMPT = (
+    "You are a data steward documenting a database for quality/process engineers. "
+    "You are given the schema — tables and their columns with data types. Produce a "
+    "human-readable data dictionary in markdown.\n"
+    "Rules:\n"
+    "1. Start with a one-paragraph overview of what this database appears to cover.\n"
+    "2. For each table, use a level-3 heading with the table name, a one-line "
+    "purpose, then a markdown table with exactly these columns: "
+    "Column | Type | Meaning | Notes. Infer each column's meaning from its name and "
+    "type.\n"
+    "3. Mark any inference you are not confident about as '(likely)'; never present "
+    "a guess as fact. If a name is opaque, write 'meaning unclear from name'.\n"
+    "4. Document exactly the tables and columns you were given — never invent any.\n"
+    "5. Note identifier / key columns in Notes. Keep notes short.\n"
+    "6. Do not wrap the whole answer in a code fence and do not add closing remarks."
+)
+
 
 class SettingsUpdate(BaseModel):
     """Partial update body for PUT /ai/settings."""
@@ -816,6 +1337,9 @@ class SettingsUpdate(BaseModel):
     api_key: Optional[str] = None
     model: Optional[str] = None
     temperature: Optional[float] = None
+    # Privacy switch: when on, chat turns include a compact statistical profile
+    # of the loaded grid so the assistant can reason about the data.
+    share_data_stats: Optional[bool] = None
     # The "brand · model" the submitted api_key belongs to, so the key is filed
     # under that brand/model instead of being kept only as the last one used.
     key_label: Optional[str] = None
@@ -905,6 +1429,30 @@ class StatsRequest(BaseModel):
     requirement: str = ""
 
 
+class InsightRequest(BaseModel):
+    """Body for POST /ai/insights (AI-written data-insight card).
+
+    Only the grid metadata and rows are needed; the server derives an
+    aggregate profile from the rows and never forwards raw records.
+    """
+
+    columns: Optional[list] = None
+    rows: Optional[list] = None
+    requirement: str = ""
+
+
+class QuestionsRequest(BaseModel):
+    """Body for POST /ai/questions (guided follow-up questions).
+
+    Like InsightRequest: the server derives an aggregate profile and never
+    forwards raw records.
+    """
+
+    columns: Optional[list] = None
+    rows: Optional[list] = None
+    requirement: str = ""
+
+
 @router.get("/ai/settings")
 def get_ai_settings():
     """Return the current AI settings."""
@@ -968,7 +1516,7 @@ def test_ai(payload: TestRequest):
     settings.update(payload.model_dump(exclude_unset=True))
     messages = [{"role": "user", "content": "Reply with the single word OK"}]
     try:
-        resp = _chat_completion(settings, messages)
+        resp = _chat_completion(settings, messages, feature="test")
     except HTTPException as exc:
         logging_utils.log_warning("ai.test", "AI connection test failed", details=str(exc.detail))
         return {"ok": False, "message": str(exc.detail)}
@@ -1008,7 +1556,7 @@ def nl_to_sql(payload: NlToSqlRequest):
         {"role": "user", "content": user_prompt},
     ]
 
-    sql = _strip_code_fences(_chat_completion(settings, messages))
+    sql = _strip_code_fences(_chat_completion(settings, messages, feature="nl_to_sql"))
     try:
         odbc.assert_read_only(sql)
     except ValueError:
@@ -1021,6 +1569,7 @@ def nl_to_sql(payload: NlToSqlRequest):
                 settings,
                 messages
                 + [{"role": "assistant", "content": sql}, {"role": "user", "content": corrective}],
+                feature="nl_to_sql",
             )
         )
         try:
@@ -1045,8 +1594,75 @@ def ai_summary(payload: SummaryRequest):
         "key findings, data-quality issues, outliers, and 3-5 actionable "
         "recommendations. Use bullet points."
     )
-    text = _chat_completion(settings, [{"role": "user", "content": prompt}])
+    text = _chat_completion(settings, [{"role": "user", "content": prompt}], feature="summary")
     return {"summary": text.strip()}
+
+
+@router.post("/ai/insights")
+def ai_insights(payload: InsightRequest):
+    """Produce an AI insight card from an aggregated profile of the grid rows.
+
+    The server derives a compact statistical profile (counts, ranges, top
+    values) from the rows and sends only that to the model — raw records are
+    never forwarded. Returns the markdown insight plus the profile used, so the
+    UI can surface the same numbers it reasoned over.
+    """
+    settings = _load_settings()
+    _require_configured(settings)
+    profile = _data_profile(payload.columns or [], payload.rows or [])
+    if not profile or not profile.get("columns"):
+        raise HTTPException(
+            status_code=400,
+            detail="No grid data is available to analyse. Run a query first.",
+        )
+    user_context = _profile_text(profile)
+    if payload.requirement.strip():
+        user_context += f"\n\nUser focus: {payload.requirement.strip()}"
+    messages = [
+        {"role": "system", "content": _INSIGHT_SYSTEM_PROMPT},
+        {"role": "user", "content": user_context},
+    ]
+    _start = time.perf_counter()
+    text = _chat_completion(settings, messages, max_tokens=1600, feature="insights")
+    _elapsed_ms = int((time.perf_counter() - _start) * 1000)
+    insights, questions = _split_followups(text)
+    logging_utils.log_info(
+        "ai.insights",
+        f"generated insights ({len(insights)} chars, {len(questions)} questions)",
+        details=(
+            f"columns={len(profile.get('columns') or [])}, "
+            f"rows_profiled={profile.get('rows_profiled')}, elapsed_ms={_elapsed_ms}"
+        ),
+    )
+    return {"insights": insights, "questions": questions, "profile": profile}
+
+
+@router.post("/ai/questions")
+def ai_questions(payload: QuestionsRequest):
+    """Suggest follow-up questions about the loaded grid (guided questioning).
+
+    Uses the same aggregated profile as ``/ai/insights`` — no raw records are
+    sent to the model — but returns only a short list of questions, so the UI
+    can offer them in any mode without paying for a full insight.
+    """
+    settings = _load_settings()
+    _require_configured(settings)
+    profile = _data_profile(payload.columns or [], payload.rows or [])
+    if not profile or not profile.get("columns"):
+        raise HTTPException(
+            status_code=400,
+            detail="No grid data is available to analyse. Run a query first.",
+        )
+    user_context = _profile_text(profile)
+    if payload.requirement.strip():
+        user_context += f"\n\nUser focus: {payload.requirement.strip()}"
+    messages = [
+        {"role": "system", "content": _QUESTIONS_SYSTEM_PROMPT},
+        {"role": "user", "content": user_context},
+    ]
+    text = _chat_completion(settings, messages, max_tokens=400, feature="questions")
+    questions = _parse_question_list(text)
+    return {"questions": questions}
 
 
 @router.post("/ai/script")
@@ -1107,7 +1723,7 @@ def generate_script(payload: ScriptGenRequest):
         for turn in payload.messages
     ]
     _start = time.perf_counter()
-    reply = _chat_completion(settings, messages, max_tokens=8192)
+    reply = _chat_completion(settings, messages, max_tokens=8192, feature="script")
     _elapsed_ms = int((time.perf_counter() - _start) * 1000)
     logging_utils.log_info(
         "ai.script",
@@ -1259,7 +1875,9 @@ def grid_clarify(payload: GridClarifyRequest):
         "No other text, no markdown."
     )
     _start = time.perf_counter()
-    reply = _chat_completion(settings, [{"role": "user", "content": prompt}], max_tokens=600)
+    reply = _chat_completion(
+        settings, [{"role": "user", "content": prompt}], max_tokens=600, feature="grid_clarify"
+    )
     _elapsed_ms = int((time.perf_counter() - _start) * 1000)
     questions = _extract_question_array(reply)
     logging_utils.log_info(
@@ -1312,7 +1930,7 @@ def grid_script(payload: GridScriptRequest):
         {"role": "user", "content": "\n\n".join(user_parts)},
     ]
     _start = time.perf_counter()
-    reply = _chat_completion(settings, messages, max_tokens=8192)
+    reply = _chat_completion(settings, messages, max_tokens=8192, feature="grid_script")
     _elapsed_ms = int((time.perf_counter() - _start) * 1000)
     script = _strip_code_fences(reply)
     logging_utils.log_info(
@@ -1382,16 +2000,21 @@ def grid_history_delete(entry_id: str):
     return {"ok": True}
 
 
-def _build_chat_messages(payload: ChatRequest) -> tuple[list[dict], int, str, int]:
+def _build_chat_messages(
+    payload: ChatRequest, share_data_stats: bool = True
+) -> tuple[list[dict], int, str, int]:
     """Build the LLM message list for a chat request.
 
     ``mode`` selects the specialty: ``chat`` (general questions, no context),
-    ``sql`` (default), ``script`` or ``chart``. Returns
+    ``sql`` (default), ``script``, ``chart`` or ``analyze`` (data-aware
+    analytical conversation). When ``share_data_stats`` is on, a compact
+    statistical profile of the loaded grid is folded into the context so the
+    assistant can reason about the data. Returns
     ``(messages, max_tokens, mode, grid_column_count)`` shared by the blocking
     and streaming chat endpoints.
     """
     mode = (payload.mode or "sql").strip().lower()
-    if mode not in ("chat", "sql", "script", "chart"):
+    if mode not in ("chat", "sql", "script", "chart", "analyze"):
         mode = "sql"
 
     schema_lines: list[str] = []
@@ -1406,6 +2029,9 @@ def _build_chat_messages(payload: ChatRequest) -> tuple[list[dict], int, str, in
             line for line in schema_lines if payload.table.lower() in line.lower()
         ]
     grid_columns = _grid_column_names(payload.columns or [])
+    profile_block = ""
+    if share_data_stats and payload.rows:
+        profile_block = _profile_text(_data_profile(payload.columns or [], payload.rows))
 
     if mode == "chat":
         # General conversation: no database or grid context is injected — the
@@ -1433,13 +2059,19 @@ def _build_chat_messages(payload: ChatRequest) -> tuple[list[dict], int, str, in
                 messages.append({"role": turn.role, "content": turn.content})
                 continue
             content = f"{turn.content}\n\n{columns_line}"
-            if i == len(turns) - 1 and sample_lines:
-                content += "\n" + "\n".join(sample_lines)
+            if i == len(turns) - 1:
+                if sample_lines:
+                    content += "\n" + "\n".join(sample_lines)
+                if profile_block:
+                    content += "\n\n" + profile_block
             messages.append({"role": "user", "content": content})
     else:
-        system_prompt = (
-            _SCRIPT_ASSISTANT_SYSTEM_PROMPT if mode == "script" else _SQL_ASSISTANT_SYSTEM_PROMPT
-        )
+        if mode == "analyze":
+            system_prompt = _ANALYZE_SYSTEM_PROMPT
+        elif mode == "script":
+            system_prompt = _SCRIPT_ASSISTANT_SYSTEM_PROMPT
+        else:
+            system_prompt = _SQL_ASSISTANT_SYSTEM_PROMPT
         user_context = ""
         if schema_lines:
             user_context = (
@@ -1450,6 +2082,8 @@ def _build_chat_messages(payload: ChatRequest) -> tuple[list[dict], int, str, in
                 "\n\nThe columns of the query result currently loaded in the grid are:\n"
                 + ", ".join(grid_columns)
             )
+        if profile_block:
+            user_context += "\n\n" + profile_block
         if mode == "sql" and payload.sql:
             user_context += (
                 "\n\nThe SQL currently in the editor (modify/debug this when asked):\n"
@@ -1474,7 +2108,12 @@ def _build_chat_messages(payload: ChatRequest) -> tuple[list[dict], int, str, in
             messages.append({"role": "user", "content": content})
     # Scripts are long-form output; a higher cap avoids truncating the code
     # block and leaves room for reasoning models' hidden thinking tokens.
-    max_tokens = 8192 if mode == "script" else 1500
+    if mode == "script":
+        max_tokens = 8192
+    elif mode == "analyze":
+        max_tokens = 2500
+    else:
+        max_tokens = 1500
     return messages, max_tokens, mode, len(grid_columns)
 
 
@@ -1490,7 +2129,9 @@ def chat(payload: ChatRequest):
     """
     settings = _load_settings()
     _require_configured(settings)
-    messages, max_tokens, mode, grid_column_count = _build_chat_messages(payload)
+    messages, max_tokens, mode, grid_column_count = _build_chat_messages(
+        payload, bool(settings.get("share_data_stats", True))
+    )
     _start = time.perf_counter()
     reply = _chat_completion(settings, messages, max_tokens=max_tokens)
     _elapsed_ms = int((time.perf_counter() - _start) * 1000)
@@ -1517,25 +2158,47 @@ def chat_stream(payload: ChatRequest):
     """
     settings = _load_settings()
     _require_configured(settings)
-    messages, max_tokens, mode, grid_column_count = _build_chat_messages(payload)
+    messages, max_tokens, mode, grid_column_count = _build_chat_messages(
+        payload, bool(settings.get("share_data_stats", True))
+    )
 
     def event_stream() -> Iterator[str]:
         collected: list[str] = []
+        usage: dict = {"prompt": 0, "completion": 0, "captured": False}
         _start = time.perf_counter()
         try:
-            for chunk in _stream_chat_completion(settings, messages, max_tokens):
+            for chunk in _stream_chat_completion(
+                settings, messages, max_tokens, usage_out=usage
+            ):
                 collected.append(chunk)
                 yield json.dumps({"type": "delta", "text": chunk}, ensure_ascii=False) + "\n"
         except HTTPException as exc:
+            _record_usage(
+                settings,
+                "chat",
+                usage["prompt"],
+                usage["completion"],
+                elapsed_ms=int((time.perf_counter() - _start) * 1000),
+                ok=False,
+            )
             yield json.dumps({"type": "error", "detail": str(exc.detail)}, ensure_ascii=False) + "\n"
             return
         except Exception as exc:  # noqa: BLE001 - unexpected failures are reported
+            _record_usage(
+                settings,
+                "chat",
+                usage["prompt"],
+                usage["completion"],
+                elapsed_ms=int((time.perf_counter() - _start) * 1000),
+                ok=False,
+            )
             yield json.dumps({"type": "error", "detail": str(exc)}, ensure_ascii=False) + "\n"
             return
         reply = "".join(collected).strip()
         if not reply:
             # Nothing streamed — reuse the non-streaming call (it retries
-            # empty replies) and forward the text as a single delta.
+            # empty replies and records its own usage) and forward the text
+            # as a single delta.
             try:
                 reply = _chat_completion(settings, messages, max_tokens=max_tokens)
             except HTTPException as exc:
@@ -1548,6 +2211,18 @@ def chat_stream(payload: ChatRequest):
                 return
             if reply:
                 yield json.dumps({"type": "delta", "text": reply}, ensure_ascii=False) + "\n"
+        elif usage.get("captured"):
+            # Count streamed usage only when the endpoint actually reported
+            # it — gateways that ignore include_usage stay uncounted rather
+            # than flooding the monitor with zero-token entries.
+            _record_usage(
+                settings,
+                "chat",
+                usage["prompt"],
+                usage["completion"],
+                elapsed_ms=int((time.perf_counter() - _start) * 1000),
+                ok=True,
+            )
         _elapsed_ms = int((time.perf_counter() - _start) * 1000)
         logging_utils.log_info(
             "ai.chat",
@@ -1590,7 +2265,7 @@ def generate_echart(payload: EChartRequest):
         {"role": "user", "content": user_context},
     ]
     _start = time.perf_counter()
-    reply = _chat_completion(settings, messages, max_tokens=2000)
+    reply = _chat_completion(settings, messages, max_tokens=2000, feature="echart")
     _elapsed_ms = int((time.perf_counter() - _start) * 1000)
     logging_utils.log_info(
         "ai.echart",
@@ -1626,7 +2301,7 @@ def generate_dashboard(payload: DashboardRequest):
         {"role": "user", "content": user_context},
     ]
     _start = time.perf_counter()
-    reply = _chat_completion(settings, messages, max_tokens=2500)
+    reply = _chat_completion(settings, messages, max_tokens=2500, feature="dashboard")
     _elapsed_ms = int((time.perf_counter() - _start) * 1000)
     specs = _clean_chart_specs(_extract_chart_array(reply), columns)
     if not specs:
@@ -1671,7 +2346,9 @@ def ai_stats(payload: StatsRequest):
         {"role": "system", "content": _STATS_ASSISTANT_SYSTEM_PROMPT},
         {"role": "user", "content": user_context},
     ]
-    script = _strip_code_fences(_chat_completion(settings, messages, max_tokens=8192))
+    script = _strip_code_fences(
+        _chat_completion(settings, messages, max_tokens=8192, feature="stats")
+    )
 
     # Deferred import: scripts.py must not import ai.py (cycle), and ai.py only
     # needs the executor at call time.
@@ -1695,3 +2372,233 @@ def ai_stats(payload: StatsRequest):
         "timed_out": timed_out,
         "elapsed_ms": elapsed_ms,
     }
+
+
+class AnalyzePipelineRequest(BaseModel):
+    """Body for POST /ai/analyze/pipeline (one-shot natural-language analysis).
+
+    ``goal`` is the user's plain-language analysis objective (may be empty for
+    a general read). As with the insight endpoints, only an aggregate profile of
+    the rows is derived server-side and sent to the model — raw records are
+    never forwarded. ``include_charts`` / ``include_stats`` let the caller skip
+    the chart and statistical stages to save tokens/time.
+    """
+
+    goal: str = ""
+    connection_id: Optional[str] = None
+    table: Optional[str] = None
+    columns: Optional[list] = None
+    rows: Optional[list] = None
+    include_charts: bool = True
+    include_stats: bool = True
+
+
+@router.post("/ai/analyze/pipeline")
+def analyze_pipeline(payload: AnalyzePipelineRequest):
+    """Run a full natural-language analysis pipeline over the loaded grid.
+
+    Three stages, each independently degrading so a partial result is still
+    useful: (1) a narrative report from the aggregated profile, split into body
+    and follow-up questions; (2) optional dashboard chart specs; (3) optional
+    Python statistical report executed against the rows. The chart and stats
+    stages are best-effort — their failures never fail the request.
+    """
+    settings = _load_settings()
+    _require_configured(settings)
+    profile = _data_profile(payload.columns or [], payload.rows or [])
+    if not profile or not profile.get("columns"):
+        raise HTTPException(
+            status_code=400,
+            detail="No grid data is available to analyse. Run a query first.",
+        )
+    goal = payload.goal.strip()
+    columns = _grid_column_names(payload.columns or [])
+    rows = (payload.rows or [])[:_STATS_ROW_CAP]
+
+    _start = time.perf_counter()
+
+    # Stage 1 — narrative + follow-up questions from the aggregate profile.
+    user_context = _profile_text(profile)
+    if goal:
+        user_context += f"\n\nAnalysis goal: {goal}"
+    narrative_text = _chat_completion(
+        settings,
+        [
+            {"role": "system", "content": _ANALYZE_PIPELINE_SYSTEM_PROMPT},
+            {"role": "user", "content": user_context},
+        ],
+        max_tokens=2500,
+        feature="analyze",
+    )
+    narrative, questions = _split_followups(narrative_text)
+
+    # Stage 2 — dashboard chart specs (best-effort).
+    charts: list[dict] = []
+    if payload.include_charts and columns:
+        try:
+            chart_context = f"Available columns: {', '.join(columns) or '(none)'}"
+            sample = rows[:5]
+            if sample:
+                chart_context += (
+                    "\n\nSample rows (JSON — value-format reference only, do NOT "
+                    "copy these values):\n"
+                    + json.dumps(sample, ensure_ascii=False, default=str)[:4000]
+                )
+            chart_context += (
+                "\n\nUser requirement: "
+                + (goal or "Suggest the most informative dashboard charts for this dataset.")
+            )
+            chart_reply = _chat_completion(
+                settings,
+                [
+                    {"role": "system", "content": _DASHBOARD_ASSISTANT_SYSTEM_PROMPT},
+                    {"role": "user", "content": chart_context},
+                ],
+                max_tokens=2500,
+                feature="analyze",
+            )
+            charts = _clean_chart_specs(_extract_chart_array(chart_reply), columns)
+        except Exception as exc:  # noqa: BLE001 - charts are optional
+            logging_utils.log_info("ai.analyze", f"chart stage skipped: {exc}")
+
+    # Stage 3 — Python statistical report executed against the rows (best-effort).
+    stats: Optional[dict] = None
+    if payload.include_stats and rows:
+        try:
+            from app.api.scripts import _run_python
+
+            stats_context = (
+                f"Available columns: {', '.join(columns) or '(none)'}\n"
+                f"Row count: {len(rows)}\n"
+                "Sample rows (JSON — value-format reference only, do NOT copy these "
+                "values):\n"
+                + json.dumps(rows[:20], ensure_ascii=False, default=str)[:6000]
+            )
+            if goal:
+                stats_context += f"\n\nUser focus: {goal}"
+            script = _strip_code_fences(
+                _chat_completion(
+                    settings,
+                    [
+                        {"role": "system", "content": _STATS_ASSISTANT_SYSTEM_PROMPT},
+                        {"role": "user", "content": stats_context},
+                    ],
+                    max_tokens=8192,
+                    feature="analyze",
+                )
+            )
+            stdout, stderr, timed_out = _run_python(script, rows, _STATS_TIMEOUT_SECONDS)
+            stats = {
+                "script": script,
+                "stdout": stdout,
+                "stderr": stderr,
+                "timed_out": timed_out,
+            }
+        except Exception as exc:  # noqa: BLE001 - stats are optional
+            logging_utils.log_info("ai.analyze", f"stats stage skipped: {exc}")
+
+    elapsed_ms = int((time.perf_counter() - _start) * 1000)
+    logging_utils.log_info(
+        "ai.analyze",
+        f"pipeline produced {len(narrative)} chars, {len(charts)} charts, stats={stats is not None}",
+        details=(
+            f"columns={len(columns)}, rows={len(rows)}, questions={len(questions)}, "
+            f"elapsed_ms={elapsed_ms}"
+        ),
+    )
+    return {
+        "narrative": narrative,
+        "questions": questions,
+        "charts": charts,
+        "stats": stats,
+        "profile": profile,
+    }
+
+
+class DictionaryRequest(BaseModel):
+    """Body for POST /ai/dictionary (human-readable data dictionary).
+
+    When ``table`` is given only that table (exact, case-insensitive match) is
+    documented; otherwise the first ``_DICTIONARY_TABLE_CAP`` tables are used.
+    """
+
+    connection_id: str
+    table: Optional[str] = None
+
+
+@router.post("/ai/dictionary")
+def ai_dictionary(payload: DictionaryRequest):
+    """Generate a markdown data dictionary for a stored connection.
+
+    The server reads the live schema (tables, columns and their types) and asks
+    the model to describe each table's purpose and each column's meaning.
+    """
+    settings = _load_settings()
+    _require_configured(settings)
+    conn = _get_connection(payload.connection_id)
+    tables = _describe_schema_detailed(conn, payload.table)
+    if not tables:
+        detail = (
+            f'No table named "{payload.table}" was found in this connection.'
+            if payload.table
+            else "This connection has no tables to document."
+        )
+        raise HTTPException(status_code=404, detail=detail)
+
+    schema_lines: list[str] = []
+    for entry in tables:
+        cols = entry.get("columns") or []
+        schema_lines.append(f"Table: {entry['name']} ({len(cols)} columns)")
+        if cols:
+            for col in cols:
+                schema_lines.append(f"  - {col['name']} : {col['type'] or 'UNKNOWN'}")
+        else:
+            schema_lines.append("  (no columns could be read)")
+        schema_lines.append("")
+    schema_text = "\n".join(schema_lines).strip()
+
+    _start = time.perf_counter()
+    dictionary = _chat_completion(
+        settings,
+        [
+            {"role": "system", "content": _DICTIONARY_SYSTEM_PROMPT},
+            {"role": "user", "content": schema_text},
+        ],
+        max_tokens=4000,
+        feature="dictionary",
+    ).strip()
+    elapsed_ms = int((time.perf_counter() - _start) * 1000)
+    logging_utils.log_info(
+        "ai.dictionary",
+        f"documented {len(tables)} tables ({len(dictionary)} chars)",
+        details=f"table={payload.table or '(all)'}, elapsed_ms={elapsed_ms}",
+    )
+    return {
+        "dictionary": dictionary,
+        "tables": tables,
+        "table_count": len(tables),
+    }
+
+
+@router.get("/ai/usage")
+def ai_usage_summary():
+    """Token usage totals for the AI Setting page monitor.
+
+    Returns daily buckets (retained for 90 days), per-feature and per-model
+    aggregates, and the most recent calls (capped at 100), newest last.
+    """
+    return _load_usage()
+
+
+@router.delete("/ai/usage")
+def ai_usage_reset():
+    """Clear all recorded token usage."""
+    _save_empty_usage()
+    return {"ok": True}
+
+
+def _save_empty_usage() -> None:
+    storage.save_json(
+        _AI_USAGE_FILE,
+        {"daily": {}, "by_feature": {}, "by_model": {}, "daily_by_model": {}, "recent": []},
+    )

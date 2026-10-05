@@ -3,8 +3,12 @@ import axios from 'axios'
 // there is no runtime cycle with utils/visual (which imports chart build helpers).
 import type { DashboardVisual } from '../utils/visual'
 import type {
-  AiMode,
+  AiChatMode,
+  AiDataProfile,
+  AiInsightResult,
+  AiQuestionsResult,
   AiSettings,
+  AiUsageSummary,
   ChartOperation,
   ChartType,
   ColumnInfo,
@@ -1072,6 +1076,12 @@ export const api = {
       }),
     ),
 
+  /** Token usage totals for the AI Setting page monitor. */
+  getAiUsage: (): Promise<AiUsageSummary> => apiFetch(client.get('/ai/usage')),
+
+  /** Clears all recorded AI token usage. */
+  resetAiUsage: (): Promise<{ ok: boolean }> => apiFetch(client.delete('/ai/usage')),
+
   askAiSql: (
     question: string,
     connectionId: string,
@@ -1083,6 +1093,28 @@ export const api = {
     context?: string,
   ): Promise<{ summary: string }> =>
     apiFetch(client.post('/ai/summary', { stats, context: context ?? '' })),
+
+  /**
+   * Generate an AI insight card from an aggregated statistical profile of the
+   * grid rows. Only aggregates are sent — never raw records.
+   */
+  aiInsights: (payload: {
+    columns?: ResultColumn[]
+    rows?: Record<string, unknown>[]
+    requirement?: string
+  }): Promise<AiInsightResult> =>
+    apiFetch(client.post('/ai/insights', payload, { timeout: 120000 })),
+
+  /**
+   * Suggest follow-up questions about the loaded grid (guided questioning).
+   * Uses the same aggregated profile as aiInsights — no raw records leave the app.
+   */
+  aiQuestions: (payload: {
+    columns?: ResultColumn[]
+    rows?: Record<string, unknown>[]
+    requirement?: string
+  }): Promise<AiQuestionsResult> =>
+    apiFetch(client.post('/ai/questions', payload, { timeout: 120000 })),
 
   /** Design several dashboard charts from a plain-language requirement. */
   aiDashboard: (payload: {
@@ -1101,6 +1133,36 @@ export const api = {
     apiFetch(client.post('/ai/stats', payload, { timeout: 180000 })),
 
   /**
+   * Run a full natural-language analysis pipeline: a narrative report plus
+   * (best-effort) dashboard charts and a Python statistical report. Only an
+   * aggregated profile of the rows is derived server-side — never raw records.
+   */
+  aiAnalyzePipeline: (payload: {
+    goal?: string
+    connectionId?: string
+    table?: string
+    columns?: ResultColumn[]
+    rows?: Record<string, unknown>[]
+    includeCharts?: boolean
+    includeStats?: boolean
+  }): Promise<AiAnalyzePipelineResult> =>
+    apiFetch(
+      client.post(
+        '/ai/analyze/pipeline',
+        {
+          goal: payload.goal ?? '',
+          connection_id: payload.connectionId,
+          table: payload.table,
+          columns: payload.columns,
+          rows: payload.rows,
+          include_charts: payload.includeCharts ?? true,
+          include_stats: payload.includeStats ?? true,
+        },
+        { timeout: 300000 },
+      ),
+    ),
+
+  /**
    * Continuous assistant conversation with streamed output (global AI sidebar).
    * `mode` selects the specialty: sql | script | chart. `onDelta` is called
    * with each text chunk as the model generates it.
@@ -1111,7 +1173,7 @@ export const api = {
       connectionId?: string
       columns?: ResultColumn[]
       rows?: Record<string, unknown>[]
-      mode?: AiMode
+      mode?: AiChatMode
       /** SQL currently in the editor — sent so the assistant can debug/modify it. */
       sql?: string
     },
@@ -1628,6 +1690,24 @@ export interface AiStatsResult {
   stderr: string
   timed_out: boolean
   elapsed_ms: number
+}
+
+/**
+ * Result of POST /api/ai/analyze/pipeline: a full natural-language analysis.
+ * The chart and stats stages are best-effort, so `charts` may be empty and
+ * `stats` may be null even on success.
+ */
+export interface AiAnalyzePipelineResult {
+  /** Markdown narrative: summary, key findings, risks and next steps. */
+  narrative: string
+  /** AI-suggested follow-up questions (may be empty). */
+  questions: string[]
+  /** Chart specs designed from the data; maps onto the VisualConfig pipeline. */
+  charts: AiDashboardChart[]
+  /** Python statistical report, or null when that stage was skipped/failed.
+   *  The pipeline omits `elapsed_ms` (unlike the standalone /ai/stats result). */
+  stats: { script: string; stdout: string; stderr: string; timed_out: boolean } | null
+  profile: AiDataProfile
 }
 
 /** A saved link between two warehouse snapshots (one column pair). */

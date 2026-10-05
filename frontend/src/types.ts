@@ -218,6 +218,8 @@ export interface AiSettingsProfile {
   api_key: string
   model: string
   temperature: number
+  /** Privacy switch captured with this snapshot (see AiSettings). */
+  share_data_stats?: boolean
   saved_at?: string
 }
 
@@ -229,14 +231,82 @@ export interface AiSettings {
   api_key: string
   model: string
   temperature: number
+  /**
+   * Privacy switch: when on, chat turns and the Insights card include a compact
+   * statistical profile of the loaded grid (aggregated counts/ranges only).
+   */
+  share_data_stats?: boolean
   /** Keys held per "brand · model" label, so each brand keeps its own key. */
   saved_keys?: Record<string, string>
   /** Snapshots of previously saved configurations, newest first. */
   saved_profiles?: AiSettingsProfile[]
 }
 
+/** Aggregated token counters for one day / feature / model bucket. */
+export interface AiUsageBucket {
+  requests: number
+  prompt_tokens: number
+  completion_tokens: number
+}
+
+/** One recorded LLM call in the usage monitor's recent-calls list. */
+export interface AiUsageEntry {
+  ts: string
+  feature: string
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  elapsed_ms: number
+  ok: boolean
+}
+
+/** Response of GET /ai/usage (the token usage monitor store). */
+export interface AiUsageSummary {
+  daily: Record<string, AiUsageBucket>
+  by_feature: Record<string, AiUsageBucket>
+  by_model: Record<string, AiUsageBucket>
+  /** Per-day buckets per model (same retention window as `daily`). */
+  daily_by_model: Record<string, Record<string, AiUsageBucket>>
+  recent: AiUsageEntry[]
+}
+
 /** Specialty of the global AI sidebar conversation. */
 export type AiMode = 'chat' | 'sql' | 'script' | 'chart'
+/** Specialty of a streamed chat request — the Analyze page's follow-up chat
+ *  reuses the endpoint with the 'analyze' specialty. */
+export type AiChatMode = AiMode | 'analyze'
+
+/** One column's aggregated statistics inside an AI data profile. */
+export interface AiProfileColumn {
+  name: string
+  type?: string | null
+  non_null: number
+  missing: number
+  missing_pct: number
+  unique: number
+  numeric?: Record<string, number>
+  top?: { value: unknown; count: number }[]
+}
+
+/** Compact statistical profile of the loaded grid, produced by the backend. */
+export interface AiDataProfile {
+  row_total: number
+  rows_profiled: number
+  columns: AiProfileColumn[]
+}
+
+/** Result of POST /ai/insights: markdown analysis, guided questions, profile. */
+export interface AiInsightResult {
+  insights: string
+  /** AI-suggested follow-up questions about the analysed grid (may be empty). */
+  questions: string[]
+  profile: AiDataProfile
+}
+
+/** Result of POST /ai/questions: guided follow-up questions only. */
+export interface AiQuestionsResult {
+  questions: string[]
+}
 
 export type ScriptLanguage = 'python' | 'javascript'
 

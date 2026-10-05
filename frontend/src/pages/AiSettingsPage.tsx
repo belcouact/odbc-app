@@ -29,15 +29,21 @@ import type { SelectChangeEvent } from '@mui/material/Select'
 import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
 import Switch from '@mui/material/Switch'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import Slider from '@mui/material/Slider'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { api } from '../api/client'
+import AiUsageCard from '../components/AiUsageCard'
 import type { AiSettings, AiSettingsProfile } from '../types'
 
 type Notice = { severity: 'success' | 'error'; message: string } | null
+
+/** AI Setting's two in-page tabs: endpoint configuration and token usage. */
+type AiSettingsTab = 'config' | 'usage'
 
 /** Common LLM presets. Selecting one fills provider / endpoint / model.
  *  API keys are left blank on purpose — the user fills them in when needed.
@@ -184,6 +190,7 @@ export default function AiSettingsPage() {
     api_key: '',
     model: 'gpt-5.6-luna',
     temperature: 0.2,
+    share_data_stats: true,
   })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -216,6 +223,7 @@ export default function AiSettingsPage() {
         api_key: settings.api_key ?? '',
         model: settings.model ?? 'gpt-5.6-luna',
         temperature: settings.temperature ?? 0.2,
+        share_data_stats: settings.share_data_stats ?? true,
       }
       setForm(loaded)
       // A key saved before keys were filed by label still belongs to whatever
@@ -289,6 +297,7 @@ export default function AiSettingsPage() {
       model: profile.model,
       temperature:
         typeof profile.temperature === 'number' ? profile.temperature : 0.2,
+      share_data_stats: profile.share_data_stats ?? true,
     })
     setShowApiKey(false)
     setTestResult(null)
@@ -359,6 +368,10 @@ export default function AiSettingsPage() {
     }
   }
 
+  // Incremented after each connection test so the usage card reloads itself.
+  const [usageRefreshSignal, setUsageRefreshSignal] = useState(0)
+  const [aiTab, setAiTab] = useState<AiSettingsTab>('config')
+
   const handleTest = async () => {
     setTesting(true)
     setTestResult(null)
@@ -372,6 +385,7 @@ export default function AiSettingsPage() {
       })
     } finally {
       setTesting(false)
+      setUsageRefreshSignal((signal) => signal + 1)
     }
   }
 
@@ -385,13 +399,23 @@ export default function AiSettingsPage() {
           </Typography>
         </Box>
 
-        {loading && (
+        <Tabs
+          value={aiTab}
+          onChange={(_, next: AiSettingsTab) => setAiTab(next)}
+          variant="fullWidth"
+          aria-label={t('page.title')}
+        >
+          <Tab value="config" label={t('tabs.configuration')} />
+          <Tab value="usage" label={t('tabs.usage')} />
+        </Tabs>
+
+        {aiTab === 'config' && loading && (
           <Box sx={{ py: 4, textAlign: 'center' }}>
             <CircularProgress size={26} />
           </Box>
         )}
 
-        {loadError && (
+        {aiTab === 'config' && loadError && (
           <Alert
             severity="error"
             action={
@@ -404,9 +428,13 @@ export default function AiSettingsPage() {
           </Alert>
         )}
 
-        {!loading && (
+        {aiTab === 'config' && !loading && (
           <Paper data-tour="ai-settings" variant="outlined" sx={{ p: { xs: 1.5, sm: 3 } }}>
             <Stack spacing={2.5}>
+              {/* Stack's spacing reset zeroes margins on direct children, which
+                  cancels FormControlLabel's default -11px optical alignment for
+                  the switch track. Re-apply it so both switches left-align with
+                  the rest of the form. '&&' outranks the Stack reset. */}
               <FormControlLabel
                 control={
                   <Switch
@@ -418,7 +446,34 @@ export default function AiSettingsPage() {
                   />
                 }
                 label={t('form.enableLabel')}
+                sx={{ '&&': { ml: '-11px' } }}
               />
+
+              <Box>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={form.share_data_stats ?? true}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        setForm((current) => ({
+                          ...current,
+                          share_data_stats: event.target.checked,
+                        }))
+                        setTestResult(null)
+                      }}
+                    />
+                  }
+                  label={t('form.shareDataStatsLabel')}
+                  sx={{ '&&': { ml: '-11px' } }}
+                />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', pl: { xs: 0, sm: 6 } }}
+                >
+                  {t('form.shareDataStatsHelper')}
+                </Typography>
+              </Box>
 
               <FormControl fullWidth>
                 <InputLabel id="llm-saved-label">{t('form.savedSettingsLabel')}</InputLabel>
@@ -658,6 +713,8 @@ export default function AiSettingsPage() {
             </Stack>
           </Paper>
         )}
+
+        {aiTab === 'usage' && <AiUsageCard refreshSignal={usageRefreshSignal} />}
       </Stack>
 
       <Dialog

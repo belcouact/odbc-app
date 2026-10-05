@@ -22,6 +22,14 @@
     "chart": {
       "label": "Chart",
       "hint": "Describe a chart (ECharts) to apply to the Analyze tab, or just ask anything. Refine it over several turns."
+    },
+    "insight": {
+      "label": "Insights",
+      "hint": "Generate an AI insight card from the loaded grid — overview, key findings, anomalies and next steps."
+    },
+    "analyze": {
+      "label": "Deep Analysis",
+      "hint": "Describe a goal and run a full analysis in one shot — narrative, charts and statistics — then keep asking follow-up questions on the same data."
     }
   },
   "context": {
@@ -38,7 +46,43 @@
     "chat": "Ask anything — e.g. “What does this app do?”, “Explain standard deviation”, or “Summarize this data in plain words”.",
     "sql": "e.g. “Explain what this SQL does”, “Fix the error: …”, or “Write a query for …”.",
     "script": "e.g. “Write a Python script that groups rows by region and prints the total amount per region.”",
-    "chart": "e.g. “A bar chart of total amount per region, title “Sales by region”, blue bars.” — or just ask, e.g. “What chart type fits this data?”"
+    "chart": "e.g. “A bar chart of total amount per region, title “Sales by region”, blue bars.” — or just ask, e.g. “What chart type fits this data?”",
+    "insight": "Run a query, then generate an AI insight card — an overview of the data, key findings, anomalies and suggested next steps. Add an optional focus above to steer the analysis.",
+    "analyze": "Describe your analysis goal above (optional), then run the pipeline — a written analysis plus charts and statistics for the loaded grid. Follow-up questions keep the same data context."
+  },
+  "insight": {
+    "cardTitle": "Data insights",
+    "generating": "Analysing the loaded data…",
+    "profileSummary": "Profiled {{profiled}} of {{total}} rows across {{columns}} columns",
+    "copy": "Copy",
+    "download": "Download .md",
+    "generate": "Generate insights",
+    "regenerate": "Regenerate",
+    "focusLabel": "Focus (optional)",
+    "focusPlaceholder": "e.g. focus on regional sales trends or data-quality issues…",
+    "questionsTitle": "Suggested questions",
+    "exportReport": "Export report"
+  },
+  "analyze": {
+    "cardTitle": "Deep analysis",
+    "running": "Running the analysis pipeline…",
+    "profileSummary": "Profiled {{profiled}} of {{total}} rows across {{columns}} columns",
+    "chartsTitle": "Charts",
+    "noChartData": "No chart could be built from this data.",
+    "statsTitle": "Statistical output",
+    "questionsTitle": "Follow-up questions",
+    "goalLabel": "Analysis goal (optional)",
+    "goalPlaceholder": "e.g. find the main drivers of regional sales and flag data-quality issues…",
+    "run": "Run analysis",
+    "rerun": "Re-run analysis",
+    "copy": "Copy",
+    "download": "Download .md",
+    "exportReport": "Export report"
+  },
+  "questions": {
+    "suggest": "Suggest questions",
+    "suggesting": "Thinking of questions…",
+    "title": "Try asking"
   },
   "apply": {
     "sql": "Apply to SQL editor",
@@ -61,7 +105,35 @@
     "sqlApplied": "SQL applied to the SQL editor.",
     "scriptInserted": "Script inserted into the Analyze editor.",
     "chartAppliedScript": "Chart applied to the Analyze tab.",
-    "chartAppliedBi": "Chart applied to the Dashboard chart builder."
+    "chartAppliedBi": "Chart applied to the Dashboard chart builder.",
+    "insightCopied": "Insights copied to the clipboard.",
+    "insightDownloaded": "Insights downloaded as a Markdown file.",
+    "reportExported": "Report exported as an HTML file.",
+    "analyzeCopied": "Analysis copied to the clipboard.",
+    "analyzeDownloaded": "Analysis downloaded as a Markdown file."
+  },
+  "report": {
+    "title": "Data Analysis Report",
+    "generated": "Generated",
+    "source": "Data source",
+    "connection": "Connection",
+    "table": "Table",
+    "rows": "Rows",
+    "columns": "Columns",
+    "profile": "Data profile",
+    "column": "Column",
+    "type": "Type",
+    "nonNull": "Non-null",
+    "missing": "Missing",
+    "unique": "Unique",
+    "range": "Range",
+    "topValues": "Top values",
+    "insights": "AI insights",
+    "findings": "Analysis findings",
+    "charts": "Charts",
+    "stats": "Statistical output",
+    "questions": "Suggested follow-up questions",
+    "noQuestions": "No follow-up questions were generated."
   },
   "errors": {
     "scriptEmpty": "The script is empty — nothing to apply.",
@@ -70,6 +142,10 @@
     "emptyResponse": "The AI returned an empty response. Please try again.",
     "aiRequestFailed": "AI request failed",
     "notConfigured": "AI is not configured — set it up in the AI Setting tab.",
-    "parseChartFailed": "Failed to parse the chart script"
+    "parseChartFailed": "Failed to parse the chart script",
+    "noGridData": "No grid data to analyse — run a query first.",
+    "copyFailed": "Copy failed — the clipboard is not available.",
+    "noQuestions": "No follow-up questions were suggested this time. Try again.",
+    "reportFailed": "Failed to build the report"
   }
 }

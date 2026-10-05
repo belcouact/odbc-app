@@ -55,9 +55,9 @@ import ExternalAppPage from './pages/ExternalAppPage'
 import AiSidebar from './components/AiSidebar'
 import IntroDialog from './components/IntroDialog'
 import GuidedTour, { TOUR_STORAGE_KEY } from './components/GuidedTour'
-import { emit } from './editorBus'
+import { emit, subscribe } from './editorBus'
 import type { GridLoadPayload } from './editorBus'
-import type { AiMode, GridDrillFilter } from './types'
+import type { AiMode } from './types'
 
 type View =
   | 'editor'
@@ -947,6 +947,19 @@ function AppShell() {
   // ---- Global AI assistant sidebar ----
   const [aiOpen, setAiOpen] = useState(false)
   const [aiMode, setAiMode] = useState<AiMode>('sql')
+  /** Question pushed from the Analyze page's insight card — sent in the Chat
+   *  tab once the sidebar is open. `seq` deduplicates repeated pushes. */
+  const [autoChatAsk, setAutoChatAsk] = useState<{ text: string; seq: number } | null>(null)
+
+  useEffect(() => {
+    return subscribe((action) => {
+      if (action.type === 'ai-ask') {
+        setAiMode('chat')
+        setAiOpen(true)
+        setAutoChatAsk((prev) => ({ text: action.text, seq: (prev?.seq ?? 0) + 1 }))
+      }
+    })
+  }, [])
 
   // All callbacks handed to (memoized) pages are stable, so switching views
   // only re-renders the incoming page instead of every mounted page.
@@ -955,14 +968,9 @@ function AppShell() {
     setAiOpen(true)
   }, [])
   const closeAi = useCallback(() => setAiOpen(false), [])
+  const clearAutoChatAsk = useCallback(() => setAutoChatAsk(null), [])
   const openEditor = useCallback(() => setView('editor'), [])
   const openScript = useCallback(() => setView('script'), [])
-  // Analyze → Summary drill-through: filter the Query grid, then reveal it
-  // (an empty filter set just clears the filter and stays put).
-  const drillThroughGrid = useCallback((filters: GridDrillFilter[]) => {
-    emit({ type: 'drill-grid', filters })
-    if (filters.length > 0) setView('editor')
-  }, [])
   // BI → "Load to grid": swap the Query grid's rows for a stored snapshot's
   // data, then reveal the Query page where the grid lives.
   const loadSnapshotToGrid = useCallback((payload: GridLoadPayload) => {
@@ -1460,7 +1468,7 @@ function AppShell() {
           <WorkspacePage ref={workspaceRef} onOpenAi={openAi} />
         </Box>
         <Box sx={{ width: '100%', display: view === 'script' ? 'block' : 'none' }}>
-          <ScriptPage ref={scriptRef} onOpenAi={openAi} onDrillThrough={drillThroughGrid} />
+          <ScriptPage ref={scriptRef} onOpenAi={openAi} />
         </Box>
         <Box sx={{ width: '100%', display: view === 'bi' ? 'block' : 'none' }}>
           <BiPage ref={biRef} onLoadToGrid={loadSnapshotToGrid} />
@@ -1525,6 +1533,8 @@ function AppShell() {
         onOpenScript={openScript}
         chartTarget={view === 'bi' ? 'bi' : 'script'}
         onOpenBi={openBi}
+        autoQuestion={autoChatAsk}
+        onAutoQuestionHandled={clearAutoChatAsk}
       />
 
       <HowToUseDialog

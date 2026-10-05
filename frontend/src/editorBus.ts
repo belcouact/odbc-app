@@ -3,7 +3,6 @@
  * Pre-defined pages emit these actions; the workspace subscribes and reacts.
  */
 import type { EChartsOption } from 'echarts'
-import type { GridDrillFilter } from './types'
 import type { ResultColumn } from './api/client'
 
 /** Payload pushed into the Query grid (BI page's "load to grid"). */
@@ -31,10 +30,11 @@ export type EditorAction =
   | { type: 'request-run' }
   /** Apply an AI-generated ECharts option to a page's Chart tab. */
   | { type: 'apply-chart'; option: EChartsOption; /** Destination page; defaults to the Analyze page. */ target?: 'script' | 'bi' }
-  /** Bring the Analyze page to a specific tab (Chart / Script / Summary). */
-  | { type: 'show-analyze-tab'; tab: 'chart' | 'script' | 'summary' }
-  /** Apply drill-through filters (empty array clears them) to the Query grid. */
-  | { type: 'drill-grid'; filters: GridDrillFilter[] }
+  /** Bring the Analyze page to a specific tab (Script / Chart / Insights /
+   *  Deep analysis). */
+  | { type: 'show-analyze-tab'; tab: 'script' | 'chart' | 'insights' | 'analyze' }
+  /** Ask the AI sidebar's Chat tab a question (opens the sidebar if closed). */
+  | { type: 'ai-ask'; text: string }
   /** Replace the Query grid's rows with warehouse snapshot data. */
   | { type: 'load-grid'; payload: GridLoadPayload }
 

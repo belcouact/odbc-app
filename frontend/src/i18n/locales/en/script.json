@@ -12,12 +12,13 @@
   },
   "page": {
     "title": "Analyze",
-    "subtitle": "Script, chart or summarize the rows currently in the grid. Scripts run in Python with the rows passed as <b>data</b> (a list of row dicts), and the Summary tab aggregates them in the browser."
+    "subtitle": "Script, chart or summarize the rows currently in the grid. Scripts run in Python with the rows passed as <b>data</b> (a list of row dicts); the AI tabs generate insights and deep analyses."
   },
   "tabs": {
     "script": "Script",
     "chart": "Chart",
-    "summary": "Summary"
+    "insights": "Insights",
+    "analyze": "Deep Analysis"
   },
   "chart": {
     "emptyTitle": "Nothing to chart yet",

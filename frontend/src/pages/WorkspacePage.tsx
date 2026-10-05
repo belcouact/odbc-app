@@ -2647,17 +2647,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       case 'request-run':
         requestRunFromRef()
         break
-      case 'drill-grid':
-        // The Analyze page's Summary tab drills through to this grid.
-        setDrillFilters(action.filters)
-        // App.tsx reveals this page right after emitting the action; wait a
-        // tick for the layout to paint, then bring the results grid into view.
-        if (action.filters.length > 0) {
-          window.setTimeout(() => {
-            gridAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }, 120)
-        }
-        break
       case 'load-grid': {
         // The BI page loads a stored snapshot back into this grid. Like a file
         // upload it replaces the whole grid, so the revert history restarts.

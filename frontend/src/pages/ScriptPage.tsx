@@ -25,7 +25,8 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import BookmarksIcon from '@mui/icons-material/Bookmarks'
 import CodeIcon from '@mui/icons-material/Code'
-import FunctionsIcon from '@mui/icons-material/Functions'
+import InsightsIcon from '@mui/icons-material/Insights'
+import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import StorageIcon from '@mui/icons-material/Storage'
 import TerminalIcon from '@mui/icons-material/Terminal'
@@ -75,7 +76,6 @@ import type { DownloadResult, SnapshotMeta } from '../api/client'
 import type {
   AiMode,
   DbConnection,
-  GridDrillFilter,
   QueryResult,
   QuerySource,
   ScriptEntry,
@@ -85,11 +85,11 @@ import type {
 } from '../types'
 import { emit, subscribe } from '../editorBus'
 import { getWorkspaceSnapshot } from '../workspaceBus'
+import { AnalyzePanel, InsightPanel } from '../components/AnalysisPanel'
 import ChartsPanel from '../components/ChartsPanel'
 import CodeEditor from '../components/CodeEditor'
-import SummaryPanel from '../components/SummaryPanel'
 
-type ScriptTab = 'script' | 'chart' | 'summary'
+type ScriptTab = 'script' | 'chart' | 'insights' | 'analyze'
 
 interface DeleteTarget {
   id: string
@@ -111,9 +111,6 @@ export interface ScriptPageHandle {
 interface ScriptPageProps {
   /** Open the global AI sidebar in the given specialty (Query / Analyze / Chart). */
   onOpenAi?: (mode: AiMode) => void
-  /** Drill through from the Summary tab: filter the Query grid by these
-   *  conditions and reveal it. An empty array only clears the filter. */
-  onDrillThrough?: (filters: GridDrillFilter[]) => void
   /** The shell asks the page to refresh through this handle when the tab is
    *  opened. A boolean "active" prop would instead re-render the page on every
    *  switch — including the ones where it is only being hidden. */
@@ -256,7 +253,7 @@ function renderOutputLinks(text: string): ReactNode[] {
   return out
 }
 
-function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
+function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   const { t } = useTranslation('script')
   const [tab, setTab] = useState<ScriptTab>('script')
   /** ECharts option pushed in from the AI sidebar's Chart assistant. */
@@ -952,12 +949,8 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
         >
           <Tab value="script" icon={<TerminalIcon />} iconPosition="start" label={t('tabs.script')} />
           <Tab value="chart" icon={<BarChartIcon />} iconPosition="start" label={t('tabs.chart')} />
-          <Tab
-            value="summary"
-            icon={<FunctionsIcon />}
-            iconPosition="start"
-            label={t('tabs.summary')}
-          />
+          <Tab value="insights" icon={<InsightsIcon />} iconPosition="start" label={t('tabs.insights')} />
+          <Tab value="analyze" icon={<PsychologyOutlinedIcon />} iconPosition="start" label={t('tabs.analyze')} />
         </Tabs>
 
         {tab === 'script' && (
@@ -1412,11 +1405,9 @@ function ScriptPage({ onOpenAi, onDrillThrough, ref }: ScriptPageProps = {}) {
           </Paper>
         )}
 
-        {tab === 'summary' && (
-          <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
-            <SummaryPanel result={chartResult} onDrillThrough={onDrillThrough} />
-          </Paper>
-        )}
+        {tab === 'insights' && <InsightPanel />}
+
+        {tab === 'analyze' && <AnalyzePanel />}
       </Stack>
 
       {/* Custom (pre-defined) scripts — pop-up under the Script tab */}

@@ -8,8 +8,6 @@ import enWorkspace from './locales/en/workspace.json'
 import zhWorkspace from './locales/zh/workspace.json'
 import enCharts from './locales/en/charts.json'
 import zhCharts from './locales/zh/charts.json'
-import enSummary from './locales/en/summary.json'
-import zhSummary from './locales/zh/summary.json'
 import enGrid from './locales/en/grid.json'
 import zhGrid from './locales/zh/grid.json'
 import enScript from './locales/en/script.json'
@@ -54,7 +52,6 @@ void i18n.use(initReactI18next).init({
       feedback: enFeedback,
       workspace: enWorkspace,
       charts: enCharts,
-      summary: enSummary,
       grid: enGrid,
       script: enScript,
       bi: enBi,
@@ -72,7 +69,6 @@ void i18n.use(initReactI18next).init({
       feedback: zhFeedback,
       workspace: zhWorkspace,
       charts: zhCharts,
-      summary: zhSummary,
       grid: zhGrid,
       script: zhScript,
       bi: zhBi,

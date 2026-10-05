@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent as ReactPointerEvent, ReactElement } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import ChatIcon from '@mui/icons-material/Chat'
 import CodeIcon from '@mui/icons-material/Code'
 import CloseIcon from '@mui/icons-material/Close'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutlineOutlined'
 import LightbulbIcon from '@mui/icons-material/Lightbulb'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
 import SpeedIcon from '@mui/icons-material/Speed'
@@ -29,6 +28,8 @@ import { api } from '../api/client'
 import { emit } from '../editorBus'
 import type { AiMode } from '../types'
 import { getWorkspaceSnapshot } from '../workspaceBus'
+import MarkdownContent from './MarkdownContent'
+import { QuestionChips } from './AnalysisPanel'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
 
@@ -45,6 +46,11 @@ interface AiSidebarProps {
   chartTarget?: 'script' | 'bi'
   /** Switch the app to the BI tab (called after applying a chart targeted at BI). */
   onOpenBi?: () => void
+  /** Question pushed from the Analyze page's insight card — sent in the Chat
+   *  tab as soon as the drawer is open. `seq` deduplicates repeated pushes. */
+  autoQuestion?: { text: string; seq: number } | null
+  /** Clears the pushed question once it has been sent. */
+  onAutoQuestionHandled?: () => void
 }
 
 const MODES: { value: AiMode; icon: ReactElement }[] = [
@@ -137,6 +143,8 @@ export default function AiSidebar({
   onOpenScript,
   chartTarget = 'script',
   onOpenBi,
+  autoQuestion,
+  onAutoQuestionHandled,
 }: AiSidebarProps) {
   const { t } = useTranslation('aiSidebar')
   // Each mode keeps its own conversation so switching tabs never loses
@@ -146,6 +154,9 @@ export default function AiSidebar({
   const [loadingMode, setLoadingMode] = useState<AiMode | null>(null)
   const [errors, setErrors] = useState<Record<AiMode, string | null>>({ chat: null, sql: null, script: null, chart: null })
   const [notice, setNotice] = useState<string | null>(null)
+  /** Guided follow-up questions offered on the empty Chat tab. */
+  const [chatQuestions, setChatQuestions] = useState<string[]>([])
+  const [chatQuestionsLoading, setChatQuestionsLoading] = useState(false)
 
   /** Resizable drawer width (sm+ only; mobile stays full-width). */
   const [drawerWidth, setDrawerWidth] = useState(440)
@@ -210,14 +221,14 @@ export default function AiSidebar({
     noticeTimer.current = window.setTimeout(() => setNotice(null), 3500)
   }
 
-  const handleSend = async (promptOverride?: string) => {
+  const handleSend = async (promptOverride?: string, targetMode: AiMode = mode) => {
     const text = (promptOverride ?? inputs[mode]).trim()
     if (!text || loadingMode) return
     // Quick actions need SQL in the editor — validate against the live snapshot.
-    if (promptOverride && mode === 'sql' && !getWorkspaceSnapshot().sqlText.trim()) {
+    if (promptOverride && targetMode === 'sql' && !getWorkspaceSnapshot().sqlText.trim()) {
       setErrors((prev) => ({
         ...prev,
-        [mode]: t('errors.sqlEditorEmpty'),
+        [targetMode]: t('errors.sqlEditorEmpty'),
       }))
       return
     }
@@ -225,28 +236,28 @@ export default function AiSidebar({
     // The general Chat tab answers any question, so the grid/editor context is
     // not sent for it — it would only bloat the request.
     const gridContext =
-      mode === 'chat'
+      targetMode === 'chat'
         ? {}
         : {
             connectionId: snapshotNow.connectionId || undefined,
             columns: snapshotNow.columns.map((name) => ({ name, type: '' })),
             rows: snapshotNow.rows,
           }
-    const conversation: ChatMessage[] = [...messages[mode], { role: 'user', content: text }]
+    const conversation: ChatMessage[] = [...messages[targetMode], { role: 'user', content: text }]
     // Append an empty assistant placeholder that fills in as chunks stream in.
-    setMessages((prev) => ({ ...prev, [mode]: [...conversation, { role: 'assistant', content: '' }] }))
-    setInputs((prev) => ({ ...prev, [mode]: '' }))
-    setErrors((prev) => ({ ...prev, [mode]: null }))
-    setLoadingMode(mode)
+    setMessages((prev) => ({ ...prev, [targetMode]: [...conversation, { role: 'assistant', content: '' }] }))
+    setInputs((prev) => ({ ...prev, [targetMode]: '' }))
+    setErrors((prev) => ({ ...prev, [targetMode]: null }))
+    setLoadingMode(targetMode)
     /** Grow the trailing assistant message with the next streamed chunk. */
     const appendDelta = (delta: string) => {
       setMessages((prev) => {
-        const list = prev[mode]
+        const list = prev[targetMode]
         const last = list[list.length - 1]
         if (last === undefined || last.role !== 'assistant') return prev
         const next = [...list]
         next[next.length - 1] = { ...last, content: last.content + delta }
-        return { ...prev, [mode]: next }
+        return { ...prev, [targetMode]: next }
       })
     }
     try {
@@ -254,8 +265,8 @@ export default function AiSidebar({
         {
           messages: conversation,
           ...gridContext,
-          mode,
-          sql: mode === 'sql' ? snapshotNow.sqlText || undefined : undefined,
+          mode: targetMode,
+          sql: targetMode === 'sql' ? snapshotNow.sqlText || undefined : undefined,
         },
         appendDelta,
       )
@@ -264,22 +275,22 @@ export default function AiSidebar({
       }
       setMessages((prev) => ({
         ...prev,
-        [mode]: [...conversation, { role: 'assistant', content: reply }],
+        [targetMode]: [...conversation, { role: 'assistant', content: reply }],
       }))
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.aiRequestFailed')
       setErrors((prev) => ({
         ...prev,
-        [mode]: message.includes('not configured')
+        [targetMode]: message.includes('not configured')
           ? t('errors.notConfigured')
           : message,
       }))
       // Drop the placeholder when nothing streamed; keep partial output otherwise.
       setMessages((prev) => {
-        const list = prev[mode]
+        const list = prev[targetMode]
         const last = list[list.length - 1]
         if (last && last.role === 'assistant' && !last.content.trim()) {
-          return { ...prev, [mode]: list.slice(0, -1) }
+          return { ...prev, [targetMode]: list.slice(0, -1) }
         }
         return prev
       })
@@ -287,6 +298,60 @@ export default function AiSidebar({
       setLoadingMode(null)
     }
   }
+
+  /** Ask the AI for follow-up questions about the loaded grid (Chat empty state). */
+  const handleSuggestQuestions = async () => {
+    if (chatQuestionsLoading || loadingMode) return
+    const snapshotNow = getWorkspaceSnapshot()
+    if (snapshotNow.rows.length === 0 || snapshotNow.columns.length === 0) {
+      setErrors((prev) => ({ ...prev, chat: t('errors.noGridData') }))
+      return
+    }
+    setErrors((prev) => ({ ...prev, chat: null }))
+    setChatQuestionsLoading(true)
+    try {
+      const result = await api.aiQuestions({
+        columns: snapshotNow.columns.map((name) => ({ name, type: '' })),
+        rows: snapshotNow.rows,
+      })
+      setChatQuestions(result.questions)
+      if (result.questions.length === 0) {
+        setErrors((prev) => ({ ...prev, chat: t('errors.noQuestions') }))
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('errors.aiRequestFailed')
+      setErrors((prev) => ({
+        ...prev,
+        chat: message.includes('not configured') ? t('errors.notConfigured') : message,
+      }))
+    } finally {
+      setChatQuestionsLoading(false)
+    }
+  }
+
+  /** Click a guided question: switch to the Chat tab and send it right away. */
+  const askQuestion = (question: string) => {
+    if (loadingMode) return
+    onModeChange('chat')
+    void handleSend(question, 'chat')
+  }
+
+  // A question pushed from the Analyze page's insight card is sent in the Chat
+  // tab as soon as the drawer is open. `sendRef` avoids stale closures and the
+  // `seq` guard deduplicates repeated pushes of the same question.
+  const sendRef = useRef(handleSend)
+  // Sync the ref after every render (declaration order keeps it fresh for the
+  // auto-ask effect below) instead of writing it during render.
+  useEffect(() => {
+    sendRef.current = handleSend
+  })
+  const lastAutoAskSeq = useRef(0)
+  useEffect(() => {
+    if (!autoQuestion || !open || autoQuestion.seq === lastAutoAskSeq.current) return
+    lastAutoAskSeq.current = autoQuestion.seq
+    onAutoQuestionHandled?.()
+    void sendRef.current(autoQuestion.text, 'chat')
+  }, [autoQuestion, open, onAutoQuestionHandled])
 
   const handleApply = (content: string) => {
     const code = extractCodeBlock(content)
@@ -347,6 +412,9 @@ export default function AiSidebar({
   const waitingForFirstChunk =
     loadingMode !== null && lastMessage?.role === 'assistant' && lastMessage.content === ''
 
+  /** Whether the Clear button has anything to reset for the active tab. */
+  const canClear = currentMessages.length > 0
+
   return (
     <Drawer
       anchor="right"
@@ -389,7 +457,11 @@ export default function AiSidebar({
             <Typography variant="h6">{t('title')}</Typography>
           </Stack>
           <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-            <Button size="small" onClick={clearConversation} disabled={currentMessages.length === 0}>
+            <Button
+              size="small"
+              onClick={clearConversation}
+              disabled={!canClear}
+            >
               {t('clear')}
             </Button>
             <IconButton onClick={onClose} aria-label={t('aria.close')} size="small">
@@ -451,12 +523,42 @@ export default function AiSidebar({
         }}
       >
         {currentMessages.length === 0 && (
-          <Typography variant="body2" color="text.secondary">
-            {mode === 'chat' && t('empty.chat')}
-            {mode === 'sql' && t('empty.sql')}
-            {mode === 'script' && t('empty.script')}
-            {mode === 'chart' && t('empty.chart')}
-          </Typography>
+          <Stack spacing={1.5}>
+            <Typography variant="body2" color="text.secondary">
+              {mode === 'chat' && t('empty.chat')}
+              {mode === 'sql' && t('empty.sql')}
+              {mode === 'script' && t('empty.script')}
+              {mode === 'chart' && t('empty.chart')}
+            </Typography>
+            {mode === 'chat' && (
+              <>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={
+                    chatQuestionsLoading ? <CircularProgress size={16} /> : <HelpOutlineIcon />
+                  }
+                  onClick={() => void handleSuggestQuestions()}
+                  disabled={chatQuestionsLoading || loadingMode !== null || snapshot.rows.length === 0}
+                  sx={{ alignSelf: 'flex-start', minHeight: 48 }}
+                >
+                  {chatQuestionsLoading ? t('questions.suggesting') : t('questions.suggest')}
+                </Button>
+                {chatQuestions.length > 0 && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                      {t('questions.title')}
+                    </Typography>
+                    <QuestionChips
+                      questions={chatQuestions}
+                      onPick={askQuestion}
+                      disabled={loadingMode !== null}
+                    />
+                  </Box>
+                )}
+              </>
+            )}
+          </Stack>
         )}
         {currentMessages.map((message, index) =>
           // Skip the in-flight placeholder (empty assistant bubble) while it
@@ -476,92 +578,7 @@ export default function AiSidebar({
               }}
             >
             {message.role === 'assistant' ? (
-              <Box
-                sx={{
-                  fontSize: '0.875rem',
-                  lineHeight: 1.75,
-                  wordBreak: 'break-word',
-                  overflowWrap: 'break-word',
-                  color: 'text.primary',
-                  '& > :first-of-type': { mt: 0 },
-                  '& > :last-of-type': { mb: 0 },
-                  '& p': { my: 0.875 },
-                  '& ul, & ol': { my: 0.875, pl: 1.75 },
-                  '& li': { my: 0.25 },
-                  '& li > p': { my: 0 },
-                  '& h1, & h2, & h3, & h4': { fontWeight: 600, lineHeight: 1.25, color: 'text.primary' },
-                  '& h1': { fontSize: '1.2rem', mt: 1.5, mb: 0.75 },
-                  '& h2': { fontSize: '1.075rem', mt: 1.5, mb: 0.625 },
-                  '& h3': { fontSize: '1rem', mt: 1.25, mb: 0.5 },
-                  '& h4': { fontSize: '0.9375rem', mt: 1.25, mb: 0.5 },
-                  '& a': { color: 'primary.main', fontWeight: 500 },
-                  '& strong': { fontWeight: 600 },
-                  '& blockquote': {
-                    borderLeft: 4,
-                    borderColor: 'divider',
-                    pl: 1.25,
-                    my: 1,
-                    color: 'text.secondary',
-                    fontStyle: 'italic',
-                  },
-                  '& table': { borderCollapse: 'collapse', my: 1, width: '100%', fontSize: '0.8125rem' },
-                  '& th, & td': { border: 1, borderColor: 'divider', p: 0.5, textAlign: 'left' },
-                  '& hr': { my: 1.5, borderColor: 'divider' },
-                }}
-              >
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    pre: ({ children }) => (
-                      <Box
-                        component="pre"
-                        sx={{
-                          my: 1,
-                          p: 1.25,
-                          bgcolor: 'rgba(0,0,0,0.06)',
-                          borderRadius: 1,
-                          overflowX: 'auto',
-                          fontFamily: 'Consolas, monospace',
-                          fontSize: '0.8125rem',
-                          lineHeight: 1.6,
-                        }}
-                      >
-                        {children}
-                      </Box>
-                    ),
-                    code: ({ children, className }) => {
-                      const text = children
-                      const isBlock =
-                        /language-/.test(className || '') ||
-                        String(text).includes('\n')
-                      return (
-                        <code
-                          style={
-                            isBlock
-                              ? {
-                                  fontFamily: 'Consolas, monospace',
-                                  fontSize: '0.875em',
-                                  whiteSpace: 'pre-wrap',
-                                }
-                              : {
-                                  fontFamily: 'Consolas, monospace',
-                                  fontSize: '0.875em',
-                                  backgroundColor: 'rgba(0,0,0,0.05)',
-                                  padding: '0.125em 0.375em',
-                                  borderRadius: 4,
-                                  whiteSpace: 'pre-wrap',
-                                }
-                          }
-                        >
-                          {children}
-                        </code>
-                      )
-                    },
-                  }}
-                >
-                  {message.content}
-                </ReactMarkdown>
-              </Box>
+              <MarkdownContent content={message.content} />
             ) : (
               <Typography
                 component="pre"

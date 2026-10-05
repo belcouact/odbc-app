@@ -3,6 +3,10 @@
     "title": "AI Setting",
     "subtitle": "Configure an OpenAI-compatible LLM endpoint used for NL-to-SQL and AI summaries."
   },
+  "tabs": {
+    "configuration": "Configuration",
+    "usage": "Token usage"
+  },
   "actions": {
     "retry": "Retry",
     "save": "Save",
@@ -12,6 +16,8 @@
   },
   "form": {
     "enableLabel": "Enable AI (LLM)",
+    "shareDataStatsLabel": "Share data statistics with the AI",
+    "shareDataStatsHelper": "When on, chat turns and the Insights card include a compact statistical profile of the loaded grid (per-column counts, ranges and top values). Only aggregated metadata is sent — never full rows. Turn it off to keep AI requests to schema only.",
     "savedSettingsLabel": "Saved settings",
     "loadSavedPlaceholder": "Load a saved setting…",
     "noSavedSettings": "No saved settings yet — they appear after you click Save",
@@ -70,5 +76,62 @@
     "saved": "AI settings saved — the assistant uses them on your next message.",
     "saveFailed": "Failed to save AI settings",
     "testFailed": "Connection test failed"
+  },
+  "usage": {
+    "title": "Token usage",
+    "subtitle": "Recorded locally on this machine — monitoring never blocks AI features.",
+    "refreshAria": "Refresh usage",
+    "loadFailed": "Failed to load token usage",
+    "empty": "No AI activity recorded yet.",
+    "tiles": {
+      "today": "Today",
+      "last7": "Last 7 days",
+      "allTime": "All time",
+      "requests": "{{n}} requests"
+    },
+    "breakdown": {
+      "title": "By feature",
+      "byModel": "By model"
+    },
+    "chart": {
+      "title": "Last 14 days · by model"
+    },
+    "recent": {
+      "colTime": "Time",
+      "colFeature": "Feature",
+      "colModel": "Model",
+      "colInput": "Input",
+      "colOutput": "Output",
+      "colElapsed": "Latency",
+      "pageInfo": "{{from}}–{{to}} of {{total}}",
+      "rowsPerPage": "Rows",
+      "prevPage": "Previous page",
+      "nextPage": "Next page",
+      "elapsed": "{{ms}} ms"
+    },
+    "reset": {
+      "button": "Reset usage",
+      "title": "Reset token usage?",
+      "body": "All token usage recorded on this machine will be cleared. This cannot be undone.",
+      "confirm": "Reset",
+      "success": "Token usage cleared.",
+      "failed": "Failed to reset token usage"
+    },
+    "features": {
+      "chat": "Chat",
+      "test": "Connection test",
+      "nl_to_sql": "NL → SQL",
+      "summary": "AI summary",
+      "insights": "Insights",
+      "questions": "Suggested questions",
+      "script": "Script generation",
+      "grid_clarify": "Grid clarify",
+      "grid_script": "Grid script",
+      "echart": "Chart generation",
+      "dashboard": "Dashboard",
+      "stats": "Data statistics",
+      "analyze": "Data analysis",
+      "dictionary": "Data dictionary"
+    }
   }
 }
