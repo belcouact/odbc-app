@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -1628,6 +1629,12 @@ th.sortable:hover{background:#e2e9f2}
     <div class="modal-body">
       <div class="chiprow" id="itemChips"></div>
       <div class="stats" id="itemStats"></div>
+      <div class="controls">
+        <label class="inl" id="refWrap" style="display:none">&#916;E reference
+          <select id="refSel" aria-label="Delta E reference"></select></label>
+        <input type="search" id="iSearch" placeholder="Search Raw sample or batch">
+      </div>
+
       <div class="card" id="abCard" style="display:none">
         <div class="card-title" id="abCardTitle">&#916;a*/&#916;b* vs reference</div>
         <div id="abToggles">
@@ -1642,13 +1649,7 @@ th.sortable:hover{background:#e2e9f2}
       <div class="card" id="deCard">
         <div class="card-title" id="deCardTitle">&#916;E vs LD mean over time</div>
         <div id="itemChart"></div>
-      </div>
-      <div class="controls">
-        <label class="inl" id="refWrap" style="display:none">&#916;E reference
-          <select id="refSel" aria-label="Delta E reference"></select></label>
-        <input type="search" id="iSearch" placeholder="Search Raw sample or batch">
-      </div>
-      <div class="table-wrap">
+      </div><div class="table-wrap">
         <table>
           <thead><tr id="itemHead"></tr></thead>
           <tbody id="itemBody"></tbody>
@@ -3428,7 +3429,7 @@ function itemFiltered(){
 function computeFence(){
   var des=[];
   if(curMode==='ld'||curMode==='lam')
-    ITEM_WORK.forEach(function(r){ if(r[7]!=='') des.push(r[7]); });
+    itemFiltered().forEach(function(r){ if(r[7]!=='') des.push(r[7]); });
   des.sort(function(x,y){ return x-y; });
   if(des.length<4){ ITEM_FENCE=Infinity; return; }
   var q1=pct(des,0.25), q3=pct(des,0.75), iqr=q3-q1;
@@ -3443,9 +3444,12 @@ function activeRef(){
       sel=document.getElementById('refSel');
   if(!wrap||wrap.style.display==='none'||!sel) return ITEM_REF;
   if(curMode==='ld') return LDREFS[sel.value]||ITEM_REF;
-  if(curMode==='lam')
-    return sel.value==='lam'
-      ? ITEM_REF : (LD_CI[String(sel.value).toUpperCase()]||ITEM_REF);
+  if(curMode==='lam'){
+    if(sel.value==='lam') return ITEM_REF;
+    if(sel.value.indexOf('lamm:')===0){ var mi=Number(sel.value.slice(5)); return (ITEM_REF.lamMasters||[])[mi]||ITEM_REF; }
+    var code=sel.value.indexOf('ld:')===0 ? sel.value.slice(3) : sel.value;
+    return LD_CI[String(code).toUpperCase()]||ITEM_REF;
+  }
   return ITEM_REF;
 }
 /* ΔE of every Raw sample vs the selected reference LD sample. */
@@ -3508,7 +3512,7 @@ function renderStats(){
     return;
   }
   var deVals=[];
-  ITEM_WORK.forEach(function(r){ if(r[7]!=='') deVals.push(r[7]); });
+  itemFiltered().forEach(function(r){ if(r[7]!=='') deVals.push(r[7]); });
   deVals.sort(function(x,y){ return x-y; });
   var nOut=deVals.filter(function(v){ return v>ITEM_FENCE; }).length;
   var lbl=curMode==='lam'?'Laminate samples':'Matching Raw samples';
@@ -3587,15 +3591,14 @@ function openDetail(mode,item){
       if(it && !seen[it.item]){ seen[it.item]=1; ritems.push(it); }
     });
     ritems.sort(function(x,y){ return x.item<y.item?-1:x.item>y.item?1:0; });
-    if(ritems.length){
-      wrap.style.display='';
-      var lsel=document.getElementById('refSel');
-      lsel.innerHTML='<optgroup label="Laminate"><option value="lam">'
-        +esc(ref.name)+' (master mean)</option></optgroup>'
-        +'<optgroup label="Raw">'+ritems.map(function(it){
-          return '<option value="'+esc(it.item)+'">'+esc(it.item)+'</option>';
-        }).join('')+'</optgroup>';
-      lsel.value='lam';
+    var masters=[];
+    LAM.forEach(function(r){ if(r[8]===item&&r[11]==='Laminate Master'&&r[2]!==''&&r[3]!==''&&r[4]!=='') masters.push({item:item,name:r[1]||item,L:r[2],a:r[3],b:r[4],hex:r[5]}); });
+    masters.sort(function(x,y){ return x.name<y.name?-1:x.name>y.name?1:0; }); ref.lamMasters=masters;
+    if(masters.length||ritems.length){
+      wrap.style.display=''; var lsel=document.getElementById('refSel');
+      var mh=masters.length?'<optgroup label="Laminate Master">'+masters.map(function(m,i){return '<option value="lamm:'+i+'">'+esc(m.name)+'</option>';}).join('')+'</optgroup>':'<optgroup label="Laminate Master"><option value="lam">'+esc(ref.name)+' (master mean)</option></optgroup>';
+      var lh=ritems.length?'<optgroup label="LD_item">'+ritems.map(function(it){return '<option value="ld:'+esc(it.item)+'">'+esc(it.item)+'</option>';}).join('')+'</optgroup>':'';
+      lsel.innerHTML=mh+lh; lsel.value=masters.length?'lamm:0':'lam';
     } else wrap.style.display='none';
     itemCol=7; itemDir=-1;
   } else {
@@ -3643,7 +3646,7 @@ function buildItemChart(){
   if(curMode!=='ld'&&curMode!=='lam') return;
   var SPEC=specFor(curMode), byLabel=curMode==='lam'?'WOL':'batch';
   var raw=[];
-  ITEM_WORK.forEach(function(r){
+  itemFiltered().forEach(function(r){
     if(r[7]===''||r[6]==='') return;         // needs a WOL/batch # and a ΔE
     raw.push([r[6], r[7], r[1]]);            // [WOL/batch, ΔE, sample]
   });
@@ -3834,7 +3837,7 @@ function buildAbChart(){
   var rref=activeRef();
   if(rref.L==null||rref.L===''){ document.getElementById('abCard').style.display='none'; return; }
   var pts=[], bad=[];
-  ITEM_WORK.forEach(function(r){
+  itemFiltered().forEach(function(r){
     if(r[3]===''||r[4]==='') return;         // needs a* and b*
     var da=r[3]-rref.a, db=r[4]-rref.b;
     var d={name:r[1],
@@ -3930,7 +3933,7 @@ function buildDistChart(){
   var rref=activeRef();
   if(!rref||rref.L==null||rref.L===''){ box.style.display='none'; return; }
   var vals=[[],[],[]], half=0, i, k, any=false;
-  ITEM_WORK.forEach(function(r){
+  itemFiltered().forEach(function(r){
     for(k=0;k<3;k++){
       var v=r[DIST_METRICS[k].key];
       if(v===''||v==null||isNaN(v)) continue;
@@ -4035,7 +4038,8 @@ function renderItem(){
   document.getElementById('iNext').disabled=to>=ITEM_VIEW.length;
 }
 document.getElementById('iSearch').addEventListener('input',function(){
-  itemQ=this.value.trim().toLowerCase(); itemPage=0; renderItem(); });
+  itemQ=this.value.trim().toLowerCase(); itemPage=0; renderItem();
+  if(curMode==='ld'||curMode==='lam'){ computeFence(); renderStats(); buildItemChart(); buildAbChart(); buildDistChart(); } });
 document.getElementById('itemHead').addEventListener('click',function(e){
   var th=e.target.closest('th.sortable');
   if(!th) return;
