@@ -267,6 +267,7 @@ export interface AiUsageSummary {
   by_model: Record<string, AiUsageBucket>
   /** Per-day buckets per model (same retention window as `daily`). */
   daily_by_model: Record<string, Record<string, AiUsageBucket>>
+  /** Individual calls, newest last (same retention window as `daily`). */
   recent: AiUsageEntry[]
 }
 

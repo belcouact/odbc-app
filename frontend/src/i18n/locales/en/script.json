@@ -155,6 +155,13 @@
   "editDialog": {
     "title": "Edit pre-defined script",
     "nameLabel": "Script name",
+    "connectionLabel": "Connection",
+    "sourceLabel": "Data source",
+    "sourceTable": "Table: {{table}}",
+    "sourceSql": "Custom SQL",
+    "sourceNone": "No data source",
+    "sqlLabel": "SQL",
+    "sqlPlaceholder": "SELECT ...",
     "descriptionLabel": "Description (optional)",
     "descriptionPlaceholder": "What this script is for — shown on the pre-defined card."
   },
@@ -179,6 +186,7 @@
     "savedFiles_other": "Saved {{count}} files to Downloads.",
     "scriptFailed": "Script failed",
     "enterScript": "Enter a script to run.",
+    "enterSql": "Enter the SQL data source.",
     "chooseSnapshot": "Choose a snapshot under Analyze → Script → Snapshot data first.",
     "couldNotLoadSnapshot": "Could not load snapshot \"{{id}}\".",
     "snapshotNoRows": "The selected snapshot has no stored rows.",

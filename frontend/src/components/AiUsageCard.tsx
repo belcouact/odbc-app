@@ -62,7 +62,7 @@ interface AiUsageCardProps {
 
 /**
  * Token usage monitor for the AI Setting page: Today / 7-day / all-time tiles,
- * donut breakdowns by feature and by model, a 14-day stacked bar chart by
+ * donut breakdowns by feature and by model, a 7-day stacked bar chart by
  * model and a paginated recent-calls table.
  * Loads on mount, on `refreshSignal` change and when the tab becomes visible.
  */
@@ -159,8 +159,9 @@ export default function AiUsageCard({ refreshSignal = 0 }: AiUsageCardProps) {
 
   const recentDesc = useMemo(() => (data?.recent ?? []).slice().reverse(), [data])
 
-  // Recent-calls pagination (the backend caps the log at 100 rows, so slicing
-  // is cheap; `safeRecentPage` keeps the page in range after refreshes).
+  // Call-log pagination (rows are pruned by the backend's 90-day retention,
+  // so slicing is cheap; `safeRecentPage` keeps the page in range after
+  // refreshes).
   const recentPageCount = Math.max(1, Math.ceil(recentDesc.length / recentPageSize))
   const safeRecentPage = Math.min(recentPage, recentPageCount - 1)
   const pageStart = safeRecentPage * recentPageSize
@@ -200,7 +201,7 @@ export default function AiUsageCard({ refreshSignal = 0 }: AiUsageCardProps) {
   const chartOption = useMemo<EChartsOption>(() => {
     const now = new Date()
     const days: string[] = []
-    for (let i = 13; i >= 0; i--) {
+    for (let i = 6; i >= 0; i--) {
       const d = new Date(now)
       d.setDate(now.getDate() - i)
       days.push(dayKey(d))
@@ -241,7 +242,7 @@ export default function AiUsageCard({ refreshSignal = 0 }: AiUsageCardProps) {
             },
           ]
     return {
-      grid: { left: 4, right: 4, top: legend ? 28 : 18, bottom: 0, containLabel: true },
+      grid: { left: 4, right: 4, top: legend ? 44 : 32, bottom: 0, containLabel: true },
       tooltip: { trigger: 'axis', confine: true },
       legend,
       xAxis: {
@@ -251,10 +252,53 @@ export default function AiUsageCard({ refreshSignal = 0 }: AiUsageCardProps) {
         axisLine: { lineStyle: { color: theme.palette.divider } },
         axisLabel: { fontSize: 10, color: theme.palette.text.secondary },
       },
-      yAxis: { type: 'value', splitLine: { show: false }, axisLabel: { show: false } },
-      series: barSeries,
+      yAxis: [
+        {
+          type: 'value',
+          name: t('usage.chart.axisTokens'),
+          nameTextStyle: { fontSize: 10, color: theme.palette.text.secondary, align: 'left' as const },
+          splitLine: { show: false },
+          axisLine: { show: true, lineStyle: { color: theme.palette.divider } },
+          axisLabel: {
+            show: true,
+            fontSize: 10,
+            color: theme.palette.text.secondary,
+            formatter: (value: number) => (value >= 1000 ? `${value / 1000}k` : `${value}`),
+          },
+        },
+        {
+          type: 'value',
+          name: t('usage.chart.axisTimes'),
+          nameTextStyle: { fontSize: 10, color: theme.palette.info.main, align: 'right' as const },
+          splitLine: { show: false },
+          axisLine: { show: true, lineStyle: { color: theme.palette.divider } },
+          axisLabel: { show: true, fontSize: 10, color: theme.palette.info.main },
+          minInterval: 1,
+        },
+      ],
+      series: [
+        ...barSeries,
+        // Invocation-count trend on the secondary axis (skipped while the
+        // window has no calls so fresh installs don't get a stray zero line).
+        ...(days.some((day) => (data?.daily[day]?.requests ?? 0) > 0)
+          ? [
+              {
+                name: t('usage.chart.callsSeries'),
+                type: 'line' as const,
+                yAxisIndex: 1,
+                smooth: true,
+                symbol: 'circle' as const,
+                symbolSize: 4,
+                data: days.map((day) => data?.daily[day]?.requests ?? 0),
+                lineStyle: { width: 2 },
+                itemStyle: { color: theme.palette.info.main },
+                z: 3,
+              },
+            ]
+          : []),
+      ],
     }
-  }, [data, modelRows, theme])
+  }, [data, modelRows, t, theme])
 
   const handleReset = async () => {
     setResetting(true)
@@ -360,12 +404,12 @@ export default function AiUsageCard({ refreshSignal = 0 }: AiUsageCardProps) {
             />
           </Box>
 
-          {/* 14-day mini chart */}
+          {/* 7-day mini chart */}
           <Box>
             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
               {t('usage.chart.title')}
             </Typography>
-            <Box sx={{ height: 140 }}>
+            <Box sx={{ height: 220 }}>
               <EChart option={chartOption} />
             </Box>
           </Box>
@@ -378,11 +422,13 @@ export default function AiUsageCard({ refreshSignal = 0 }: AiUsageCardProps) {
               </Typography>
             ) : (
               <>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  {t('usage.recent.title')}
+                </Typography>
                 <TableContainer sx={{ maxHeight: 420, border: 1, borderColor: 'divider', borderRadius: 1.5 }}>
                   <Table size="small" stickyHeader sx={{ minWidth: 620 }}>
                     <TableHead>
                       <TableRow>
-                        <TableCell padding="none" sx={{ width: 32 }} />
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>{t('usage.recent.colTime')}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>{t('usage.recent.colFeature')}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>{t('usage.recent.colModel')}</TableCell>
@@ -434,7 +480,7 @@ export default function AiUsageCard({ refreshSignal = 0 }: AiUsageCardProps) {
                         setRecentPage(0)
                       }}
                       aria-label={t('usage.recent.rowsPerPage')}
-                      sx={{ minWidth: 84, '& .MuiSelect-select': { py: 1.25 } }}
+                      sx={{ minWidth: 60, '& .MuiSelect-select': { py: 0.5, px: 1 } }}
                     >
                       {RECENT_PAGE_SIZES.map((size) => (
                         <MenuItem key={size} value={size}>
@@ -505,17 +551,11 @@ export default function AiUsageCard({ refreshSignal = 0 }: AiUsageCardProps) {
   )
 }
 
-/** One recent-call table row: status, time, feature, model, input/output tokens, latency. */
+/** One recent-call table row: time, feature, model, input/output tokens, latency. */
 function RecentRow({ entry }: { entry: AiUsageEntry }) {
   const { t } = useTranslation('aiSettings')
   return (
     <TableRow>
-      <TableCell padding="none">
-        <Box
-          aria-label={entry.ok ? 'ok' : 'error'}
-          sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: entry.ok ? 'success.main' : 'error.main' }}
-        />
-      </TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}>
         <Typography variant="caption" color="text.secondary">
           {fmtTime(entry.ts)}

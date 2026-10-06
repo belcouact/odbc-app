@@ -153,6 +153,13 @@
   "editDialog": {
     "title": "编辑预定义脚本",
     "nameLabel": "脚本名称",
+    "connectionLabel": "连接",
+    "sourceLabel": "数据源",
+    "sourceTable": "表：{{table}}",
+    "sourceSql": "自定义 SQL",
+    "sourceNone": "无数据源",
+    "sqlLabel": "SQL",
+    "sqlPlaceholder": "SELECT ...",
     "descriptionLabel": "描述（可选）",
     "descriptionPlaceholder": "该脚本的用途 — 显示在预定义卡片上。"
   },
@@ -176,6 +183,7 @@
     "savedFiles_other": "已将 {{count}} 个文件保存到下载文件夹。",
     "scriptFailed": "脚本运行失败",
     "enterScript": "请输入要运行的脚本。",
+    "enterSql": "请输入 SQL 数据源。",
     "chooseSnapshot": "请先在 分析 → 脚本 → 快照数据 中选择一个快照。",
     "couldNotLoadSnapshot": "无法加载快照「{{id}}」。",
     "snapshotNoRows": "所选快照中没有已存储的行。",

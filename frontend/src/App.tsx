@@ -1463,34 +1463,38 @@ function AppShell() {
             pointerEvents: 'none',
           }}
         />
-        {/* All pages stay mounted so their state survives view switches. */}
-        <Box sx={{ width: '100%', display: view === 'editor' ? 'block' : 'none' }}>
+        {/* All pages stay mounted so their state survives view switches. While
+            the feedback board is open the visible page must also leave the
+            layout: the board overlay is absolutely positioned over <main>, so
+            a tall page underneath would stretch it far past its content and
+            leave a long empty stretch to scroll before the document ends. */}
+        <Box sx={{ width: '100%', display: view === 'editor' && !feedbackOpen ? 'block' : 'none' }}>
           <WorkspacePage ref={workspaceRef} onOpenAi={openAi} />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'script' ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'script' && !feedbackOpen ? 'block' : 'none' }}>
           <ScriptPage ref={scriptRef} onOpenAi={openAi} />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'bi' ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'bi' && !feedbackOpen ? 'block' : 'none' }}>
           <BiPage ref={biRef} onLoadToGrid={loadSnapshotToGrid} />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'flowdiagram' ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'flowdiagram' && !feedbackOpen ? 'block' : 'none' }}>
           <FlowDiagramPage active={view === 'flowdiagram'} />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'project' ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'project' && !feedbackOpen ? 'block' : 'none' }}>
           <ExternalAppPage
             url="https://study-llm.me/apps/light-gantt/"
             title="Project — light-gantt"
             active={view === 'project'}
           />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'problemsolving' ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'problemsolving' && !feedbackOpen ? 'block' : 'none' }}>
           <ExternalAppPage
             url="https://study-llm.me/apps/a3-bowler/metric-bowler"
             title="ProblemSolving — metric-bowler"
             active={view === 'problemsolving'}
           />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'settings' ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'settings' && !feedbackOpen ? 'block' : 'none' }}>
           <SettingsPage
             onStartUpdate={update.startUpdate}
             section={settingsSection}

@@ -1791,12 +1791,15 @@ function FeedbackPage({ onClose }: { onClose: () => void }) {
             </Box>
           )}
 
-          {pageCount > 1 && (
+          {/* Shown by default once the board has posts, even below the
+              one-page threshold; disabled when there is nothing to navigate. */}
+          {visibleThreads.length > 0 && (
             <Box sx={{ display: 'flex', justifyContent: 'center', pt: 2, pb: 1 }}>
               <Pagination
                 count={pageCount}
                 page={safePage}
                 onChange={handlePageChange}
+                disabled={pageCount <= 1}
                 getItemAriaLabel={(type, itemPage) => {
                   if (type === 'page') return t('pagination.page', { page: itemPage })
                   if (type === 'first') return t('pagination.first')

@@ -950,6 +950,14 @@ _MAX_FAST_FAILURES = 3
 
 
 def main() -> int:
+    # Splash FIRST — before the port scan, registry work, backup cleanup and
+    # imports below — so the window is on screen the moment Python starts
+    # running and a launch never looks dead.  Skipped on the updater relaunch:
+    # the pre-update tab is already open and a second window would look like
+    # a second launch.
+    from_updater = "--updated" in sys.argv
+    splash = None if from_updater else _start_splash("ODBCQueryApp", "Starting ODBC Query App…")
+
     if getattr(sys, "frozen", False):
         # Must happen before anything opens a browser: a leaked
         # ``_PYI_ARCHIVE_FILE`` makes the odbcapp:// handler abort on launch.
@@ -964,8 +972,6 @@ def main() -> int:
 
     # "--updated" is passed by _apply_pending_update: a browser tab is
     # already open on the saved port, so don't spawn another one.
-    from_updater = "--updated" in sys.argv
-
     if not from_updater:
         # Bookmark click (odbcapp://) or a second exe launch: an instance is
         # already serving, so only show its page and leave the server alone —
@@ -975,6 +981,8 @@ def main() -> int:
         # instead.  A running instance of this version or newer is left alone.
         running = _running_port()
         if running is not None and _is_current_or_newer(running):
+            if splash is not None:
+                splash.close()
             webbrowser.open(_app_url(running, _load_saved_token()))
             return 0
         if running is not None:
@@ -983,6 +991,8 @@ def main() -> int:
             # Another instance is still unpacking/starting: wait for it and
             # show its page instead of starting a rival server on a new port.
             running = _wait_for_running_port()
+            if splash is not None:
+                splash.close()
             if running is not None:
                 webbrowser.open(_app_url(running, _load_saved_token()))
             return 0
@@ -992,11 +1002,6 @@ def main() -> int:
     # before app.main is imported (it reads the token from the environment).
     token = _prepare_token(reuse_saved=from_updater)
     os.environ["ODBC_APP_TOKEN"] = token
-
-    # Show a "Starting…" window during the ~2 s of imports/bind that follow.
-    # Skipped on the updater relaunch: the pre-update tab is already open and
-    # a second window would look like a second launch.
-    splash = None if from_updater else _start_splash("ODBCQueryApp", "Starting ODBC Query App…")
 
     try:
         import uvicorn

@@ -76,6 +76,7 @@ import type { DownloadResult, SnapshotMeta } from '../api/client'
 import type {
   AiMode,
   DbConnection,
+  QueryDef,
   QueryResult,
   QuerySource,
   ScriptEntry,
@@ -96,10 +97,17 @@ interface DeleteTarget {
   name: string
 }
 
+/** What a saved script re-opens with: its stored builder query, a raw SQL
+ *  data source, or nothing (rows come from the grid/snapshot at runtime). */
+type EditSourceKind = 'query' | 'sql' | 'none'
+
 interface EditTarget {
   id: string
   name: string
   description: string
+  connectionId: string
+  query: QueryDef | null
+  sql: string | null
 }
 
 /** Imperative API the shell uses to refresh this page when its tab is opened. */
@@ -448,6 +456,9 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null)
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editConnection, setEditConnection] = useState('')
+  const [editSource, setEditSource] = useState<EditSourceKind>('none')
+  const [editSql, setEditSql] = useState('')
   const [editing, setEditing] = useState(false)
 
   // ---- Pre-defined scripts list ----
@@ -816,9 +827,19 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   }
 
   const openEdit = (script: ScriptEntry) => {
-    setEditTarget({ id: script.id, name: script.name, description: script.description ?? '' })
+    setEditTarget({
+      id: script.id,
+      name: script.name,
+      description: script.description ?? '',
+      connectionId: script.query?.connection_id ?? script.connection_id ?? '',
+      query: script.query ?? null,
+      sql: script.sql ?? null,
+    })
     setEditName(script.name)
     setEditDescription(script.description ?? '')
+    setEditConnection(script.query?.connection_id ?? script.connection_id ?? '')
+    setEditSource(script.query ? 'query' : script.sql ? 'sql' : 'none')
+    setEditSql(script.sql ?? '')
   }
 
   const handleEditConfirmed = async () => {
@@ -828,12 +849,23 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
       showNotice(t('notices.enterName'))
       return
     }
+    if (editSource === 'sql' && !editSql.trim()) {
+      showNotice(t('notices.enterSql'))
+      return
+    }
     setEditing(true)
     try {
-      // Connection is defined by the script's data source, not here.
+      // A builder-query source keeps its stored definition, re-pointed at the
+      // chosen connection; sql/none drop the query.
       const updated = await api.updateScript(editTarget.id, {
         name,
         description: editDescription,
+        connection_id: editConnection || null,
+        query:
+          editSource === 'query' && editTarget.query
+            ? { ...editTarget.query, connection_id: editConnection }
+            : null,
+        sql: editSource === 'sql' ? editSql : null,
       })
       setScripts((current) => current.map((s) => (s.id === editTarget.id ? updated : s)))
       showNotice(t('notices.updated', { name }), 'success')
@@ -2121,7 +2153,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
         </DialogActions>
       </Dialog>
 
-      {/* Edit script name, connection & description */}
+      {/* Edit script name, connection, data source & description */}
       <Dialog open={editTarget !== null} onClose={() => setEditTarget(null)} fullWidth maxWidth="sm">
         <DialogTitle>{t('editDialog.title')}</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
@@ -2134,6 +2166,54 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
               required
               autoFocus
             />
+            <FormControl fullWidth size="small">
+              <InputLabel id="edit-script-connection-label">
+                {t('editDialog.connectionLabel')}
+              </InputLabel>
+              <Select
+                labelId="edit-script-connection-label"
+                label={t('editDialog.connectionLabel')}
+                value={editConnection}
+                onChange={(e: SelectChangeEvent) => setEditConnection(e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>{t('common.noConnection')}</em>
+                </MenuItem>
+                {connections.map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.name || c.dsn || t('common.unnamedConnection')}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth size="small">
+              <InputLabel id="edit-script-source-label">{t('editDialog.sourceLabel')}</InputLabel>
+              <Select
+                labelId="edit-script-source-label"
+                label={t('editDialog.sourceLabel')}
+                value={editSource}
+                onChange={(e: SelectChangeEvent) => setEditSource(e.target.value as EditSourceKind)}
+              >
+                {editTarget?.query ? (
+                  <MenuItem value="query">
+                    {t('editDialog.sourceTable', { table: editTarget.query.table })}
+                  </MenuItem>
+                ) : null}
+                <MenuItem value="sql">{t('editDialog.sourceSql')}</MenuItem>
+                <MenuItem value="none">{t('editDialog.sourceNone')}</MenuItem>
+              </Select>
+            </FormControl>
+            {editSource === 'sql' ? (
+              <TextField
+                label={t('editDialog.sqlLabel')}
+                value={editSql}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => setEditSql(event.target.value)}
+                fullWidth
+                multiline
+                minRows={4}
+                placeholder={t('editDialog.sqlPlaceholder')}
+              />
+            ) : null}
             <TextField
               label={t('editDialog.descriptionLabel')}
               value={editDescription}

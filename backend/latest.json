@@ -1,8 +1,8 @@
 {
-  "version": "2.5.0",
+  "version": "2.5.2",
   "min_version": "1.0.0",
-  "notes": "1. New \"Token usage\" tab under Settings → AI Assistant shows how many tokens the AI assistant uses: totals for today, the last 7 days and all time, donut charts breaking usage down by feature and by model, and a 14-day bar chart per model.\n2. The tab lists recent AI calls in a table — time, feature, model, input tokens, output tokens and latency — with previous/next page buttons and a selector for how many rows to show per page (10/25/50). The table is always visible; no extra clicks needed.\n3. A refresh button reloads the numbers on demand and \"Reset usage\" clears the locally recorded history. Usage is recorded only on this machine and monitoring never blocks AI features.",
+  "notes": "1. The feedback board no longer leaves a long empty stretch when scrolling: opening Feedback ends right after the post list instead of scrolling through a tall blank page, and closing it returns you to the page you opened it from.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "9222d0c678532ebb4fc6955dea557b963eab0b1977b45d77633717c0714a5998",
+  "sha256": "d80cef4b238d5f0890f786fa6620201ae7e4e028b5560a2c538c700883e28439",
   "installer": "ODBCQueryApp-Setup-latest.exe"
 }

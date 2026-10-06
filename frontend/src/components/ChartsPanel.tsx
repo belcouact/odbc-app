@@ -17,6 +17,7 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import CandlestickChartIcon from '@mui/icons-material/CandlestickChart'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import ColorizeRoundedIcon from '@mui/icons-material/ColorizeRounded'
 import DataUsageIcon from '@mui/icons-material/DataUsage'
 import DonutLargeIcon from '@mui/icons-material/DonutLarge'
 import FilterAltIcon from '@mui/icons-material/FilterAlt'
@@ -272,6 +273,78 @@ const KIND_CHIP_COLOR: Record<ColumnKind, 'primary' | 'default' | 'secondary' | 
 export type ChartPreset = Partial<Omit<VisualConfig, 'y'>> & {
   y?: string | string[]
   nonce: number
+}
+
+/**
+ * Rounded color swatch for the chart panel: restyles the native color input
+ * (webkit/Firefox pseudo-elements), adds a hover ring + press feedback, and
+ * overlays an eyedropper badge that stays readable on any fill color.
+ */
+function ColorSwatchInput({
+  value,
+  onChange,
+  disabled,
+  ...other
+}: {
+  value: string
+  onChange: (event: ReactChangeEvent<HTMLInputElement>) => void
+  disabled?: boolean
+  'aria-label': string
+}) {
+  return (
+    <Box
+      sx={{
+        position: 'relative',
+        width: 48,
+        height: 48,
+        flex: '0 0 auto',
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      <Box
+        component="input"
+        type="color"
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        {...other}
+        sx={{
+          width: '100%',
+          height: '100%',
+          p: 0,
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 2,
+          bgcolor: 'background.paper',
+          cursor: disabled ? 'default' : 'pointer',
+          transition: 'border-color 150ms, box-shadow 150ms, transform 120ms',
+          '&:hover:not(:disabled)': {
+            borderColor: 'primary.main',
+            boxShadow: (theme) => `0 0 0 3px ${alpha(theme.palette.primary.main, 0.16)}`,
+          },
+          '&:active:not(:disabled)': { transform: 'scale(0.95)' },
+          '&::-webkit-color-swatch-wrapper': { padding: 0 },
+          '&::-webkit-color-swatch': { border: 'none', borderRadius: 8 },
+          '&::-moz-color-swatch-wrapper': { padding: 0 },
+          '&::-moz-color-swatch': { border: 'none', borderRadius: 8 },
+        }}
+      />
+      <ColorizeRoundedIcon
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          fontSize: 16,
+          p: 0.5,
+          borderRadius: '50%',
+          color: '#fff',
+          bgcolor: 'rgba(0, 0, 0, 0.4)',
+          pointerEvents: 'none',
+        }}
+      />
+    </Box>
+  )
 }
 
 interface ChartsPanelProps {
@@ -989,6 +1062,9 @@ export default function ChartsPanel({
   }
 
   const selectSx = { minHeight: 48 } as const
+  // Dropdown popups portal to document.body, so their item text is compacted
+  // via MenuProps instead of the panel-level descendant styles below.
+  const selectMenuProps = { sx: { '& .MuiMenuItem-root': { fontSize: 13 } } } as const
 
   // Axis-title editor: the dropdown picks which axis the input edits.
   const axisTitleTargetLabel =
@@ -1041,7 +1117,16 @@ export default function ChartsPanel({
   }
 
   return (
-    <Stack spacing={1.5} sx={{ width: '100%' }}>
+    <Stack
+      spacing={1.5}
+      sx={{
+        width: '100%',
+        // Compact chart-settings text: smaller dropdown and switch-label type
+        // so the option columns hold more controls without growing the panel.
+        '& .MuiSelect-select': { fontSize: 13 },
+        '& .MuiFormControlLabel-label': { fontSize: 13 },
+      }}
+    >
       {/* Row context banner */}
       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
         {t('banner.charting', { n: result.rows.length.toLocaleString() })}
@@ -1460,6 +1545,7 @@ export default function ChartsPanel({
                 size="small"
                 value={operation}
                 onChange={(event: SelectChangeEvent) => setOperation(event.target.value as ChartOperation)}
+                MenuProps={selectMenuProps}
                 sx={{ minHeight: 48, width: '100%' }}
               >
                 {availableOperations.map((item) => (
@@ -1477,6 +1563,7 @@ export default function ChartsPanel({
                 size="small"
                 value={y2Operation}
                 onChange={(event: SelectChangeEvent) => setY2Operation(event.target.value as ChartOperation)}
+                MenuProps={selectMenuProps}
                 sx={{ minHeight: 48, width: '100%' }}
               >
                 {y2OperationOptions.map((item) => (
@@ -1639,6 +1726,7 @@ export default function ChartsPanel({
                                 onChange={(event: SelectChangeEvent) =>
                                   setColumnOperation(col, secondary, event.target.value as ChartOperation)
                                 }
+                                MenuProps={selectMenuProps}
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {opsForColumn(col, secondary).map((item) => (
@@ -1656,6 +1744,7 @@ export default function ChartsPanel({
                                 onChange={(event: SelectChangeEvent) =>
                                   patchSeriesStyle(col, { lineType: event.target.value as ChartLineType })
                                 }
+                                MenuProps={selectMenuProps}
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {LINE_STYLE_OPTIONS.map((item) => (
@@ -1676,6 +1765,7 @@ export default function ChartsPanel({
                                     lineWidth: raw === 'auto' ? 'auto' : Number(raw),
                                   })
                                 }}
+                                MenuProps={selectMenuProps}
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {LINE_WIDTH_OPTIONS.map((item) => (
@@ -1694,6 +1784,7 @@ export default function ChartsPanel({
                                   const v = event.target.value
                                   patchSeriesStyle(col, { smooth: v === 'auto' ? 'auto' : v === 'on' })
                                 }}
+                                MenuProps={selectMenuProps}
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {SMOOTH_OPTIONS.map((item) => (
@@ -1712,6 +1803,7 @@ export default function ChartsPanel({
                                   const v = event.target.value
                                   patchSeriesStyle(col, { markers: v === 'auto' ? 'auto' : v === 'on' })
                                 }}
+                                MenuProps={selectMenuProps}
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {MARKER_VISIBILITY_OPTIONS.map((item) => (
@@ -1729,6 +1821,7 @@ export default function ChartsPanel({
                                 onChange={(event: SelectChangeEvent) =>
                                   patchSeriesStyle(col, { markerShape: event.target.value as ChartMarkerShape })
                                 }
+                                MenuProps={selectMenuProps}
                                 sx={{ minHeight: 48, width: '100%' }}
                               >
                                 {MARKER_SHAPES.map((item) => (
@@ -1740,25 +1833,12 @@ export default function ChartsPanel({
                           <Box sx={cellSx}>
                             <Typography variant="caption" color="text.secondary" noWrap>{t('perSeries.color')}</Typography>
                             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                              <Box
-                                component="input"
-                                type="color"
+                              <ColorSwatchInput
                                 value={style.color || '#1e88e5'}
                                 onChange={(event: ReactChangeEvent<HTMLInputElement>) =>
                                   patchSeriesStyle(col, { color: event.target.value })
                                 }
                                 aria-label={t('perSeries.colorAria', { name: col })}
-                                sx={{
-                                  width: 56,
-                                  height: 48,
-                                  p: 0,
-                                  border: '1px solid',
-                                  borderColor: 'divider',
-                                  borderRadius: 1,
-                                  bgcolor: 'transparent',
-                                  cursor: 'pointer',
-                                  flex: '0 0 auto',
-                                }}
                               />
                               <Button
                                 size="small"
@@ -1842,6 +1922,7 @@ export default function ChartsPanel({
                   label={t('controls.sort')}
                   value={sort}
                   onChange={(event: SelectChangeEvent) => setSort(event.target.value as ChartSort)}
+                  MenuProps={selectMenuProps}
                   sx={selectSx}
                 >
                   {SORT_OPTIONS.map((item) => (
@@ -1858,6 +1939,7 @@ export default function ChartsPanel({
                   label={t('controls.categories')}
                   value={String(topN)}
                   onChange={(event: SelectChangeEvent) => setTopN(Number(event.target.value))}
+                  MenuProps={selectMenuProps}
                   sx={selectSx}
                 >
                   {TOPN_OPTIONS.map((item) => (
@@ -1880,6 +1962,7 @@ export default function ChartsPanel({
                 onChange={(event: SelectChangeEvent) =>
                   setErrorBarMode(event.target.value as 'std' | 'ci95')
                 }
+                MenuProps={selectMenuProps}
                 sx={selectSx}
               >
                 <MenuItem value="ci95">{t('controls.ci95')}</MenuItem>
@@ -2007,6 +2090,7 @@ export default function ChartsPanel({
                     label={t('appearance.palette')}
                     value={palette}
                     onChange={(event: SelectChangeEvent) => setPalette(event.target.value as ChartPaletteId)}
+                    MenuProps={selectMenuProps}
                     sx={selectSx}
                   >
                     <MenuItem value="default">{t('appearance.paletteDefault')}</MenuItem>
@@ -2016,23 +2100,11 @@ export default function ChartsPanel({
                   </Select>
                 </FormControl>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                  <Box
-                    component="input"
-                    type="color"
+                  <ColorSwatchInput
                     value={customColor || '#1e88e5'}
                     onChange={(event: ReactChangeEvent<HTMLInputElement>) => setCustomColor(event.target.value)}
                     aria-label={t('appearance.seriesColorAria')}
                     disabled={!!series}
-                    sx={{
-                      width: 56,
-                      height: 44,
-                      p: 0,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      bgcolor: 'transparent',
-                      cursor: 'pointer',
-                    }}
                   />
                   <Typography variant="body2" sx={{ flexGrow: 1 }}>
                     {t('appearance.seriesColor')}
@@ -2074,6 +2146,7 @@ export default function ChartsPanel({
                     label={t('appearance.labelPosition')}
                     value={labelPosition}
                     onChange={(event: SelectChangeEvent) => setLabelPosition(event.target.value as ChartLabelPosition)}
+                    MenuProps={selectMenuProps}
                     sx={selectSx}
                   >
                     <MenuItem value="auto">{t('auto')}</MenuItem>
@@ -2097,6 +2170,7 @@ export default function ChartsPanel({
                       label={t('appearance.format')}
                       value={numberFormat}
                       onChange={(event: SelectChangeEvent) => setNumberFormat(event.target.value as ChartNumberFormat)}
+                      MenuProps={selectMenuProps}
                       sx={selectSx}
                     >
                       <MenuItem value="auto">{t('appearance.fmtAuto')}</MenuItem>
@@ -2114,6 +2188,7 @@ export default function ChartsPanel({
                       onChange={(event: SelectChangeEvent) =>
                         setDecimals(event.target.value === 'auto' ? 'auto' : Number(event.target.value))
                       }
+                      MenuProps={selectMenuProps}
                       sx={selectSx}
                     >
                       <MenuItem value="auto">{t('auto')}</MenuItem>
@@ -2153,6 +2228,7 @@ export default function ChartsPanel({
                       onChange={(event: SelectChangeEvent) =>
                         setAxisTitleTarget(event.target.value as 'x' | 'y' | 'y2')
                       }
+                      MenuProps={selectMenuProps}
                       sx={selectSx}
                     >
                       <MenuItem value="x">{t('appearance.axisX')}</MenuItem>
@@ -2216,6 +2292,7 @@ export default function ChartsPanel({
                       const v = event.target.value
                       setLabelRotate(v === 'auto' ? 'auto' : (Number(v) as 0 | 45 | 90))
                     }}
+                    MenuProps={selectMenuProps}
                     sx={selectSx}
                   >
                     <MenuItem value="auto">{t('auto')}</MenuItem>
@@ -2281,6 +2358,7 @@ export default function ChartsPanel({
                     onChange={(event: SelectChangeEvent) =>
                       setMarkerShape(event.target.value as ChartMarkerShape)
                     }
+                    MenuProps={selectMenuProps}
                     sx={selectSx}
                   >
                     {MARKER_SHAPES.map((item) => (
@@ -2333,22 +2411,10 @@ export default function ChartsPanel({
                   label={t('appearance.trimWhitespace')}
                 />
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                  <Box
-                    component="input"
-                    type="color"
+                  <ColorSwatchInput
                     value={background || '#ffffff'}
                     onChange={(event: ReactChangeEvent<HTMLInputElement>) => setBackground(event.target.value)}
                     aria-label={t('appearance.backgroundAria')}
-                    sx={{
-                      width: 56,
-                      height: 44,
-                      p: 0,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      bgcolor: 'transparent',
-                      cursor: 'pointer',
-                    }}
                   />
                   <Typography variant="body2" sx={{ flexGrow: 1 }}>
                     {t('appearance.background')}

@@ -293,9 +293,9 @@ def _post_json(url: str, body: dict, headers: dict, timeout: float = 300.0) -> d
 # ---- Token usage monitor ----------------------------------------------------
 # Every LLM call records the tokens the endpoint reports so the AI Setting page
 # can show Today / 7-day / all-time totals, a per-feature breakdown and a
-# 14-day history. Data lives in ai_usage.json next to ai_settings.json.
+# All recorded calls, pruned to the same retention window as the daily
+# aggregates. Data lives in ai_usage.json next to ai_settings.json.
 _AI_USAGE_FILE = "ai_usage.json"
-_AI_USAGE_RECENT_CAP = 100
 _AI_USAGE_DAY_RETENTION = 90
 
 
@@ -352,7 +352,37 @@ def _load_usage() -> dict:
             daily_by_model[day] = {
                 str(name): _bucket(value) for name, value in models.items()
             }
-    recent = [e for e in (raw.get("recent") or []) if isinstance(e, dict)][-_AI_USAGE_RECENT_CAP:]
+    recent = [
+        e
+        for e in (raw.get("recent") or [])
+        if isinstance(e, dict) and str(e.get("ts") or "")[:10] >= cutoff
+    ]
+
+    # Older builds aggregated daily totals without per-model buckets, so a day
+    # can be under-counted in daily_by_model (the chart) while `daily` and
+    # `recent` are complete. Every recorded call also lands in `recent`, so
+    # re-derive per-model buckets from it and keep whichever side saw more
+    # calls for a day+model (stored buckets win only when `recent` was pruned
+    # by the retention window below them).
+    derived: dict[str, dict[str, dict]] = {}
+    for entry in recent:
+        day = str(entry.get("ts") or "")[:10]
+        if not day or day < cutoff:
+            continue
+        model = str(entry.get("model") or "unknown")
+        bucket = derived.setdefault(day, {}).setdefault(
+            model, {"requests": 0, "prompt_tokens": 0, "completion_tokens": 0}
+        )
+        bucket["requests"] += 1
+        bucket["prompt_tokens"] += _usage_int(entry.get("prompt_tokens"))
+        bucket["completion_tokens"] += _usage_int(entry.get("completion_tokens"))
+    for day, models in derived.items():
+        day_models = daily_by_model.setdefault(day, {})
+        for model, bucket in models.items():
+            stored = day_models.get(model)
+            if stored is None or bucket["requests"] > stored["requests"]:
+                day_models[model] = bucket
+
     return {
         "daily": daily,
         "by_feature": by_feature,
@@ -374,8 +404,8 @@ def _record_usage(
 
     Monitoring must not break an AI request, so persistence problems are only
     logged. Usage is aggregated per day, per feature, per model and per
-    day-per-model, plus kept as a capped list of recent calls for the
-    monitor's detail view.
+    day-per-model, plus kept as an entry in the call list (pruned to the
+    retention window by `_load_usage`).
     """
     try:
         data = _load_usage()
@@ -410,7 +440,6 @@ def _record_usage(
                 "ok": bool(ok),
             }
         )
-        data["recent"] = data["recent"][-_AI_USAGE_RECENT_CAP:]
         storage.save_json(_AI_USAGE_FILE, data)
     except Exception as exc:  # noqa: BLE001 - monitoring must never break AI calls
         logging_utils.log_warning("ai.usage", "failed to record token usage", details=str(exc))
@@ -2585,7 +2614,7 @@ def ai_usage_summary():
     """Token usage totals for the AI Setting page monitor.
 
     Returns daily buckets (retained for 90 days), per-feature and per-model
-    aggregates, and the most recent calls (capped at 100), newest last.
+    aggregates, and the individual calls (retained for 90 days), newest last.
     """
     return _load_usage()
 

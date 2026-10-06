@@ -16,6 +16,7 @@
   },
   "form": {
     "enableLabel": "启用 AI（LLM）",
+    "enableHelper": "AI 功能的总开关 —— 控制数据对话、AI 摘要、洞察、推荐问题与脚本生成。关闭后将隐藏应用内所有 AI 入口。",
     "shareDataStatsLabel": "允许向 AI 提供数据统计信息",
     "shareDataStatsHelper": "开启后，对话与「洞察」卡片会附带当前网格数据的精简统计画像（各列计数、范围与高频取值）。仅发送聚合后的元数据，绝不发送完整记录。关闭后将只发送表结构信息。",
     "savedSettingsLabel": "已保存的设置",
@@ -94,9 +95,13 @@
       "byModel": "按模型"
     },
     "chart": {
-      "title": "近 14 天 · 按模型"
+      "title": "近 7 天 · 按模型",
+      "callsSeries": "调用次数",
+      "axisTokens": "Token 数",
+      "axisTimes": "次数"
     },
     "recent": {
+      "title": "调用记录",
       "colTime": "时间",
       "colFeature": "功能",
       "colModel": "模型",

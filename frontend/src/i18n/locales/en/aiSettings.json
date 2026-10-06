@@ -16,6 +16,7 @@
   },
   "form": {
     "enableLabel": "Enable AI (LLM)",
+    "enableHelper": "Master switch for AI features — data chat, AI summaries, insights, suggested questions and script generation. Turn it off to hide AI entry points across the app.",
     "shareDataStatsLabel": "Share data statistics with the AI",
     "shareDataStatsHelper": "When on, chat turns and the Insights card include a compact statistical profile of the loaded grid (per-column counts, ranges and top values). Only aggregated metadata is sent — never full rows. Turn it off to keep AI requests to schema only.",
     "savedSettingsLabel": "Saved settings",
@@ -94,9 +95,13 @@
       "byModel": "By model"
     },
     "chart": {
-      "title": "Last 14 days · by model"
+      "title": "Last 7 days · by model",
+      "callsSeries": "Calls",
+      "axisTokens": "tokens",
+      "axisTimes": "times"
     },
     "recent": {
+      "title": "Call history",
       "colTime": "Time",
       "colFeature": "Feature",
       "colModel": "Model",

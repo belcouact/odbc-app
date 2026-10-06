@@ -385,20 +385,16 @@ function AboutSection({
                     p: { xs: 1.5, sm: 2 },
                     height: '100%',
                     bgcolor: 'background.paper',
-                    // The Build Version card behaves like a KPI card: a
-                    // pointer-device hover lift, a press-scale on touch.
-                    ...(isVersion
-                      ? {
-                          transition: 'transform 0.2s ease-out, box-shadow 0.2s ease-out',
-                          '@media (hover: hover)': {
-                            '&:hover': {
-                              transform: 'translateY(-2px)',
-                              boxShadow: '0 6px 16px rgba(217, 119, 87, 0.14)',
-                            },
-                          },
-                          '&:active': { transform: 'scale(0.98)' },
-                        }
-                      : {}),
+                    // KPI-card feel for the whole row: a pointer-device hover
+                    // lift, a press-scale on touch.
+                    transition: 'transform 0.2s ease-out, box-shadow 0.2s ease-out',
+                    '@media (hover: hover)': {
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 6px 16px rgba(217, 119, 87, 0.14)',
+                      },
+                    },
+                    '&:active': { transform: 'scale(0.98)' },
                   }}
                 >
                   <Typography

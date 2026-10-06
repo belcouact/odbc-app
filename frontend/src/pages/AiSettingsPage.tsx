@@ -435,19 +435,28 @@ export default function AiSettingsPage() {
                   cancels FormControlLabel's default -11px optical alignment for
                   the switch track. Re-apply it so both switches left-align with
                   the rest of the form. '&&' outranks the Stack reset. */}
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.enabled}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                      setForm((current) => ({ ...current, enabled: event.target.checked }))
-                      setTestResult(null)
-                    }}
-                  />
-                }
-                label={t('form.enableLabel')}
-                sx={{ '&&': { ml: '-11px' } }}
-              />
+              <Box>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={form.enabled}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        setForm((current) => ({ ...current, enabled: event.target.checked }))
+                        setTestResult(null)
+                      }}
+                    />
+                  }
+                  label={t('form.enableLabel')}
+                  sx={{ '&&': { ml: '-11px' } }}
+                />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', pl: { xs: 0, sm: 6 } }}
+                >
+                  {t('form.enableHelper')}
+                </Typography>
+              </Box>
 
               <Box>
                 <FormControlLabel
