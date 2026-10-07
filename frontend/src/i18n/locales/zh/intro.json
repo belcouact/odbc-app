@@ -92,6 +92,83 @@
     "aria": {
       "progress": "开场进度",
       "closeIntro": "关闭开场介绍"
+    },
+    "v2": {
+      "brand": "ODBC Query App",
+      "runsLocal": "在本机运行",
+      "soundOn": "声音开",
+      "soundOff": "声音关",
+      "skip": "跳过",
+      "labels": {
+        "idea": "核心理念",
+        "n1": "01 查询",
+        "n2": "02 分析",
+        "n3": "03 提问",
+        "loop": "循环"
+      },
+      "hero1": "你的数据库。",
+      "hero2": "你的电脑。",
+      "hero3": "你的答案。",
+      "lead": "无需编写 SQL 即可查询任何 ODBC 数据源，用脚本分析结果，还能让 AI 帮忙解答。一切都在浏览器中完成，数据始终留在你自己的电脑上。",
+      "anyDriver": "任意 ODBC 驱动",
+      "cap1": {
+        "title": "免写 SQL 的查询。",
+        "body": "选择连接、数据表和筛选条件，SQL 会自动为你生成；想手写时，原生编辑器也随时可用。",
+        "readOnly": "默认只读",
+        "creds": "凭据只保留在后端"
+      },
+      "queryCard": {
+        "title": "查询",
+        "rows": "{{n}} 行",
+        "last30": "最近 30 天"
+      },
+      "thRegion": "地区",
+      "thRevenue": "收入",
+      "cap2": {
+        "title": "用脚本分析。",
+        "body": "对网格中的数据行运行 Python 或 JavaScript 脚本，可复制输出，也可一键成图。",
+        "fromGrid": "直接使用网格数据"
+      },
+      "scriptCard": {
+        "title": "脚本",
+        "ran": "0.2 秒运行完成"
+      },
+      "cap3": {
+        "title": "用大白话问 AI。",
+        "body": "AI 助手会读取你的结果、解释数据，并替你写好 SQL 或脚本。",
+        "explain": "解释结果",
+        "writeSql": "编写 SQL",
+        "buildScripts": "构建脚本"
+      },
+      "aiCard": {
+        "title": "AI 助手",
+        "seesGrid": "看得见你的网格"
+      },
+      "question": "为什么西部低于其他地区？",
+      "aiMsg": "西部比地区平均值低 29%，南部紧随其后。需要一个把每个地区与平均值对比的脚本吗？",
+      "suggest": {
+        "script": "编写脚本",
+        "chart": "生成图表",
+        "sql": "起草 SQL"
+      },
+      "final": {
+        "l1": "查询。",
+        "l2": "分析。",
+        "l3": "提问。",
+        "l4": "循环。",
+        "p1": "所有查询都在本机运行，直连你自己的 ODBC 数据源。",
+        "p2": "默认只读，凭据永远不会到达浏览器。",
+        "p3": "脚本和 AI 助手都基于你的查询结果工作。",
+        "start": "开始探索",
+        "again": "再看一遍",
+        "loopQuery": "查询",
+        "loopAnalyze": "分析",
+        "loopAsk": "提问",
+        "loopAria": "查询、分析、提问的循环",
+        "localTitle": "100% 本地",
+        "localSub": "你的电脑，你的数据"
+      },
+      "dialogAria": "欢迎使用 ODBC Query App"
     }
   }
 }

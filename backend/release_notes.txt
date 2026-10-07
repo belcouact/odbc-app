@@ -1,1 +1,1 @@
-1. The feedback board no longer leaves a long empty stretch when scrolling: opening Feedback ends right after the post list instead of scrolling through a tall blank page, and closing it returns you to the page you opened it from.
+1. Opening a tool from the Tools menu — FlowDiagram, Project or ProblemSolving — now shows a loading indicator while the embedded app starts: a centred spinner with "Loading app…" fills the page instead of leaving it blank, in both English and Chinese, and disappears as soon as the app is ready.

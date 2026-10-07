@@ -1,5 +1,10 @@
 [
   {
+    "version": "2.5.3",
+    "date": "2026-10-07",
+    "notes": "1. Opening a tool from the Tools menu — FlowDiagram, Project or ProblemSolving — now shows a loading indicator while the embedded app starts: a centred spinner with \"Loading app…\" fills the page instead of leaving it blank, in both English and Chinese, and disappears as soon as the app is ready."
+  },
+  {
     "version": "2.5.2",
     "date": "2026-10-06",
     "notes": "1. The feedback board no longer leaves a long empty stretch when scrolling: opening Feedback ends right after the post list instead of scrolling through a tall blank page, and closing it returns you to the page you opened it from."
@@ -18,10 +23,5 @@
     "version": "2.4.1",
     "date": "2026-10-05",
     "notes": "1. Uploading spreadsheets is much faster: .xlsx files are now read by a native parser (roughly 5× quicker) and the grid rows are serialized by pandas, so large Excel and CSV uploads reach the screen in a fraction of the time.\n2. The in-app assistant now stays on topic: it helps with querying, data and statistical analysis, scripting, charts and how to use the app, and politely declines unrelated questions. It also no longer invents table or column names when it has no schema.\n3. The feedback board is now a full page: it scrolls like every other view, carries its own \"Feedback\" title and a Close button, and the unread badge clears as soon as you close it.\n4. The feedback icon in the top bar now matches the AI assistant icon — same filled glyph and app-blue colour.\n5. The top bar no longer shifts on load: the version badge shows a placeholder immediately and the update status is read once the browser is idle, so the first paint stays stable and quick.\n6. New feedback posts pre-fill and lock your name, while the title, description and category are required — anything missing is flagged with a warning, and toast messages are colour-coded by type (green success, yellow warning, red error)."
-  },
-  {
-    "version": "2.4.0",
-    "date": "2026-10-04",
-    "notes": "1. The interface is now fully bilingual: a one-tap EN / 中 switch in the top bar translates the whole app. It starts in English and remembers your choice for next time.\n2. The top bar was reorganised so the language switch and the How-to-use button come first.\n3. Fixed the feedback board overlay sometimes staying on top of the page when you reopened a view it was already showing.\n4. Fixed the feedback board header showing a placeholder instead of the total post count.\n5. Widened the All / Tables / Views switch so its labels no longer wrap.\n6. The Chinese mottos in the Alex window are no longer bold, and the app title now reads \"ODBC查询\" in Chinese."
   }
 ]

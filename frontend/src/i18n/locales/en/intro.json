@@ -92,6 +92,83 @@
     "aria": {
       "progress": "Intro progress",
       "closeIntro": "Close intro"
+    },
+    "v2": {
+      "brand": "ODBC Query App",
+      "runsLocal": "Runs on this PC",
+      "soundOn": "Sound on",
+      "soundOff": "Sound off",
+      "skip": "Skip",
+      "labels": {
+        "idea": "The idea",
+        "n1": "01 Query",
+        "n2": "02 Analyze",
+        "n3": "03 Ask",
+        "loop": "Loop"
+      },
+      "hero1": "Your database.",
+      "hero2": "Your PC.",
+      "hero3": "Your answers.",
+      "lead": "Query any ODBC source without writing SQL, analyze the result with a script, and ask an AI to help. All from your browser, against data on your own machine.",
+      "anyDriver": "any ODBC driver",
+      "cap1": {
+        "title": "Query without writing SQL.",
+        "body": "Pick a connection, table and filters. The SQL is generated for you, and a raw editor is there when you want it.",
+        "readOnly": "Read-only by default",
+        "creds": "Credentials stay in the backend"
+      },
+      "queryCard": {
+        "title": "Query",
+        "rows": "{{n}} rows",
+        "last30": "Last 30 days"
+      },
+      "thRegion": "region",
+      "thRevenue": "revenue",
+      "cap2": {
+        "title": "Analyze with a script.",
+        "body": "Run Python or JavaScript on the rows in your grid. Copy the output, or turn it into a chart.",
+        "fromGrid": "Rows from your grid"
+      },
+      "scriptCard": {
+        "title": "Script",
+        "ran": "ran in 0.2s"
+      },
+      "cap3": {
+        "title": "Ask AI, in plain English.",
+        "body": "The assistant reads your results, explains them, and writes the SQL or script for you.",
+        "explain": "Explain results",
+        "writeSql": "Write SQL",
+        "buildScripts": "Build scripts"
+      },
+      "aiCard": {
+        "title": "AI assistant",
+        "seesGrid": "sees your grid"
+      },
+      "question": "Why is West below the others?",
+      "aiMsg": "West is 29% below the regional average, and South is next. Want a script that compares every region with the average?",
+      "suggest": {
+        "script": "Write the script",
+        "chart": "Chart it",
+        "sql": "Draft the SQL"
+      },
+      "final": {
+        "l1": "Query.",
+        "l2": "Analyze.",
+        "l3": "Ask.",
+        "l4": "Repeat.",
+        "p1": "Queries run on this PC against your own ODBC sources.",
+        "p2": "Read-only by default, and credentials never reach the browser.",
+        "p3": "Scripts and the AI assistant work from your result set.",
+        "start": "Start exploring",
+        "again": "Watch again",
+        "loopQuery": "Query",
+        "loopAnalyze": "Analyze",
+        "loopAsk": "Ask",
+        "loopAria": "Query, analyze and ask in a loop",
+        "localTitle": "100% local",
+        "localSub": "your PC, your data"
+      },
+      "dialogAria": "Welcome to ODBC Query App"
     }
   }
 }

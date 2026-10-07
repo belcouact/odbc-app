@@ -7,7 +7,8 @@
     "project": "项目",
     "problemSolving": "问题解决",
     "settings": "设置",
-    "tools": "工具"
+    "tools": "工具",
+    "loadingApp": "正在加载应用…"
   },
   "bar": {
     "appTitle": "ODBC查询",

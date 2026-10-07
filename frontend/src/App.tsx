@@ -53,7 +53,7 @@ import FeedbackPage from './pages/FeedbackPage'
 import FlowDiagramPage from './pages/FlowDiagramPage'
 import ExternalAppPage from './pages/ExternalAppPage'
 import AiSidebar from './components/AiSidebar'
-import IntroDialog from './components/IntroDialog'
+import IntroV2 from './components/IntroV2'
 import GuidedTour, { TOUR_STORAGE_KEY } from './components/GuidedTour'
 import { emit, subscribe } from './editorBus'
 import type { GridLoadPayload } from './editorBus'
@@ -1548,8 +1548,9 @@ function AppShell() {
       />
 
       {/* Intro animation — the app title opens the intro page in a full-screen
-          window so it is reachable without leaving the app. */}
-      <IntroDialog open={introOpen} onClose={closeIntro} />
+          window so it is reachable without leaving the app. (Old intro kept as
+          backup in frontend/backup-intro/.) */}
+      {introOpen && <IntroV2 onClose={closeIntro} />}
 
       {/* Alex icon — clicking the brand-mark icon enlarges the little logo in a
           small lightbox so it can be seen at full size. */}

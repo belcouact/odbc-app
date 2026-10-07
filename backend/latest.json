@@ -1,8 +1,8 @@
 {
-  "version": "2.5.2",
+  "version": "2.5.3",
   "min_version": "1.0.0",
-  "notes": "1. The feedback board no longer leaves a long empty stretch when scrolling: opening Feedback ends right after the post list instead of scrolling through a tall blank page, and closing it returns you to the page you opened it from.",
+  "notes": "1. Opening a tool from the Tools menu — FlowDiagram, Project or ProblemSolving — now shows a loading indicator while the embedded app starts: a centred spinner with \"Loading app…\" fills the page instead of leaving it blank, in both English and Chinese, and disappears as soon as the app is ready.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "d80cef4b238d5f0890f786fa6620201ae7e4e028b5560a2c538c700883e28439",
+  "sha256": "5c88d32a0ddd972bddbff30989f29a4d0d25b307a210bd15f24530b445558dbd",
   "installer": "ODBCQueryApp-Setup-latest.exe"
 }
