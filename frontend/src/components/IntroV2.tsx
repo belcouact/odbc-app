@@ -227,7 +227,7 @@ export default function IntroV2({ onClose }: { onClose: () => void }) {
               <motion.p variants={up} className="v-lead">{t('intro.v2.lead')}</motion.p>
               <motion.div className="v-tags" variants={chips(0.9)}>{drivers.map(d => <motion.span key={d} variants={chip}>{d}</motion.span>)}</motion.div>
             </div>
-            <svg className="v-db" viewBox="0 0 200 240" aria-hidden>
+            <svg className="v-db" viewBox="0 0 200 258" aria-hidden>
               {['M20 50V190', 'M180 50V190'].map(d => <motion.path key={d} d={d} className="v-st" initial={{ pathLength: 0 }} animate={{ pathLength: scene === 0 ? 1 : 0 }} transition={{ duration: 0.8, delay: 0.5 }} />)}
               {[50, 105, 150].map((y, i) => <motion.path key={y} d={`M20 ${y}A80 28 0 0 0 180 ${y}`} className="v-st" initial={{ pathLength: 0 }} animate={{ pathLength: scene === 0 ? 1 : 0 }} transition={{ duration: 0.8, delay: 0.7 + i * 0.15 }} />)}
               <motion.path d="M20 190A80 28 0 0 0 180 190" className="v-st" initial={{ pathLength: 0 }} animate={{ pathLength: scene === 0 ? 1 : 0 }} transition={{ duration: 0.8, delay: 1 }} />
@@ -235,7 +235,7 @@ export default function IntroV2({ onClose }: { onClose: () => void }) {
               <motion.g initial={{ scale: 0 }} animate={{ scale: scene === 0 ? 1 : 0 }} style={{ transformBox: 'fill-box', transformOrigin: 'center' }} transition={{ type: 'spring', delay: 1.4 }}>
                 <rect x="78" y="128" width="44" height="34" rx="6" className="v-lock" /><path d="M86 128v-10a14 14 0 0 1 28 0v10" className="v-st" fill="none" />
               </motion.g>
-              <text x="100" y="228" className="v-lab">ODBC</text>
+              <text x="100" y="250" className="v-lab">ODBC</text>
             </svg>
           </Act>
 
@@ -356,7 +356,7 @@ h1{margin:0;font-size:clamp(38px,7.2vw,104px);line-height:.95;letter-spacing:-.0
 .v-tags{margin-top:20px}
 .v-tags span,.v-badges span{font-size:14px;font-weight:700;border:2px solid var(--v-ink);border-radius:999px;padding:3px 12px;background:var(--v-card)}
 .v-badges{margin-top:18px}.v-badges span{background:var(--v-yellow);color:#10131A}
-.v-db{position:absolute;right:6vw;top:50%;width:min(24vw,260px);margin-top:calc(min(24vw,260px)*-.6);z-index:1}
+.v-db{position:absolute;right:6vw;top:50%;width:min(24vw,260px);margin-top:calc(min(24vw,260px)*-.645);z-index:1}
 @media(max-width:820px){.v-db{display:none}}
 .v-st{fill:none;stroke:var(--v-ink);stroke-width:5;stroke-linecap:round}.v-fill{fill:var(--v-blue)}.v-lock{fill:var(--v-red);stroke:var(--v-ink);stroke-width:4}
 .v-lab{font-weight:900;font-size:18px;fill:var(--v-ink);text-anchor:middle}.v-lab2{font-size:14px;fill:var(--v-mute);text-anchor:middle}

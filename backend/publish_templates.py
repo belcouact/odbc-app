@@ -79,6 +79,7 @@ EXAMPLES_PREFIX = f"{PREFIX}/examples"
 # Template stem -> sample dashboard file name.  A template with no entry (or
 # whose file is missing) is published without an example link.
 EXAMPLE_FILES = {
+    "analyze-AOI-defects": "aoi_defect_map.html",
     "analyze-mesa-yield": "yield_trend_charts.html",
     "analyze-process-params": "Process_param_trend.html",
     "analyze-tautona-data": "Laminate_Analysis.html",
@@ -93,6 +94,49 @@ EXAMPLE_FILES = {
 # ``requires`` / ``optional`` / ``outputs`` feed the expandable detail row, so
 # they must match what the script actually reads and produces.
 TEMPLATE_INFO = {
+    "analyze-AOI-defects": {
+        "title": "AOI Defect Map",
+        "applies_to": "AOI defect inspection data",
+        "description": (
+            "Plots every AOI defect on a CD/MD coordinate map coloured by class and "
+            "sized by severity, with a filter sidebar, hover defect images and a "
+            "full-screen image gallery."
+        ),
+        "requires": [
+            "defectid",
+            "piece_name",
+            "cd_mm",
+            "md_m",
+            "class_name",
+            "severity_name",
+            "Cd_loc (mm)",
+            "Md_loc (m)",
+            "Area (mm2)",
+        ],
+        "optional": [
+            "defectindex",
+            "pieceid",
+            "start_time",
+            "job_name",
+            "job_recipe",
+            "layer_name",
+            "defect_flag",
+            "width (mm)",
+            "Length (mm)",
+            "rrdd_image",
+            "rrdh_image",
+            "rrcd_image",
+        ],
+        "outputs": [
+            "aoi_defect_map.html — one self-contained page, opened in your browser",
+            "Filter sidebar: piece, class, severity and dimension controls with a "
+            "live defect count and per-class statistics",
+            "SVG defect scatter: X = Cd_loc (mm), Y = Md_loc (m), coloured by "
+            "class_name and sized by Area (mm2)",
+            "Hover tooltip with the defect metadata and its RRDD / RRDH / RRCD images",
+            "Full-screen Defect Image Gallery listing every defect with its images",
+        ],
+    },
     "analyze-mesa-yield": {
         "title": "Mesa Yield",
         "applies_to": "Mesa yield data",

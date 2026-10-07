@@ -1,6 +1,55 @@
 {
-  "published": "2026-10-07T07:27:37",
+  "published": "2026-10-07T21:05:27",
   "templates": [
+    {
+      "name": "analyze-AOI-defects.py",
+      "stem": "analyze-AOI-defects",
+      "title": "AOI Defect Map",
+      "applies_to": "AOI defect inspection data",
+      "description": "Plots every AOI defect on a CD/MD coordinate map coloured by class and sized by severity, with a filter sidebar, hover defect images and a full-screen image gallery.",
+      "details": {
+        "requires": [
+          "defectid",
+          "piece_name",
+          "cd_mm",
+          "md_m",
+          "class_name",
+          "severity_name",
+          "Cd_loc (mm)",
+          "Md_loc (m)",
+          "Area (mm2)"
+        ],
+        "optional": [
+          "defectindex",
+          "pieceid",
+          "start_time",
+          "job_name",
+          "job_recipe",
+          "layer_name",
+          "defect_flag",
+          "width (mm)",
+          "Length (mm)",
+          "rrdd_image",
+          "rrdh_image",
+          "rrcd_image"
+        ],
+        "outputs": [
+          "aoi_defect_map.html — one self-contained page, opened in your browser",
+          "Filter sidebar: piece, class, severity and dimension controls with a live defect count and per-class statistics",
+          "SVG defect scatter: X = Cd_loc (mm), Y = Md_loc (m), coloured by class_name and sized by Area (mm2)",
+          "Hover tooltip with the defect metadata and its RRDD / RRDH / RRCD images",
+          "Full-screen Defect Image Gallery listing every defect with its images"
+        ]
+      },
+      "size": "17 KB",
+      "updated": "2026-10-07",
+      "example": {
+        "name": "aoi_defect_map.html",
+        "object": "templates/examples/aoi_defect_map.html",
+        "label": "AOI Defect Map",
+        "size": "2.3 MB"
+      }
+    },
     {
       "name": "analyze-color-data.py",
       "stem": "analyze-color-data",

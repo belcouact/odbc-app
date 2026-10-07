@@ -525,7 +525,14 @@ export default function ConnectionsPage() {
                 <TableCell sx={{ fontWeight: 600, display: { xs: 'none', md: 'table-cell' } }}>
                   {t('list.details')}
                 </TableCell>
-                <TableCell sx={{ fontWeight: 600, display: { xs: 'none', md: 'table-cell' } }}>
+                <TableCell
+                  sx={{
+                    fontWeight: 600,
+                    display: { xs: 'none', md: 'table-cell' },
+                    whiteSpace: 'nowrap',
+                    minWidth: 96,
+                  }}
+                >
                   {t('list.username')}
                 </TableCell>
                 <TableCell
@@ -614,7 +621,9 @@ export default function ConnectionsPage() {
                         ))}
                       </Stack>
                     </TableCell>
-                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                    <TableCell
+                      sx={{ display: { xs: 'none', md: 'table-cell' }, whiteSpace: 'nowrap' }}
+                    >
                       {connection.username || '—'}
                     </TableCell>
                     <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
