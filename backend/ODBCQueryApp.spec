@@ -215,6 +215,17 @@ a = Analysis(
         "keyring.backends.Windows",
         # Lazy SQL parser used by the read-only guard (app.db.odbc).
         "sqlglot",
+        # Native window shell (pywebview).  The Windows backend is imported
+        # dynamically at runtime (webview.guilib -> webview.platforms.winforms),
+        # so PyInstaller cannot see it and must be told explicitly.  The
+        # pywebview / pythonnet hooks then bundle the WebView2 and .NET DLLs.
+        "webview",
+        "webview.platforms.winforms",
+        "webview.platforms.edgechromium",
+        "webview.platforms.win32",
+        "clr",
+        "pythonnet",
+        "clr_loader",
     ],
     hookspath=[],
     hooksconfig={},
@@ -270,7 +281,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,  # UPX-packed binaries trigger antivirus false positives
-    console=False,  # windowed: no console window (browser-based UI)
+    console=False,  # windowed: no console window (native pywebview window)
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

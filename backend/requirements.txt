@@ -7,3 +7,4 @@ python-calamine
 python-multipart
 keyring
 sqlglot
+pywebview

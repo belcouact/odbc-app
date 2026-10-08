@@ -113,7 +113,7 @@ async def upload_parse(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="The uploaded file is empty.")
     try:
         # Heavy work runs in a worker thread so the event loop stays free:
-        # browser heartbeats (server auto-shutdown watchdog) keep flowing even
+        # the app's health checks (and any other request) keep flowing even
         # while a big Excel file takes minutes to parse.
         df = await run_in_threadpool(_parse_upload, raw, filename)
     except ValueError as exc:
@@ -207,7 +207,7 @@ def _iter_parse_events(raw: bytes, filename: str):
     """Yield NDJSON parse events for a spooled upload.
 
     Starlette iterates this sync generator via the threadpool, so blocking
-    pandas work stays off the event loop (browser heartbeats keep flowing)
+    pandas work stays off the event loop (health checks keep flowing)
     while progress events are flushed to the client as they are produced.
     """
     start = time.perf_counter()

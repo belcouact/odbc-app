@@ -1,10 +1,10 @@
 # ODBC Query App
 
-A local web application that lets non-technical users pull data out of any ODBC-connected
-database through the browser — no SQL required. Build a query with ready-made templates,
-explore the results in a data grid, chart or dashboard them, and hand the data to an AI
-assistant for a quick read. Everything runs on one PC: the ODBC driver, the data and the
-backend stay local, and the browser is only the UI.
+A local desktop application that lets non-technical users pull data out of any ODBC-connected
+database — no SQL required. Build a query with ready-made templates, explore the results in a
+data grid, chart or dashboard them, and hand the data to an AI assistant for a quick read.
+Everything runs on one PC: the ODBC driver, the data and the backend stay local, and the native
+window is only the UI.
 
 ## Highlights
 
@@ -39,18 +39,18 @@ backend stay local, and the browser is only the UI.
 - **Color-lot enrichment** — append the FabLIMS lot genealogy (Product by WOL, Raw item by Batch)
   to `Color_Data` rows in one step.
 - **Tools** — FlowDiagram, Project (timeline) and ProblemSolving, embedded from their web apps
-  inside the tab.
+  inside the app.
 - **Saved queries, history & templates** — save, reuse, share and re-run query definitions; a
   history of recent runs; and a catalog of template scripts.
 - **Feedback board** — report problems or suggest ideas from inside the app (shared board).
 - **Self-update** — published builds are picked up automatically, installed and the app restarts
-  itself. A browser watchdog keeps the backend alive across laptop sleep and reconnects the open
-  page.
+  itself. A native window drives the app's lifecycle, so closing it shuts the backend down
+  cleanly and an unexpected backend crash is retried on the same port.
 
 ## Architecture
 
 ```text
-Browser (React SPA)
+Native window (WebView2 + React SPA)
       ↓  /api  (HTTP)
 FastAPI backend (Python)         ← also serves the built SPA
       ↓  pyodbc
@@ -70,7 +70,7 @@ configured AI endpoint.
 | --------- | ---------- |
 | Frontend  | React 19, TypeScript, Vite 8, Material UI 9, AG Grid 36, ECharts 6, Graphic Walker, react-markdown |
 | Backend   | Python 3.11+, FastAPI, uvicorn, pyodbc, pandas, openpyxl, python-calamine |
-| Packaging | PyInstaller (single-file, windowed Windows exe) |
+| Packaging | PyInstaller (onedir, windowed Windows exe) + pywebview (WebView2) |
 
 ## Project structure
 
@@ -78,7 +78,7 @@ configured AI endpoint.
 ODBC app/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py          # FastAPI entrypoint, static SPA serving, browser watchdog
+│   │   ├── main.py          # FastAPI entrypoint, static SPA serving
 │   │   ├── api/             # Route modules (connections, queries, charts, ai, feedback, …)
 │   │   ├── db/              # ODBC access + SQL builder
 │   │   ├── data/            # Bundled reference data (connection templates, Pantone TCX, history)
@@ -86,7 +86,7 @@ ODBC app/
 │   │   └── config.py        # App data directory / settings
 │   ├── custom script/       # Example analysis scripts
 │   ├── sql/                 # Predefined SQL library
-│   ├── launcher.py          # Packaged-app entry point (server supervisor / auto-reconnect)
+│   ├── launcher.py          # Packaged-app entry point (native window + server supervisor)
 │   ├── release.py           # Build / publish helper (+ latest.json manifest)
 │   ├── ODBCQueryApp.spec    # PyInstaller spec
 │   └── requirements.txt
@@ -105,7 +105,7 @@ ODBC app/
 
 ### Prerequisites
 
-- Windows (the app targets a desktop browser on a single PC)
+- Windows (the app targets a single desktop PC)
 - An existing 64-bit **ODBC DSN** configured in Windows, plus its ODBC driver
 - **Python 3.11+** and **Node.js 20+**
 
@@ -152,14 +152,15 @@ The backend automatically serves `frontend/dist` when present, so a single comma
 - **Endpoint reference** — `/api/health`, `/api/connections`, `/api/schema`, `/api/queries`,
   `/api/sql`, `/api/saved-queries`, `/api/sql-queries`, `/api/charts`, `/api/ai`, `/api/report`,
   `/api/analytics`, `/api/scripts`, `/api/connection-templates`, `/api/color-lot`, `/api/uploads`,
-  `/api/version-history`, `/api/update`, `/api/feedback`, `/api/heartbeat`.
+  `/api/version-history`, `/api/update`, `/api/feedback`.
   The app title in the top bar (or the brand mark on phones) opens the intro animation, which is
   built into the frontend bundle.
 
 ## Packaging (Windows)
 
-The packaged app is a single windowed exe that runs an embedded uvicorn server, opens the
-browser, keeps the server alive across laptop sleep, and applies self-updates.
+The packaged app is a windowed exe that runs an embedded uvicorn server and shows the UI in a
+native WebView2 window (pywebview) — no browser tab. The window's own lifecycle drives shutdown,
+and published builds are applied as self-updates.
 
 ```powershell
 cd backend
@@ -171,8 +172,9 @@ the `latest.json` update manifest.
 
 ## Notes
 
-- **Desktop-first.** The app is designed for a wide viewport used with a mouse and keyboard, and
-  the layout adapts down to tablet/phone widths. Mobile and tablet use is not the primary target.
+- **Desktop-first.** The app runs in a native desktop window (WebView2) designed for a wide
+  viewport used with a mouse and keyboard, and the layout adapts down to tablet/phone widths.
+  Mobile and tablet use is not the primary target.
 - **On-premise by default.** No internet connection is required to query local ODBC data sources;
   the feedback board and the self-update check use the network only when the app is online, and the
   AI assistant uses whatever endpoint you configure.

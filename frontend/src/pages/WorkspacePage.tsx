@@ -1029,8 +1029,9 @@ function buildSqlPreview(input: {
   dateTo: string
   limit: string
   databaseType?: string
+  dateDialect?: SqlDateDialect
 }): string {
-  const { table, columns, filters, derivedColumns, dateColumn, dateFrom, dateTo, limit, databaseType } = input
+  const { table, columns, filters, derivedColumns, dateColumn, dateFrom, dateTo, limit, databaseType, dateDialect = 'plain' } = input
   if (!table) return ''
 
   let colSql = columns.length > 0 ? columns.map(quoteIdentifier).join(', ') : '*'
@@ -1094,12 +1095,16 @@ function buildSqlPreview(input: {
 
   if (dateColumn && (dateFrom || dateTo)) {
     const qcol = quoteIdentifier(dateColumn)
+    // Date literals follow the connection's dialect (Oracle TO_DATE, Access
+    // '#...#'), mirroring the backend so the preview matches the run.
+    const dateLiteral = (value: string): string =>
+      dateDialect === 'oracle' ? toDateSql(value) : dateDialect === 'access' ? toJetDateSql(value) : sqlLiteral(value)
     if (dateFrom && dateTo) {
-      where.push(`${qcol} BETWEEN ${sqlLiteral(dateFrom)} AND ${sqlLiteral(dateTo)}`)
+      where.push(`${qcol} BETWEEN ${dateLiteral(dateFrom)} AND ${dateLiteral(dateTo)}`)
     } else if (dateFrom) {
-      where.push(`${qcol} >= ${sqlLiteral(dateFrom)}`)
+      where.push(`${qcol} >= ${dateLiteral(dateFrom)}`)
     } else {
-      where.push(`${qcol} <= ${sqlLiteral(dateTo)}`)
+      where.push(`${qcol} <= ${dateLiteral(dateTo)}`)
     }
   }
 
@@ -2699,6 +2704,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       dateTo,
       limit,
       databaseType: connection?.database_type,
+      dateDialect: sqlDateDialect(connection),
     })
   }, [table, selectedColumns, filters, derivedColumns, dateColumn, dateFrom, dateTo, limit, connections, connectionId])
 

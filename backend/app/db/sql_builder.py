@@ -1,9 +1,11 @@
 """SQL query builder: translate QueryDef into parameterized SQL.
 
-All user-supplied values are bound via ``?`` placeholders (never string
-interpolated). Identifiers that are not plain alphanumeric names are
-double-quoted (bracket-quoted for Jet/ACE-family drivers) and internal
-quotes are escaped.
+User-supplied values are bound via ``?`` placeholders (never string
+interpolated); the only exception is the Jet/ACE date literal (``#...#``,
+see ``jet_date_literal``), where the inlined value is strictly re-validated
+against a fixed timestamp pattern. Identifiers that are not plain
+alphanumeric names are double-quoted (bracket-quoted for Jet/ACE-family
+drivers) and internal quotes are escaped.
 """
 import re
 
@@ -96,6 +98,76 @@ def _quote_identifier(name: str, bracket: bool = False) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+# Date/datetime columns cannot be compared to a bare string bind on every
+# server, so the WHERE clause differs per DBMS family:
+#   - Oracle: DATE/TIMESTAMP columns need TO_DATE(); the ODBC driver hands
+#     Oracle a VARCHAR which it implicitly casts using NLS_DATE_FORMAT, so a
+#     bare 'YYYY-MM-DD' string raises ORA-01861.
+#   - Jet/ACE (Access): a text bind against a Date/Time column raises
+#     "Data type mismatch in criteria expression" (-3030); the accepted form
+#     is the '#YYYY-MM-DD HH:MM:SS#' date literal.
+#   - Everything else binds the value as-is.
+# Inputs arrive from the date / datetime-local pickers as 'YYYY-MM-DD' or
+# 'YYYY-MM-DDTHH:MM', so a fixed timestamp mask is used.
+ORACLE_DATE_MASK = "YYYY-MM-DD HH24:MI:SS"
+
+# A fully normalised timestamp is the only value allowed to be inlined as a
+# Jet date literal (guards against SQL injection through the date field).
+_JET_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+
+
+def date_dialect_for(dbms: str | None) -> str:
+    """Map a DBMS name to its date-literal dialect: 'oracle' | 'jet' | 'plain'."""
+    db = (dbms or "").lower()
+    if "oracle" in db:
+        return "oracle"
+    if _is_jet_like(dbms):
+        return "jet"
+    return "plain"
+
+
+def normalize_date_value(raw: object) -> str:
+    """Normalise a date/datetime input to a full 'YYYY-MM-DD HH:MM:SS' value."""
+    text = str(raw).strip().replace("T", " ")
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return text + " 00:00:00"
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", text):
+        return text + ":00"
+    return text
+
+
+def oracle_to_date_bind() -> str:
+    """A bound parameter wrapped in Oracle TO_DATE(), for the fixed mask."""
+    return f"TO_DATE(?, '{ORACLE_DATE_MASK}')"
+
+
+def jet_date_literal(raw: object) -> str | None:
+    """A Jet '#YYYY-MM-DD HH:MM:SS#' literal, or None when not safely inlinable.
+
+    Only a strictly normalised timestamp is accepted, so the inlined value
+    cannot carry any extra SQL.
+    """
+    norm = normalize_date_value(raw)
+    return f"#{norm}#" if _JET_TIMESTAMP_RE.match(norm) else None
+
+
+def date_value_fragment(dialect: str, raw: object) -> tuple[str, object | None]:
+    """Return ``(sql_fragment, bound_value)`` for one date criterion.
+
+    ``bound_value`` is None when the value was inlined (Jet literal) and must
+    therefore not be added to the parameter list.
+    """
+    if dialect == "oracle":
+        return oracle_to_date_bind(), normalize_date_value(raw)
+    if dialect == "jet":
+        literal = jet_date_literal(raw)
+        if literal is not None:
+            return literal, None
+        # Unrecognised input: fall back to a plain bind rather than inlining.
+        return "?", raw
+    return "?", raw
+
+
 def build_select(query: dict, dbms: str | None = None) -> tuple[str, list]:
     """Build a parameterized SELECT statement from a query definition.
 
@@ -176,15 +248,26 @@ def build_select(query: dict, dbms: str | None = None) -> tuple[str, list]:
     date_to = query.get("date_to")
     if date_column and (date_from is not None or date_to is not None):
         qcol = quote(str(date_column))
+        # Oracle needs TO_DATE(), Access/Jet needs a '#...#' literal; other
+        # servers bind the value plainly. See date_value_fragment().
+        dialect = date_dialect_for(dbms)
+        # A None bound_value means the value was inlined, so no parameter is
+        # bound for that fragment.
         if date_from is not None and date_to is not None:
-            where_clauses.append(f"{qcol} BETWEEN ? AND ?")
-            params.extend([date_from, date_to])
+            from_frag, from_val = date_value_fragment(dialect, date_from)
+            to_frag, to_val = date_value_fragment(dialect, date_to)
+            params.extend(v for v in (from_val, to_val) if v is not None)
+            where_clauses.append(f"{qcol} BETWEEN {from_frag} AND {to_frag}")
         elif date_from is not None:
-            where_clauses.append(f"{qcol} >= ?")
-            params.append(date_from)
+            frag, val = date_value_fragment(dialect, date_from)
+            if val is not None:
+                params.append(val)
+            where_clauses.append(f"{qcol} >= {frag}")
         else:
-            where_clauses.append(f"{qcol} <= ?")
-            params.append(date_to)
+            frag, val = date_value_fragment(dialect, date_to)
+            if val is not None:
+                params.append(val)
+            where_clauses.append(f"{qcol} <= {frag}")
 
     sql = f"SELECT {col_sql} FROM {table}"
     if where_clauses:

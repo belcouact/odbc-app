@@ -39,7 +39,7 @@
     "retrying": "Reconnecting to the local server… testing the connection now.",
     "retried": "Reconnected — the local server is answering again. Carry on; no refresh needed.",
     "failed": "Retry failed — the local server is still not answering. It may still be starting up; try again in a moment.",
-    "offline": "Lost connection to the local server. Your work is safe in this tab. It usually comes back on its own within a minute; if not, launch ODBCQueryApp.exe again — the page will reconnect without a refresh.",
+    "offline": "Lost connection to the local server. Your work is safe. It usually comes back on its own within a minute; if not, close and reopen ODBCQueryApp.exe — the app reconnects without losing anything.",
     "reconnectedToast": "Connected to the local server."
   },
   "update": {
@@ -50,9 +50,9 @@
     "downloading": "Downloading version {{version}}…{{percentSuffix}}{{rateText}}",
     "verifying": "Verifying the download…",
     "waitingIdle": "Waiting for running queries to finish…",
-    "restarting": "Installing the update and restarting — this tab reconnects automatically.",
+    "restarting": "Installing the update and restarting — the app opens again automatically.",
     "available": "A new version ({{latest}}) is available — you are on {{current}}.",
-    "stalledRestarting": "Still restarting — this page reconnects on its own. If nothing happens within a minute, close it and start the app again; the update is already installed.",
+    "stalledRestarting": "Still restarting — the app reopens on its own. If nothing happens within a minute, start the app again; the update is already installed.",
     "stalledLost": "Lost contact with the app during the update — it should come back on its own. If it stays quiet, restart the app and run the update again.",
     "unsupported": "This copy of the app cannot update itself. Close it and open the newest ODBCQueryApp.exe ({{latest}}) to upgrade.",
     "startFailed": "Update could not be started.",
@@ -60,14 +60,14 @@
     "updatedToast": "Updated to version {{version}} — refreshing to load the new interface…",
     "requiredTitle": "Update required",
     "requiredText": "This version ({{current}}) is no longer supported. Version <strong>{{latest}}</strong> is required to continue.",
-    "requiredAuto": "“Update now” downloads the new build, waits for running queries to finish, then restarts the app automatically — this tab reconnects on its own.",
+    "requiredAuto": "“Update now” downloads the new build, waits for running queries to finish, then restarts the app automatically.",
     "requiredManual": "Automatic update is not available in this environment. Please close the app and copy the latest ODBCQueryApp.exe from your IT team's share folder."
   },
   "shutdown": {
     "title": "Shut down server",
-    "confirm": "This stops the embedded ODBCQueryApp server and disconnects any connected users. You can close this tab afterwards. Continue?",
+    "confirm": "This stops the embedded ODBCQueryApp server and disconnects any connected users. The app window closes afterwards. Continue?",
     "stopping": "Stopping the server…",
-    "stopped": "The server has been stopped. You can now close this tab.",
+    "stopped": "The server has been stopped. The app window will close now.",
     "failed": "Could not stop the server: {{error}}",
     "cancel": "Cancel",
     "close": "Close",

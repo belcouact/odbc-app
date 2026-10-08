@@ -43,7 +43,7 @@ import ViewTimelineIcon from '@mui/icons-material/ViewTimeline'
 import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
 import theme, { BRAND } from './theme'
-import { api, sendTabLeftBeacon } from './api/client'
+import { api } from './api/client'
 import type { FeedbackThread, UpdateStatus } from './api/client'
 import WorkspacePage, { type WorkspacePageHandle } from './pages/WorkspacePage'
 import ScriptPage, { type ScriptPageHandle } from './pages/ScriptPage'
@@ -144,11 +144,6 @@ const TOOLS_TAB_VALUE = 'tools'
 
 const HELP_STEPS: { title: string; description: string }[] = [
   {
-    title: 'Save the app as a bookmark',
-    description:
-      'First time: double-click ODBCQueryApp.exe once — that one launch registers the odbcapp:// link on your PC, and the app opens in your browser. From then on you never need to find the exe again: type odbcapp:// in the browser address bar, allow the prompt, and save it as a bookmark. Clicking that bookmark starts the app when it is closed, and just opens a new tab when it is already running.',
-  },
-  {
     title: 'Connect to a data source',
     description:
       'Open Settings → Connections → Add connection. Pick your ODBC driver, fill in the connection settings, then click "Test" to verify. Saved connections are shown as a badge next to this help button.',
@@ -182,11 +177,6 @@ const HELP_STEPS: { title: string; description: string }[] = [
 
 /** Simplified Chinese copy of HELP_STEPS, shown when the dialog toggles 中文. */
 const HELP_STEPS_ZH: { title: string; description: string }[] = [
-  {
-    title: '把应用保存为书签',
-    description:
-      '首次使用：先双击一次 ODBCQueryApp.exe——这一次启动会在电脑上注册 odbcapp:// 链接，应用随即在浏览器中打开。此后就不必再找 exe 了：在浏览器地址栏输入 odbcapp://，允许弹出的提示，并把它保存为书签。以后点击该书签即可：应用未运行时会自动启动，已在运行时则新开一个标签页。',
-  },
   {
     title: '连接数据源',
     description:
@@ -377,16 +367,16 @@ function ShutdownDialog({
 const RETRY_MIN_FEEDBACK_MS = 900
 
 /**
- * Watch the local backend: heartbeat + fast health probes.
+ * Watch the local backend with fast health probes.
  *
- * The packaged exe restarts its embedded server automatically when the tab
- * goes silent (laptop sleep, frozen tab), keeping the same port. This hook
- * notices an outage (heartbeat/health failing -> offline banner), polls
- * `/api/health` every 4s while offline, and flips back automatically the
- * moment the server answers again — the page heals itself without a reload,
- * keeping all in-app state. `retryNow` lets the user force an instant probe;
- * `retrying` / `retryResult` expose that manual attempt so the banner can show
- * an in-progress state and then a pass/fail verdict.
+ * The packaged app runs its backend in-process behind a native window, so the
+ * launcher restarts a crashed server on the same port. This hook notices an
+ * outage (health failing -> offline banner), polls `/api/health` every 4s while
+ * offline, and flips back automatically the moment the server answers again —
+ * the page heals itself without a reload, keeping all in-app state. `retryNow`
+ * lets the user force an instant probe; `retrying` / `retryResult` expose that
+ * manual attempt so the banner can show an in-progress state and then a
+ * pass/fail verdict.
  *
  * `busyRef` lets a caller freeze the hook entirely (self-update install): the
  * server is deliberately stopped mid-swap, so probes must not report an outage
@@ -425,30 +415,25 @@ function useBackendConnection(busyRef?: { current: boolean }): {
       busyRef?.current
         ? Promise.resolve(false)
         : api.health().then(() => mark(true), () => mark(false))
-    const beat = (): Promise<boolean> =>
-      busyRef?.current
-        ? Promise.resolve(false)
-        : api.heartbeat().then(() => mark(true), () => mark(false))
-    probeRef.current = beat
+    probeRef.current = probe
     const onVisible = () => {
       // Coming back from sleep / a hidden tab: check right away.
       if (document.visibilityState === 'visible') probe()
     }
-    const onTabLeft = () => sendTabLeftBeacon()
-    beat() // first beat immediately: also tells the backend this tab is back
-    const beatTimer = window.setInterval(beat, 15000)
-    const probeTimer = window.setInterval(() => {
+    probe() // first probe immediately
+    // Slow check while up (catches a backend crash) and a fast one while down
+    // (heals as soon as the restarted server answers).
+    const upTimer = window.setInterval(() => {
+      if (up) probe()
+    }, 15000)
+    const downTimer = window.setInterval(() => {
       if (!up) probe()
     }, 4000)
     document.addEventListener('visibilitychange', onVisible)
-    window.addEventListener('pagehide', onTabLeft)
     return () => {
-      window.clearInterval(beatTimer)
-      window.clearInterval(probeTimer)
+      window.clearInterval(upTimer)
+      window.clearInterval(downTimer)
       document.removeEventListener('visibilitychange', onVisible)
-      window.removeEventListener('pagehide', onTabLeft)
-      // No goodbye beacon here: an unmount is not necessarily a page close
-      // (e.g. StrictMode re-mounts in dev); `pagehide` covers real unloads.
     }
   }, [busyRef])
 
@@ -809,11 +794,10 @@ function AppShell() {
     }
   }
 
-  // ---- Keep-alive heartbeat + auto-reconnect ----
-  // Pings the backend every 15s (tagged with this tab's id). The backend
-  // watchdog / launcher keep the local server alive: if it dies (laptop
-  // sleep, frozen tab) the launcher restarts it on the same port and this
-  // hook notices, showing a banner until the connection is back — no reload.
+  // ---- Backend health watch + auto-reconnect ----
+  // Polls the local backend's health endpoint. The launcher keeps the embedded
+  // server alive: if it crashes it is restarted on the same port and this hook
+  // notices, showing a banner until the connection is back — no reload.
   // During a self-update install the hook is frozen via this ref: the server
   // is deliberately stopped for the folder swap, and the UI must neither show
   // the offline banner nor hammer the dead port with probes/retries.

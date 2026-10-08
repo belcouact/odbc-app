@@ -10,8 +10,8 @@ when the running version falls below ``min_version``).  Pressing *Update now*
 downloads the new package — a zip of the app folder — into the local data
 directory, extracts it to a staging folder, waits until no queries are in
 flight, asks the server to shut down with reason ``"update"`` and the launcher
-swaps the install folders and restarts the new build on the same port, so
-already-open browser tabs reconnect by themselves.
+swaps the install folders and restarts the new build on the same port, which
+opens a fresh app window.
 
 Manifest format (``latest.json``)::
 

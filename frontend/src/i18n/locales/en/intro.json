@@ -109,7 +109,7 @@
       "hero1": "Your database.",
       "hero2": "Your PC.",
       "hero3": "Your answers.",
-      "lead": "Query any ODBC source without writing SQL, analyze the result with a script, and ask an AI to help. All from your browser, against data on your own machine.",
+      "lead": "Query any ODBC source without writing SQL, analyze the result with a script, and ask an AI to help. All in a native app window, against data on your own machine.",
       "anyDriver": "any ODBC driver",
       "cap1": {
         "title": "Query without writing SQL.",
@@ -157,7 +157,7 @@
         "l3": "Ask.",
         "l4": "Repeat.",
         "p1": "Queries run on this PC against your own ODBC sources.",
-        "p2": "Read-only by default, and credentials never reach the browser.",
+        "p2": "Read-only by default, and credentials never leave the backend.",
         "p3": "Scripts and the AI assistant work from your result set.",
         "start": "Start exploring",
         "again": "Watch again",

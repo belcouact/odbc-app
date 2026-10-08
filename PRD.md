@@ -2,7 +2,7 @@
 
 ## Objective
 
-Provide a lightweight web application that allows users to query local ODBC-connected databases through a browser interface without requiring SQL knowledge.
+Provide a lightweight desktop application that allows users to query local ODBC-connected databases through a native window interface without requiring SQL knowledge.
 
 ---
 
@@ -18,7 +18,7 @@ Provide a lightweight web application that allows users to query local ODBC-conn
 ## Architecture
 
 ```text
-Browser
+Native window (WebView2)
   ↓
 Frontend (Web UI)
   ↓
@@ -125,7 +125,7 @@ System:
 ### Security
 
 - Backend only can access ODBC
-- No database credentials exposed to browser
+- No database credentials exposed to the window
 - Read-only query mode by default
 
 ### Platform Support
@@ -139,8 +139,9 @@ System:
 
 ### Deployment
 
-- Pure web application: the FastAPI backend serves the built frontend from a single port
-- Access via browser at `http://127.0.0.1:8000` (no desktop shell, no executable packaging)
+- Desktop application: the packaged exe runs the FastAPI backend (embedded uvicorn) and shows
+  the UI in a native WebView2 window (pywebview); a development run can also serve it over
+  `http://127.0.0.1:8000`
 - Single PC deployment
 - On-premise only
 - No internet required

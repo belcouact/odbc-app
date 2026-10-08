@@ -23,7 +23,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from app import logging_utils, storage
 from app.api import history as history_api
 from app.db import odbc
-from app.db.sql_builder import detect_dbms, resolve_dbms
+from app.db.sql_builder import (
+    date_dialect_for,
+    date_value_fragment,
+    detect_dbms,
+    resolve_dbms,
+)
 
 router = APIRouter()
 
@@ -900,26 +905,6 @@ def get_test_components(template_key: str):
 # table-qualified). Values are always bound as ODBC parameters.
 _EXTRA_COLUMN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$#]*(\.[A-Za-z_][A-Za-z0-9_$#]*)?$")
 
-# Oracle DATE columns must be compared through TO_DATE() — a bare string
-# literal triggers ORA-01861. Inputs come from the date / datetime-local pickers
-# as 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM'.
-_TO_DATE_MASK = "YYYY-MM-DD HH24:MI:SS"
-
-
-def _to_date_bind() -> str:
-    """A bound parameter wrapped in Oracle TO_DATE(), for the fixed mask."""
-    return f"TO_DATE(?, '{_TO_DATE_MASK}')"
-
-
-def _date_ts(raw: str) -> str:
-    """Normalise a date/datetime input to a full timestamp for TO_DATE()."""
-    text = str(raw).strip().replace("T", " ")
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
-        return text + " 00:00:00"
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", text):
-        return text + ":00"
-    return text
-
 
 class ExtraFilter(BaseModel):
     """One user-added parameter: a column from the base SQL plus a filter."""
@@ -941,7 +926,7 @@ class TemplateRunRequest(BaseModel):
 
 
 def _render_field_fragment(
-    field: dict, operators: dict, values: dict, params: list, use_to_date: bool = False
+    field: dict, operators: dict, values: dict, params: list, date_dialect: str = "plain"
 ) -> str | None:
     """Render one configured field as an ``AND <column> <op> ?`` fragment.
 
@@ -950,9 +935,10 @@ def _render_field_fragment(
     Blank optional fields are omitted (None returned) — no '1 = 1' filler is
     needed because the fragment is not pinned to a placeholder position.
 
-    ``use_to_date`` is True only for Oracle connections: date/datetime columns
-    must be compared via TO_DATE(?, 'YYYY-MM-DD HH24:MI:SS') (see _to_date_bind).
-    Other DBMSs bind the value as a plain parameter.
+    ``date_dialect`` selects how date/datetime columns are compared (see
+    sql_builder.date_value_fragment): 'oracle' wraps the bind in TO_DATE()
+    (ORA-01861), 'jet' inlines a '#...#' literal (Access -3030), 'plain' binds
+    the value as-is. It only applies to date/datetime-typed fields.
     """
     key = field.get("key")
     label = field.get("label") or key
@@ -960,8 +946,8 @@ def _render_field_fragment(
     raw = str(values.get(key, "")).strip()
     operator = (operators.get(key) or field.get("operator") or "=").lower()
     is_date = field.get("type") in ("datetime", "date")
-    # Oracle DATE columns use TO_DATE(); other servers keep the raw bind.
-    use_odate = is_date and use_to_date
+    # Non-date fields always bind plainly, whatever the connection's DBMS.
+    date_dialect = date_dialect if is_date else "plain"
 
     if operator in ("is null", "is not null"):
         return f"AND {column} {operator.upper()}"
@@ -973,9 +959,10 @@ def _render_field_fragment(
         raw_to = str(values.get(key + "__to", "")).strip()
         if not raw_to:
             raise HTTPException(status_code=400, detail=f"Field '{label}' needs a 'to' value for BETWEEN")
-        params.extend([_date_ts(raw) if use_odate else raw, _date_ts(raw_to) if use_odate else raw_to])
-        bind = " BETWEEN " + (_to_date_bind() if use_odate else "?")
-        return f"AND {column}{bind} AND " + (_to_date_bind() if use_odate else "?")
+        from_frag, from_val = date_value_fragment(date_dialect, raw)
+        to_frag, to_val = date_value_fragment(date_dialect, raw_to)
+        params.extend(v for v in (from_val, to_val) if v is not None)
+        return f"AND {column} BETWEEN {from_frag} AND {to_frag}"
     if operator in ("like", "not like"):
         params.append(f"%{raw}%")
         return f"AND {column} {'NOT LIKE' if operator == 'not like' else 'LIKE'} ?"
@@ -990,20 +977,28 @@ def _render_field_fragment(
                 else f"Field '{label}' is required"
             )
             raise HTTPException(status_code=400, detail=detail)
-        params.extend([_date_ts(part) if use_odate else part for part in parts])
-        placeholders = ", ".join(_to_date_bind() if use_odate else "?" for _ in parts)
+        fragments = []
+        for part in parts:
+            frag, val = date_value_fragment(date_dialect, part)
+            fragments.append(frag)
+            if val is not None:
+                params.append(val)
+        placeholders = ", ".join(fragments)
         return f"AND {column} {'NOT IN' if operator == 'not in' else 'IN'} ({placeholders})"
-    params.append(_date_ts(raw) if use_odate else raw)
-    return f"AND {column} {operator} " + (_to_date_bind() if use_odate else "?")
+    frag, val = date_value_fragment(date_dialect, raw)
+    if val is not None:
+        params.append(val)
+    return f"AND {column} {operator} {frag}"
 
 
 @router.post("/connection-templates/run")
 def run_connection_template(payload: TemplateRunRequest):
     """Run a template option with the submitted field values (parameterized)."""
     conn = _get_connection(payload.connection_id)
-    # Oracle DATE columns need TO_DATE() wrapping; other servers bind plainly.
+    # Date columns are compared per DBMS dialect (Oracle TO_DATE(), Access
+    # '#...#' literal); other servers bind plainly.
     dbms = resolve_dbms(conn, detect_dbms(conn))
-    use_to_date = bool(dbms and "oracle" in str(dbms).lower())
+    date_dialect = date_dialect_for(dbms)
     conn_key = _template_key(conn)
     options = _effective_options(conn_key)
     if not options:
@@ -1080,7 +1075,7 @@ def run_connection_template(payload: TemplateRunRequest):
         # condition, so it is skipped here when the template uses '<>'.
         if has_from_placeholder and key == "operation":
             continue
-        fragment = _render_field_fragment(field, operators, payload.values, params, use_to_date)
+        fragment = _render_field_fragment(field, operators, payload.values, params, date_dialect)
         if fragment:
             fragments.append(fragment)
 

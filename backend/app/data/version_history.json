@@ -1,27 +1,27 @@
 [
   {
+    "version": "2.6.2",
+    "date": "2026-10-08",
+    "notes": "1. Self-update now actually installs: previously the app closed to apply an update but the swap never ran, so the version never changed. Updates now install and the app restarts automatically on the new version.\n2. Fixed date-range filters on Oracle: the Builder now wraps the start and end dates in TO_DATE, so a generated query no longer fails with ORA-01861.\n3. Fixed date-range filters on Access / Excel (Jet) data sources: date values are written in the Jet #...# form, matching the SQL preview, so the query runs instead of raising a data-type mismatch.\n4. Excel/CSV exports now actually save: choosing an export opens the native \"Save As\" dialog (defaulting to your Downloads folder). Previously the export reported success but the file was silently discarded.\n5. Removed the obsolete \"Save the app as a bookmark\" step from the \"How to use this app\" guide, since the app now opens in its own desktop window."
+  },
+  {
+    "version": "2.6.1",
+    "date": "2026-10-08",
+    "notes": "1. Fixed date-range filters on Oracle: the Builder now wraps the start and end dates in TO_DATE, so a generated query no longer fails with ORA-01861.\n2. Fixed date-range filters on Access / Excel (Jet) data sources: date values are written in the Jet #...# form, matching the SQL preview, so the query runs instead of raising a data-type mismatch.\n3. Excel/CSV exports now actually save: choosing an export opens the native \"Save As\" dialog (defaulting to your Downloads folder). Previously the export reported success but the file was silently discarded.\n4. Removed the obsolete \"Save the app as a bookmark\" step from the \"How to use this app\" guide, since the app now opens in its own desktop window."
+  },
+  {
+    "version": "2.6.0",
+    "date": "2026-10-08",
+    "notes": "1. The app now opens in its own dedicated desktop window instead of a browser tab, so it no longer suffers from \"lost connection\" or accidental tab-close problems.\n2. Template sample dashboards now preview inside an in-app viewer window, so you can check a template's output before running a query."
+  },
+  {
+    "version": "2.5.4",
+    "date": "2026-10-08",
+    "notes": "1. The Script page now offers an \"AOI Defect Map\" template: it plots every AOI defect on a CD/MD coordinate map coloured by class and sized by severity, with a filter sidebar, hover defect images and a full-screen image gallery. A sample output is linked so you can preview it before running.\n2. Fixed the intro screen where the \"ODBC\" label was hidden behind the database cylinder.\n3. The Connections table's Username column no longer wraps the header or a Chinese name onto two lines."
+  },
+  {
     "version": "2.5.3",
     "date": "2026-10-07",
     "notes": "1. Opening a tool from the Tools menu — FlowDiagram, Project or ProblemSolving — now shows a loading indicator while the embedded app starts: a centred spinner with \"Loading app…\" fills the page instead of leaving it blank, in both English and Chinese, and disappears as soon as the app is ready."
-  },
-  {
-    "version": "2.5.2",
-    "date": "2026-10-06",
-    "notes": "1. The feedback board no longer leaves a long empty stretch when scrolling: opening Feedback ends right after the post list instead of scrolling through a tall blank page, and closing it returns you to the page you opened it from."
-  },
-  {
-    "version": "2.5.1",
-    "date": "2026-10-06",
-    "notes": "1. The startup window appears immediately: the \"Starting up ODBC Query App…\" splash shows the moment you launch the app instead of after a delay, so launching never feels frozen.\n2. The Analyze → Chart panel is easier to scan: dropdown and switch-label text is slightly smaller, so more settings fit on screen without extra scrolling.\n3. The chart color pickers were redesigned: the series, per-series and chart-background color inputs are now clean rounded swatches with an eyedropper badge, a hover highlight and smoother press feedback."
-  },
-  {
-    "version": "2.5.0",
-    "date": "2026-10-05",
-    "notes": "1. New \"Token usage\" tab under Settings → AI Assistant shows how many tokens the AI assistant uses: totals for today, the last 7 days and all time, donut charts breaking usage down by feature and by model, and a 14-day bar chart per model.\n2. The tab lists recent AI calls in a table — time, feature, model, input tokens, output tokens and latency — with previous/next page buttons and a selector for how many rows to show per page (10/25/50). The table is always visible; no extra clicks needed.\n3. A refresh button reloads the numbers on demand and \"Reset usage\" clears the locally recorded history. Usage is recorded only on this machine and monitoring never blocks AI features."
-  },
-  {
-    "version": "2.4.1",
-    "date": "2026-10-05",
-    "notes": "1. Uploading spreadsheets is much faster: .xlsx files are now read by a native parser (roughly 5× quicker) and the grid rows are serialized by pandas, so large Excel and CSV uploads reach the screen in a fraction of the time.\n2. The in-app assistant now stays on topic: it helps with querying, data and statistical analysis, scripting, charts and how to use the app, and politely declines unrelated questions. It also no longer invents table or column names when it has no schema.\n3. The feedback board is now a full page: it scrolls like every other view, carries its own \"Feedback\" title and a Close button, and the unread badge clears as soon as you close it.\n4. The feedback icon in the top bar now matches the AI assistant icon — same filled glyph and app-blue colour.\n5. The top bar no longer shifts on load: the version badge shows a placeholder immediately and the update status is read once the browser is idle, so the first paint stays stable and quick.\n6. New feedback posts pre-fill and lock your name, while the title, description and category are required — anything missing is flagged with a warning, and toast messages are colour-coded by type (green success, yellow warning, red error)."
   }
 ]

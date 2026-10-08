@@ -17,7 +17,6 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import FileOpenIcon from '@mui/icons-material/FileOpen'
 import GridOnIcon from '@mui/icons-material/GridOn'
 import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined'
-import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SaveIcon from '@mui/icons-material/Save'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
@@ -333,6 +332,10 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   const [expandedTemplate, setExpandedTemplate] = useState('')
   /** Stem whose sample dashboard is being fetched, so only that row spins. */
   const [exampleBusy, setExampleBusy] = useState('')
+  /** Sample dashboard open in the in-app viewer (blob URL + title), or null. */
+  const [examplePreview, setExamplePreview] = useState<{ title: string; url: string } | null>(null)
+  /** Phones show the dashboard viewer full screen, matching the other pop-ups. */
+  const exampleFullScreen = useMediaQuery('(max-width:600px)')
 
   /** Fetch the published template list (Supabase catalog, bundled fallback). */
   const loadTemplates = useCallback(async () => {
@@ -391,12 +394,15 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
     }
   }
 
-  /** Open a template's sample dashboard, rendered, in a new tab.
+  /** Show a template's sample dashboard in the in-app viewer.
    *
    *  The bucket serves HTML objects as ``text/plain`` with ``nosniff``, so
    *  linking straight at the object URL would show source code. Fetching the
-   *  bytes (CORS is open) and handing the browser a ``text/html`` blob makes it
-   *  render the dashboard instead. */
+   *  bytes (CORS is open) and handing an ``<iframe>`` a ``text/html`` blob makes
+   *  it render. The viewer is an in-app dialog on purpose: ``window.open`` is
+   *  intercepted by the native WebView2 window (it either navigates the app
+   *  window away or asks the OS browser to open a ``blob:`` URL it cannot
+   *  resolve), so a real popup would be unreliable. */
   const openExample = useCallback(async (tmpl: ScriptTemplate) => {
     const url = tmpl.example?.url
     if (!url) return
@@ -407,9 +413,10 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
       const blobUrl = URL.createObjectURL(
         new Blob([await res.text()], { type: 'text/html' }),
       )
-      window.open(blobUrl, '_blank', 'noopener')
-      // Release the blob once the new tab has had time to load it.
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+      setExamplePreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url)  // release the previous blob
+        return { title: tmpl.example?.label || tmpl.title || tmpl.name, url: blobUrl }
+      })
     } catch (err) {
       showNotice(
         t('notices.exampleFailed', {
@@ -420,6 +427,14 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
       setExampleBusy('')
     }
   }, [t, showNotice])
+
+  /** Close the sample-dashboard viewer and release its blob. */
+  const closeExamplePreview = useCallback(() => {
+    setExamplePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url)
+      return null
+    })
+  }, [])
 
   // Keep the live log scrolled to the bottom as new output streams in.
   useEffect(() => {
@@ -1866,7 +1881,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                                   {exampleBusy === tmpl.name ? (
                                     <CircularProgress size={16} color="inherit" />
                                   ) : (
-                                    <OpenInNewIcon fontSize="small" />
+                                    <VisibilityIcon fontSize="small" />
                                   )}
                                   {t('common.view')}
                                 </Link>
@@ -1976,6 +1991,57 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                 </TableBody>
               </Table>
             </TableContainer>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Sample-dashboard viewer. Shown in-app rather than via window.open so it
+          works inside the native WebView2 window, where popups are intercepted. */}
+      <Dialog
+        open={examplePreview !== null}
+        onClose={closeExamplePreview}
+        fullScreen={exampleFullScreen}
+        maxWidth={false}
+        slotProps={{
+          paper: {
+            sx: {
+              width: { xs: '100%', md: '90vw' },
+              height: exampleFullScreen ? '100%' : '88vh',
+              maxWidth: 'none',
+              maxHeight: 'none',
+              m: { md: 3 },
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
+          <InsightsIcon color="primary" />
+          <Box
+            sx={{
+              flexGrow: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {examplePreview?.title || t('templates.sampleDashboard')}
+          </Box>
+          <IconButton
+            onClick={closeExamplePreview}
+            aria-label={t('templates.viewerCloseAria')}
+            sx={{ width: 48, height: 48 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, display: 'flex', overflow: 'hidden' }}>
+          {examplePreview && (
+            <iframe
+              src={examplePreview.url}
+              title={examplePreview.title}
+              style={{ border: 0, width: '100%', height: '100%', background: '#fff' }}
+            />
           )}
         </DialogContent>
       </Dialog>

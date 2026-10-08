@@ -1,19 +1,24 @@
 """Packaged-app entry point (PyInstaller).
 
-Runs the FastAPI app with an embedded uvicorn server, opens the default
-browser once the server is ready, and supervises the server in a restart
-loop:
+Runs the FastAPI app with an embedded uvicorn server *on a worker thread* and
+shows the UI in a native pywebview window (WebView2) on the main thread — no
+browser tab, no browser chrome.  Window and backend share one process, so the
+window's own lifecycle drives the app:
 
-* user closes every tab or presses Quit  -> reason "quit"   -> process exits;
-* the browser went silent (laptop sleep, frozen tab) and the watchdog
-  stopped the server -> reason "watchdog" -> the server restarts on the very
-  same port (persisted in the state dir) so the still-open browser tab
-  reconnects by itself, without a reload;
-* an unexpected crash is retried the same way, with a circuit breaker that
-  gives up after a few back-to-back fast failures and shows an error box.
+* user closes the window (or presses Quit in-app) -> reason "quit" -> the
+  server is stopped and the process exits;
+* a self-update is staged -> reason "update" -> the window closes, the install
+  folder is swapped by the helper and the new build starts;
+* an unexpected server crash is retried on the same port, with a circuit
+  breaker that gives up after a few back-to-back fast failures and shows an
+  error box (the still-open window reconnects on its own).
+
+The former "silent browser" watchdog is gone: it inferred a closed page from a
+throttled JS heartbeat and could mistake laptop sleep for a quit.  A native
+window reports its own close directly, so that heuristic is no longer needed.
 
 Built as a windowed (no-console) onedir bundle (ODBCQueryApp.exe next to an
-_internal\ tree), so stdout/stderr are redirected to
+_internal\\ tree), so stdout/stderr are redirected to
 ``%APPDATA%\\ODBCQueryApp\\server.log`` and fatal errors are shown in a
 message box instead of a console.
 """
@@ -28,7 +33,8 @@ import tempfile
 import threading
 import time
 import urllib.request
-import webbrowser
+
+import webview
 
 
 def _find_free_port(start: int = 8000, tries: int = 20) -> int:
@@ -88,12 +94,12 @@ def _save_port(port: int) -> None:
 # ---- Per-launch API token ----
 #
 # The backend rejects API calls without this token (static assets stay open so
-# the page can tell the user what is wrong). A browser tab receives it via the
+# the page can tell the user what is wrong). The window receives it via the
 # ``?token=`` URL parameter, keeps it in sessionStorage and echoes it on every
 # request — so other local pages (DNS-rebinding or plain cross-origin) cannot
 # drive the API, which includes arbitrary Python execution. Fresh launches
-# rotate the token; the updater relaunch reuses the saved one so the pre-update
-# tab reconnects, and a bookmark click on a running instance reads the token
+# rotate the token; the updater relaunch reuses the saved one so the fresh
+# window picks it up, and a bookmark click on a running instance reads the token
 # the running instance saved.
 
 def _token_path() -> str:
@@ -143,9 +149,10 @@ def _port_is_bindable(port: int) -> bool:
 def _pick_port() -> int:
     """Prefer the port used by the previous run.
 
-    An open browser tab can only heal itself (reconnect without a reload)
-    while the origin stays identical, so reuse the saved port whenever it is
-    free again and only drift to a neighbour when something else grabbed it.
+    The WebView profile is keyed by origin, so reusing the saved port keeps
+    localStorage/cookies (the app's in-webview settings) across restarts and
+    lets the updater relaunch land the new window on the same origin.  Drift to
+    a neighbour only when something else has grabbed the port.
     """
     saved = _load_saved_port()
     if saved is not None and _port_is_bindable(saved):
@@ -155,11 +162,11 @@ def _pick_port() -> int:
 
 # ---- Already-running detection / odbcapp:// protocol bookmark ----
 #
-# A browser cannot start a local process from a plain http:// page, so the
-# bookmark holds the custom ``odbcapp://`` scheme instead: clicking it hands
-# the URL to Windows, which runs this exe (registered below in HKCU), and the
-# exe opens the app in a tab.  A launch that finds a server already up only
-# opens the tab — it never starts a second server.
+# A web page cannot start a local process, so the bookmark holds the custom
+# ``odbcapp://`` scheme instead: clicking it hands the URL to Windows, which
+# runs this exe (registered below in HKCU), and the exe opens the app window.
+# A launch that finds the app already running just exits — it never starts a
+# second server.
 
 _PROTOCOL = "odbcapp"
 _PORT_SCAN_TRIES = 20
@@ -234,9 +241,9 @@ def _is_current_or_newer(port: int) -> bool:
     """Whether the serving instance is this build's version or newer.
 
     A *newer* running instance is left alone (never downgrade to this build),
-    but an *older* one must not be handed the browser — otherwise a freshly
-    installed build keeps showing the previous version's page.  When either
-    version is unknown, fall back to the old hand-off behaviour.
+    but an *older* one must not be left serving — otherwise a freshly installed
+    build keeps showing the previous version's window.  When either version is
+    unknown, fall back to the old hand-off behaviour.
     """
     build = _build_version()
     running = _health_version(port)
@@ -271,8 +278,8 @@ def _acquire_single_instance() -> bool:
     """Claim the "one server per session" lock; False when someone else holds it.
 
     Two quick clicks on the bookmark must not spin up two servers on two ports
-    (which would open two tabs with separate state), so the loser just waits
-    for the winner and opens a tab on it.
+    (which would open two windows with separate state), so the loser just waits
+    for the winner.
     """
     global _instance_mutex_handle
     if _instance_mutex_handle:
@@ -291,29 +298,13 @@ def _acquire_single_instance() -> bool:
     return True
 
 
-def _wait_for_running_port(seconds: float = 30.0) -> int | None:
-    """Poll for a backend another instance is still starting up.
-
-    A one-file exe needs a moment to unpack before it serves anything, so the
-    second launcher waits instead of assuming nobody is coming.
-    """
-    deadline = time.monotonic() + seconds
-    while True:
-        port = _running_port()
-        if port is not None:
-            return port
-        if time.monotonic() >= deadline:
-            return None
-        time.sleep(0.5)
-
-
 def _retire_stale_instance(port: int, token: str) -> None:
     """Stop an older running build so this build can serve the page.
 
     Called when a *different, older* version answers on ``port`` — typically an
     instance left running from before this build was installed.  Without this
-    the fresh launcher would hand the browser to the old server and the page
-    would keep showing the previous version.  Asks it to quit, then waits for
+    the fresh launcher would leave the old server serving and the window would
+    keep showing the previous version.  Asks it to quit, then waits for
     it to release both the port and the single-instance lock (the lock is
     claimed here, so the caller can start right away).
     """
@@ -336,13 +327,14 @@ def _retire_stale_instance(port: int, token: str) -> None:
 
 
 # PyInstaller's onefile bootloader exports a set of private launch variables to
-# every child of the running app.  The browser is started *from* here, so it
-# inherits them and hands them on to whatever it launches — including the
-# ``odbcapp://`` handler, which is this very exe.  The bootloader then sees a
-# parent executable that does not match its own archive and aborts with
-# "Security validation failure: parent process has different executable!".
-# The bootloader has already consumed these by the time Python runs, so
-# dropping them here keeps the browser — and anything it starts — clean.
+# every child of the running app.  The webview (and the WebView2 helper
+# processes it spawns) is started *from* here, so it inherits them and hands
+# them on to whatever it launches — including the ``odbcapp://`` handler, which
+# is this very exe.  The bootloader then sees a parent executable that does not
+# match its own archive and aborts with "Security validation failure: parent
+# process has different executable!".  The bootloader has already consumed
+# these by the time Python runs, so dropping them here keeps the webview — and
+# anything it starts — clean.
 _PYI_PRIVATE_VARS = (
     "_PYI_ARCHIVE_FILE",
     "_PYI_APPLICATION_HOME_DIR",
@@ -537,8 +529,8 @@ class _Splash:
     Runs on its own daemon thread with its own message loop, because the main
     thread is about to block inside ``uvicorn``.  ``SW_SHOWNOACTIVATE`` and
     ``WS_EX_TOOLWINDOW`` keep it out of the way (never steals focus, no
-    taskbar button); it is dismissed by ``close()`` once the browser has been
-    opened, or by a 30-second timer as a last resort so it can never linger.
+    taskbar button); it is dismissed by ``close()`` once the app window is
+    ready, or by a 30-second timer as a last resort so it can never linger.
     Everything is best-effort: a failure here must not break startup.
     """
 
@@ -675,23 +667,6 @@ def _start_splash(title: str, message: str):
         return _Splash(title, message)
     except Exception:  # noqa: BLE001 - cosmetic only, never block startup
         return None
-
-
-def _open_browser_when_ready(server, port: int, token: str, splash=None) -> None:
-    """Wait for the server to finish starting, then open the app URL.
-
-    Also dismisses the startup splash: whichever happens first -- the server
-    coming up or the 30 s cap below -- the splash goes away in ``finally``.
-    """
-    try:
-        for _ in range(300):
-            if server.started:  # uvicorn Server.started is a plain bool
-                webbrowser.open(_app_url(port, token))
-                return
-            time.sleep(0.1)
-    finally:
-        if splash is not None:
-            splash.close()
 
 
 # ---- Self-update support (pairs with app/update.py) ----
@@ -913,8 +888,8 @@ def _apply_pending_update() -> bool:
     the previous in-process swap hit.  So we start a helper that waits for this
     process to exit and only then renames the current install folder aside,
     moves the staged folder into place, carries the Inno Setup uninstaller over
-    and relaunches the new build with ``--updated`` (no new browser tab; it
-    reuses the saved port so the already-open page reconnects by itself).
+    and relaunches the new build with ``--updated`` (it opens a fresh window on
+    the saved port).
 
     Returns True once the helper is running — the caller must then exit so the
     handles are released and the helper can do its work.
@@ -934,7 +909,7 @@ def _apply_pending_update() -> bool:
         _show_error(
             "ODBCQueryApp",
             "The update could not be installed:\n"
-            f"{exc}\n\nThe previous version will keep running. "
+            f"{exc}\n\nThe app will close now — please reopen it. "
             f"Details in the log:\n{_log_path()}",
         )
         return False
@@ -948,19 +923,121 @@ def _apply_pending_update() -> bool:
 _FAST_FAILURE_SECONDS = 10.0
 _MAX_FAST_FAILURES = 3
 
+_WINDOW_TITLE = "ODBC Query App"
+# Keep the WebView profile (localStorage, cookies) on disk so in-app settings
+# survive a restart, exactly like a normal browser profile does.
+_WEBVIEW_STORAGE = os.path.join(_state_dir(), "webview")
+
+
+class _ServerHost:
+    """Supervise the embedded uvicorn server on a background thread.
+
+    The native window must own the main thread (a pywebview requirement), so
+    the server no longer blocks it.  This mirrors the former restart loop, but
+    the loop now ends only for a deliberate quit or a self-update — never
+    because a page "went silent".
+    """
+
+    def __init__(self, port: int, app) -> None:
+        self.port = port
+        self.app = app
+        self.server = None  # the current uvicorn.Server
+        self.reason: str | None = None
+        self.done = threading.Event()
+        self._stop = threading.Event()
+
+    def request_stop(self, reason: str | None = None) -> None:
+        """Ask the loop to finish and the current server to shut down."""
+        if reason:
+            # The native window's "closed" event fires as part of *every*
+            # teardown -- including a staged self-update -- and always reports
+            # "quit". Let it supply only a fallback: a reason the server loop
+            # already recorded ("update", "failed") is authoritative. Without
+            # this guard the update's own window close downgraded "update" to
+            # "quit", so main() skipped _apply_pending_update() and the swap
+            # plus relaunch never ran.
+            if reason != "quit" or self.reason is None:
+                self.reason = reason
+        self._stop.set()
+        server = self.server
+        if server is not None:
+            server.should_exit = True
+
+    def wait_started(self, timeout: float = 30.0) -> bool:
+        """Block until the server is serving (True), or it stopped first."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            server = self.server
+            if server is not None and server.started:  # uvicorn: plain bool
+                return True
+            if self.done.is_set():
+                return False
+            time.sleep(0.1)
+        return False
+
+    def run(self) -> None:
+        try:
+            self._loop()
+        finally:
+            self.done.set()
+
+    def _loop(self) -> None:
+        import uvicorn
+
+        fast_failures = 0
+        last_error = ""
+        while not self._stop.is_set():
+            config = uvicorn.Config(
+                self.app, host="127.0.0.1", port=self.port, log_level="info"
+            )
+            server = uvicorn.Server(config)
+            self.server = server
+            # Lets the in-app Quit button (POST /api/shutdown) stop the server.
+            self.app.state.uvicorn_server = server
+            self.app.state.shutdown_reason = None
+            print(f"Serving ODBCQueryApp at http://127.0.0.1:{self.port}")
+
+            started_at = time.monotonic()
+            crashed = False
+            try:
+                server.run()
+            except BaseException as exc:  # noqa: BLE001 - e.g. port already in use
+                crashed = True
+                last_error = str(exc)
+                print(f"uvicorn stopped with an error: {exc!r}")
+
+            reason = getattr(self.app.state, "shutdown_reason", None)
+            if reason is None:
+                reason = "crash" if crashed else "quit"
+            ran_for = time.monotonic() - started_at
+
+            if reason in ("quit", "update"):
+                self.reason = reason
+                return
+
+            # "crash": restart so the still-open window can reconnect.
+            if ran_for < _FAST_FAILURE_SECONDS:
+                fast_failures += 1
+                if fast_failures >= _MAX_FAST_FAILURES:
+                    self.reason = "failed"
+                    print(f"server kept failing to start — giving up: {last_error}")
+                    return
+            else:
+                fast_failures = 0
+
+            print(f"server stopped ({reason}) — restarting on port {self.port}")
+            time.sleep(1)
+
 
 def main() -> int:
     # Splash FIRST — before the port scan, registry work, backup cleanup and
     # imports below — so the window is on screen the moment Python starts
-    # running and a launch never looks dead.  Skipped on the updater relaunch:
-    # the pre-update tab is already open and a second window would look like
-    # a second launch.
-    from_updater = "--updated" in sys.argv
-    splash = None if from_updater else _start_splash("ODBCQueryApp", "Starting ODBC Query App…")
+    # running and a launch never looks dead.
+    splash = _start_splash("ODBCQueryApp", "Starting ODBC Query App…")
 
     if getattr(sys, "frozen", False):
-        # Must happen before anything opens a browser: a leaked
-        # ``_PYI_ARCHIVE_FILE`` makes the odbcapp:// handler abort on launch.
+        # Must happen before anything opens a webview: a leaked
+        # ``_PYI_ARCHIVE_FILE`` breaks the odbcapp:// handler on launch.
         _clear_pyi_environment()
         _redirect_streams()
         _cleanup_old_backups(sys.executable)
@@ -970,43 +1047,36 @@ def main() -> int:
         # it locked (and would be inherited by anything this process launches).
         os.chdir(_state_dir())
 
-    # "--updated" is passed by _apply_pending_update: a browser tab is
-    # already open on the saved port, so don't spawn another one.
-    if not from_updater:
-        # Bookmark click (odbcapp://) or a second exe launch: an instance is
-        # already serving, so only show its page and leave the server alone —
-        # unless it is an *older* build (e.g. one left running from before this
-        # version was installed).  Handing the browser to that build would keep
-        # showing the previous version, so retire it and start this build
-        # instead.  A running instance of this version or newer is left alone.
-        running = _running_port()
-        if running is not None and _is_current_or_newer(running):
-            if splash is not None:
-                splash.close()
-            webbrowser.open(_app_url(running, _load_saved_token()))
-            return 0
-        if running is not None:
-            _retire_stale_instance(running, _load_saved_token())
-        if not _acquire_single_instance():
-            # Another instance is still unpacking/starting: wait for it and
-            # show its page instead of starting a rival server on a new port.
-            running = _wait_for_running_port()
-            if splash is not None:
-                splash.close()
-            if running is not None:
-                webbrowser.open(_app_url(running, _load_saved_token()))
-            return 0
+    # A second launch (bookmark click or double-clicked exe) while the app is
+    # already running has nothing to show — the running process owns the only
+    # window.  Leave that instance alone, unless it is an *older* build (e.g.
+    # one left running from before this version was installed), which must be
+    # retired so this build can serve.
+    running = _running_port()
+    if running is not None and _is_current_or_newer(running):
+        if splash is not None:
+            splash.close()
+        print(f"ODBCQueryApp is already running on port {running}")
+        return 0
+    if running is not None:
+        _retire_stale_instance(running, _load_saved_token())
+    if not _acquire_single_instance():
+        # Another instance is still unpacking/starting: let it win.
+        if splash is not None:
+            splash.close()
+        print("another ODBCQueryApp instance is starting up")
+        return 0
 
-    # Fresh launch: rotate the per-launch API token. The updater relaunch
-    # keeps the saved token so the pre-update tab reconnects. Must be set
-    # before app.main is imported (it reads the token from the environment).
-    token = _prepare_token(reuse_saved=from_updater)
+    # Fresh launch: rotate the per-launch API token (the window receives it via
+    # the ?token= URL parameter). Must be set before app.main is imported (it
+    # reads the token from the environment).
+    token = _prepare_token(reuse_saved=False)
     os.environ["ODBC_APP_TOKEN"] = token
 
     try:
-        import uvicorn
+        import uvicorn  # noqa: F401  (validated here so a failure can be shown)
 
-        from app.main import app, arm_reattach_grace
+        from app.main import app
     except Exception as exc:  # noqa: BLE001 - report any startup failure
         if splash is not None:
             splash.close()
@@ -1016,85 +1086,84 @@ def main() -> int:
     port = _pick_port()
     _save_port(port)
 
-    if from_updater:
-        # Nobody has a page open *yet* (no tab was launched), so give the
-        # pre-update browser tab a bounded chance to reconnect; if none
-        # does, the watchdog exits the app instead of lingering headless.
-        arm_reattach_grace()
+    host = _ServerHost(port, app)
+    threading.Thread(target=host.run, name="uvicorn-server", daemon=True).start()
 
-    first_run = not from_updater
-    fast_failures = 0
-    last_error = ""
+    if not host.wait_started():
+        if splash is not None:
+            splash.close()
+        _show_error(
+            "ODBCQueryApp",
+            f"The server failed to start. See the log at\n{_log_path()}",
+        )
+        return 1
 
-    while True:
-        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
-        server = uvicorn.Server(config)
-        # Lets the in-app Quit button (POST /api/shutdown) stop the server.
-        app.state.uvicorn_server = server
-        app.state.shutdown_reason = None
+    if splash is not None:
+        splash.close()
 
-        print(f"Serving ODBCQueryApp at http://127.0.0.1:{port}")
-        if first_run:
-            # Only open a new tab on the very first launch; restarts after a
-            # watchdog stop are meant to be picked up by the already-open page.
-            first_run = False
-            threading.Thread(
-                target=_open_browser_when_ready,
-                args=(server, port, token, splash),
-                daemon=True,
-            ).start()
+    os.makedirs(_WEBVIEW_STORAGE, exist_ok=True)
+    # WebView2 silently cancels downloads unless pywebview is told to allow
+    # them (the default is False), so exports appeared to succeed but wrote
+    # nothing. With this on, saving a file pops the native "Save As" dialog,
+    # defaulting to the user's Downloads folder.
+    webview.settings["ALLOW_DOWNLOADS"] = True
+    window = webview.create_window(
+        _WINDOW_TITLE,
+        _app_url(port, token),
+        width=1280,
+        height=860,
+        min_size=(900, 600),
+        # The data grid and the SQL editor rely on normal text selection.
+        text_select=True,
+    )
+    if window is None:
+        host.request_stop()
+        _show_error("ODBCQueryApp", "The app window could not be created.")
+        return 1
 
-        started_at = time.monotonic()
-        crashed = False
+    def _on_closed() -> None:
+        """Native window closed by the user: stop the server and exit."""
+        host.request_stop("quit")
+
+    def _watch() -> None:
+        """Close the window when the server loop ends (in-app Quit, a staged
+        self-update, or a fatal failure). Runs on a pywebview worker thread."""
+        host.done.wait()
         try:
-            server.run()
-        except KeyboardInterrupt:
-            return 0  # console/dev stop: intentional exit
-        except BaseException as exc:  # noqa: BLE001 - e.g. port already in use
-            crashed = True
-            last_error = str(exc)
-            print(f"uvicorn stopped with an error: {exc!r}")
+            window.destroy()
+        except Exception:  # noqa: BLE001 - the window is already closing
+            pass
 
-        reason = getattr(app.state, "shutdown_reason", None)
-        if reason is None:
-            reason = "crash" if crashed else "quit"
-        ran_for = time.monotonic() - started_at
+    try:
+        window.events.closed += _on_closed
+    except Exception:  # noqa: BLE001 - no event API: _watch still closes us
+        pass
 
-        if reason == "update":
-            if _apply_pending_update():
-                return 0  # new build was spawned and owns the port now
-            # Swap failed: fall through and restart the old build so the
-            # open page reconnects to something that still works.
+    try:
+        webview.start(
+            _watch,
+            gui="edgechromium",
+            private_mode=False,  # persist localStorage/cookies between runs
+            storage_path=_WEBVIEW_STORAGE,
+        )
+    except Exception as exc:  # noqa: BLE001 - e.g. the WebView2 runtime is missing
+        host.request_stop()
+        _show_error(
+            "ODBCQueryApp",
+            "The app window could not be opened:\n"
+            f"{exc}\n\nThe Microsoft Edge WebView2 Runtime may be missing.",
+        )
+        return 1
 
-        if reason == "quit":
-            if crashed and ran_for < _FAST_FAILURE_SECONDS:
-                # e.g. the very first bind failed: surface it, don't loop.
-                if splash is not None:
-                    splash.close()
-                _show_error("ODBCQueryApp", f"The server stopped unexpectedly:\n{last_error}")
-                return 1
-            return 0
-
-        # "watchdog" / "crash": restart so the still-open page can reconnect.
-        if ran_for < _FAST_FAILURE_SECONDS:
-            fast_failures += 1
-            if fast_failures >= _MAX_FAST_FAILURES:
-                if splash is not None:
-                    splash.close()
-                _show_error(
-                    "ODBCQueryApp",
-                    "The server kept failing to start. See the log at\n"
-                    f"{_log_path()}\n\nLast error:\n{last_error or 'unknown'}",
-                )
-                return 1
-        else:
-            fast_failures = 0
-
-        print(f"server stopped ({reason}) — restarting on port {port} for auto-reconnect")
-        # Wait for a still-open page to beat again after the restart; if none
-        # does, the app exits for good instead of lingering headless.
-        arm_reattach_grace()
-        time.sleep(1)
+    # webview.start() returns once the window is gone.
+    host.request_stop()
+    reason = host.reason or getattr(app.state, "shutdown_reason", None)
+    if reason == "update":
+        # Apply the staged update; this exits so the helper can swap folders.
+        return 0 if _apply_pending_update() else 1
+    if reason == "failed":
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

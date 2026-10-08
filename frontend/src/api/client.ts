@@ -211,8 +211,8 @@ const client = axios.create({
 
 /**
  * Per-launch API token. The launcher starts the backend with a random token
- * and opens the browser at ``/?token=...``: we keep it in sessionStorage
- * (survives reloads, per tab), strip it from the address bar, and echo it on
+ * and opens the native window at ``/?token=...``: we keep it in sessionStorage
+ * (survives reloads, per window), strip it from the address bar, and echo it on
  * every API call. The backend rejects tokenless API requests, which blocks
  * DNS-rebinding and other local pages from driving the API. Empty in dev mode
  * (no token configured there), where nothing is enforced.
@@ -247,43 +247,6 @@ function apiHeaders(extra?: Record<string, string>): Record<string, string> {
 
 if (APP_TOKEN) {
   client.defaults.headers.common['X-App-Token'] = APP_TOKEN
-}
-
-/**
- * Stable id for *this browser tab*. sessionStorage survives reloads but is
- * per-tab, so the backend can track each open tab separately (heartbeats vs.
- * goodbye beacons). Used by the connection watchdog / auto-reconnect logic.
- */
-const TAB_ID = (() => {
-  const key = 'odbc_tab_id'
-  try {
-    let id = window.sessionStorage.getItem(key)
-    if (!id) {
-      id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-      window.sessionStorage.setItem(key, id)
-    }
-    return id
-  } catch {
-    return `tab-${Math.random().toString(36).slice(2, 10)}`
-  }
-})()
-
-/**
- * Tell the backend "this tab is really closing" (pagehide / unmount).
- * sendBeacon is delivered even while the page is going away. The watchdog
- * uses it to separate a deliberate quit (every tab said goodbye -> the exe
- * exits) from a frozen/sleeping tab (no goodbye -> restart and wait for the
- * page to reconnect).
- */
-export function sendTabLeftBeacon(): void {
-  try {
-    const blob = new Blob([JSON.stringify({ tab: TAB_ID })], { type: 'application/json' })
-    // sendBeacon cannot set custom headers, so the token rides in the URL.
-    const url = APP_TOKEN ? `/api/tab-left?token=${encodeURIComponent(APP_TOKEN)}` : '/api/tab-left'
-    navigator.sendBeacon(url, blob)
-  } catch {
-    // best effort: nothing to do if the browser refuses to send
-  }
 }
 
 /** Extract a readable message from an axios error or any unknown failure. */
@@ -1261,14 +1224,6 @@ export const api = {
   /** Delete one stored grid script. */
   deleteGridScriptHistory: (id: string): Promise<{ ok: boolean }> =>
     apiFetch(client.delete(`/ai/grid/history/${id}`)),
-
-  /**
-   * Keep-alive ping tagged with this tab's id; the backend auto-stops (and
-   * the launcher auto-restarts for reconnects) when tabs stop beating.
-   * Short timeout so a dead backend flips the UI offline in seconds.
-   */
-  heartbeat: (): Promise<{ ok: boolean }> =>
-    apiFetch(client.post('/heartbeat', { tab: TAB_ID }, { timeout: 8000 })),
 
   /** Liveness probe used by the auto-reconnect watcher; fails fast. */
   health: (): Promise<{ status: string }> => apiFetch(client.get('/health', { timeout: 4000 })),
