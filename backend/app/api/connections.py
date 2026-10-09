@@ -103,10 +103,17 @@ def public_connection(conn: dict) -> dict:
 
     Drops the password and reports whether one is stored instead.
     """
+    from app.api.connection_templates import connection_template_key  # deferred: avoid import cycle
+
     public = {k: v for k, v in conn.items() if k != "password"}
     public["has_password"] = keystore.has_secret(
         keystore.connection_account(str(conn.get("id") or ""))
     )
+    # The stable key that ties this connection to its GUI templates, predefined
+    # scripts and channel operations: the DSN, or the Access database file name
+    # (ColorDB.mdb -> "ColorDB"). Exposed so the client loads the right template
+    # set instead of deriving the key from the (editable) display name itself.
+    public["template_key"] = connection_template_key(conn)
     return public
 
 

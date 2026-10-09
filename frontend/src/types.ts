@@ -26,6 +26,10 @@ export interface DbConnection {
   /** Resolved server type label (e.g. "Microsoft SQL Server", "Oracle"), set
    *  by the backend on GET /connections. Empty when it could not be resolved. */
   resolved_dbms?: string
+  /** Stable key linking this connection to its GUI templates / predefined
+   *  scripts / channel operations: the DSN, or the Access database file name
+   *  (ColorDB.mdb -> "ColorDB"). Set by the backend. */
+  template_key?: string
   /** SharePoint/OneDrive link for an Access (.mdb/.accdb) file connection. */
   url?: string
   /** Local path the Access connection resolves to (file_path is authoritative). */

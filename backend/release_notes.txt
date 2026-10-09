@@ -1,5 +1,2 @@
-1. Self-update now actually installs: previously the app closed to apply an update but the swap never ran, so the version never changed. Updates now install and the app restarts automatically on the new version.
-2. Fixed date-range filters on Oracle: the Builder now wraps the start and end dates in TO_DATE, so a generated query no longer fails with ORA-01861.
-3. Fixed date-range filters on Access / Excel (Jet) data sources: date values are written in the Jet #...# form, matching the SQL preview, so the query runs instead of raising a data-type mismatch.
-4. Excel/CSV exports now actually save: choosing an export opens the native "Save As" dialog (defaulting to your Downloads folder). Previously the export reported success but the file was silently discarded.
-5. Removed the obsolete "Save the app as a bookmark" step from the "How to use this app" guide, since the app now opens in its own desktop window.
+1. The app now opens maximized when launched (including from the desktop shortcut), so its window fills the screen straight away instead of starting small and needing a manual resize.
+2. Access-file templates (e.g. Color Data) now follow the database file name — anything pointing at ColorDB.mdb loads the ColorDB templates — so they keep working even if the connection is renamed.

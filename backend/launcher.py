@@ -1110,6 +1110,9 @@ def main() -> int:
     window = webview.create_window(
         _WINDOW_TITLE,
         _app_url(port, token),
+        # Open maximized on every launch (including from the desktop shortcut).
+        # width/height remain the "restore" size used when the user un-maximizes.
+        maximized=True,
         width=1280,
         height=860,
         min_size=(900, 600),

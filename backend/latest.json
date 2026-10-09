@@ -1,8 +1,8 @@
 {
-  "version": "2.6.2",
+  "version": "2.6.3",
   "min_version": "1.0.0",
-  "notes": "1. Self-update now actually installs: previously the app closed to apply an update but the swap never ran, so the version never changed. Updates now install and the app restarts automatically on the new version.\n2. Fixed date-range filters on Oracle: the Builder now wraps the start and end dates in TO_DATE, so a generated query no longer fails with ORA-01861.\n3. Fixed date-range filters on Access / Excel (Jet) data sources: date values are written in the Jet #...# form, matching the SQL preview, so the query runs instead of raising a data-type mismatch.\n4. Excel/CSV exports now actually save: choosing an export opens the native \"Save As\" dialog (defaulting to your Downloads folder). Previously the export reported success but the file was silently discarded.\n5. Removed the obsolete \"Save the app as a bookmark\" step from the \"How to use this app\" guide, since the app now opens in its own desktop window.",
+  "notes": "1. The app now opens maximized when launched (including from the desktop shortcut), so its window fills the screen straight away instead of starting small and needing a manual resize.\n2. Access-file templates (e.g. Color Data) now follow the database file name — anything pointing at ColorDB.mdb loads the ColorDB templates — so they keep working even if the connection is renamed.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "c908f866e11af8ee96827350c3b4ab91f9bdfdea3d0f0db488303d3923df2454",
+  "sha256": "7131cd1aadf5c5f24a034dc5bf9913fd287dbee8323dd96a5470c4be1af09276",
   "installer": "ODBCQueryApp-Setup-latest.exe"
 }

@@ -1,5 +1,10 @@
 [
   {
+    "version": "2.6.3",
+    "date": "2026-10-09",
+    "notes": "1. The app now opens maximized when launched (including from the desktop shortcut), so its window fills the screen straight away instead of starting small and needing a manual resize.\n2. Access-file templates (e.g. Color Data) now follow the database file name — anything pointing at ColorDB.mdb loads the ColorDB templates — so they keep working even if the connection is renamed."
+  },
+  {
     "version": "2.6.2",
     "date": "2026-10-08",
     "notes": "1. Self-update now actually installs: previously the app closed to apply an update but the swap never ran, so the version never changed. Updates now install and the app restarts automatically on the new version.\n2. Fixed date-range filters on Oracle: the Builder now wraps the start and end dates in TO_DATE, so a generated query no longer fails with ORA-01861.\n3. Fixed date-range filters on Access / Excel (Jet) data sources: date values are written in the Jet #...# form, matching the SQL preview, so the query runs instead of raising a data-type mismatch.\n4. Excel/CSV exports now actually save: choosing an export opens the native \"Save As\" dialog (defaulting to your Downloads folder). Previously the export reported success but the file was silently discarded.\n5. Removed the obsolete \"Save the app as a bookmark\" step from the \"How to use this app\" guide, since the app now opens in its own desktop window."
@@ -18,10 +23,5 @@
     "version": "2.5.4",
     "date": "2026-10-08",
     "notes": "1. The Script page now offers an \"AOI Defect Map\" template: it plots every AOI defect on a CD/MD coordinate map coloured by class and sized by severity, with a filter sidebar, hover defect images and a full-screen image gallery. A sample output is linked so you can preview it before running.\n2. Fixed the intro screen where the \"ODBC\" label was hidden behind the database cylinder.\n3. The Connections table's Username column no longer wraps the header or a Chinese name onto two lines."
-  },
-  {
-    "version": "2.5.3",
-    "date": "2026-10-07",
-    "notes": "1. Opening a tool from the Tools menu — FlowDiagram, Project or ProblemSolving — now shows a loading indicator while the embedded app starts: a centred spinner with \"Loading app…\" fills the page instead of leaving it blank, in both English and Chinese, and disappears as soon as the app is ready."
   }
 ]

@@ -1663,10 +1663,12 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   // ---- Connection templates: auto-loaded per selected connection while the
   // SQL tab is active (the connection dropdown drives the template list). ----
   const selectedConnection = connections.find((c) => c.id === connectionId)
-  // Template / script / channel links are keyed by the ODBC DSN — an immutable
-  // identifier — not by the editable display name. Non-DSN connections fall
-  // back to their name so the access-file connection keeps working.
-  const templateKey = selectedConnection?.dsn || selectedConnection?.name || ''
+  // Template / script / channel links are keyed by the backend-provided
+  // template_key: the ODBC DSN (immutable) for DSN connections, or the Access
+  // database file name for .mdb/.accdb connections — never the editable display
+  // name. Fall back to dsn/name for older backends that don't send the key.
+  const templateKey =
+    selectedConnection?.template_key || selectedConnection?.dsn || selectedConnection?.name || ''
   useEffect(() => {
     const connectionName = templateKey
 

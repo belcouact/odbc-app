@@ -165,24 +165,37 @@ def _row_value(row: dict, key: str):
     return None
 
 
-def _template_key(conn: dict) -> str:
+def connection_template_key(conn: dict) -> str:
     """The stable key that ties a connection to its templates & predefined scripts.
 
-    For ODBC DSN connections this is the DSN name, which is immutable once the
+    An ODBC DSN connection keys off its DSN name, which is immutable once the
     connection is created — so the user-facing display name can be edited freely
-    without breaking the template / script / channel links. Non-DSN connections
-    (connection string, Access file) fall back to the display name.
+    without breaking the template / script / channel links. An Access-file
+    connection keys off the database *file name* (e.g. ColorDB.mdb -> "ColorDB")
+    rather than the display name, so its templates follow the file and keep
+    working even when the connection is renamed. Everything else falls back to
+    the display name.
     """
+    if conn.get("type") == "access":
+        path = (
+            conn.get("file_path")
+            or conn.get("local_path")
+            or conn.get("url")
+            or ""
+        )
+        stem = os.path.splitext(os.path.basename(str(path).replace("\\", "/")))[0]
+        if stem:
+            return stem
     return str(conn.get("dsn") or conn.get("name") or "")
 
 
 def _require_connection_by_template_key(template_key: str) -> dict:
-    """Look up a stored connection by its template key (DSN, else name), 404 otherwise."""
+    """Look up a stored connection by its template key, 404 otherwise."""
     from app.api.connections import load_stored_connections  # deferred: avoid import cycle
 
     connections = load_stored_connections()
     conn = next(
-        (c for c in connections if (c.get("dsn") or c.get("name") or "") == template_key),
+        (c for c in connections if connection_template_key(c) == template_key),
         None,
     )
     if conn is None:
@@ -426,7 +439,7 @@ def transform_connection_template(payload: TransformRequest):
     reference transform script. Devices are merged side-by-side on Date_Time.
     """
     conn = _get_connection(payload.connection_id)
-    if _template_key(conn).upper() != "SZMFGACTIVE":
+    if connection_template_key(conn).upper() != "SZMFGACTIVE":
         raise HTTPException(
             status_code=400,
             detail="Transform is only available for the SZMFGACTIVE connection.",
@@ -455,7 +468,7 @@ def transform_connection_template(payload: TransformRequest):
     except pyodbc.Error as exc:
         logging_utils.log_error(
             "template.channels",
-            f"connection={_template_key(conn)} operation={op} failed",
+            f"connection={connection_template_key(conn)} operation={op} failed",
             details=str(exc),
         )
         raise HTTPException(status_code=400, detail=f"Database error: {odbc.format_db_error(exc)}") from exc
@@ -592,7 +605,7 @@ def transform_connection_template(payload: TransformRequest):
 
     logging_utils.log_info(
         "template.transform",
-        f"connection={_template_key(conn)} operation={op} devices={len(selected)} "
+        f"connection={connection_template_key(conn)} operation={op} devices={len(selected)} "
         f"rows={len(result_rows)}",
         details=f"input_rows={len(rows)}, elapsed_ms={elapsed_ms}",
     )
@@ -999,7 +1012,7 @@ def run_connection_template(payload: TemplateRunRequest):
     # '#...#' literal); other servers bind plainly.
     dbms = resolve_dbms(conn, detect_dbms(conn))
     date_dialect = date_dialect_for(dbms)
-    conn_key = _template_key(conn)
+    conn_key = connection_template_key(conn)
     options = _effective_options(conn_key)
     if not options:
         raise HTTPException(
