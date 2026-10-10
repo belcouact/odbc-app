@@ -1,5 +1,5 @@
 {
-  "published": "2026-10-07T21:05:27",
+  "published": "2026-10-10T07:09:45",
   "templates": [
     {
       "name": "analyze-AOI-defects.py",
@@ -112,7 +112,7 @@
         ]
       },
       "size": "19 KB",
-      "updated": "2026-10-01",
+      "updated": "2026-10-10",
       "example": {
         "name": "raw_item_statistical_report.html",
         "object": "templates/examples/raw_item_statistical_report.html",
@@ -179,7 +179,7 @@
         ]
       },
       "size": "35 KB",
-      "updated": "2026-10-01",
+      "updated": "2026-10-08",
       "example": {
         "name": "yield_trend_charts.html",
         "object": "templates/examples/yield_trend_charts.html",

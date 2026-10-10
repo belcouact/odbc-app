@@ -34,7 +34,7 @@ export type { ChartOperation, ChartType } from '../types'
 /** Payload used when creating/updating a connection (subset of DbConnection). */
 export interface ConnectionPayload {
   name: string
-  type: 'dsn' | 'string' | 'access'
+  type: 'dsn' | 'string' | 'access' | 'databricks'
   /**
    * Test-only: id of a saved connection, so POST /connections/test can fall
    * back to the stored keyring password (passwords never round-trip the API).
@@ -53,6 +53,14 @@ export interface ConnectionPayload {
   url?: string
   /** Local path for an Access file connection (fallback when no URL download). */
   local_path?: string
+  /** Azure Databricks host name (databricks-sql-connector: server_hostname). */
+  server_hostname?: string
+  /** Databricks SQL warehouse HTTP path (databricks-sql-connector: http_path). */
+  http_path?: string
+  /** Default Unity Catalog catalog opened for the session. */
+  default_catalog?: string
+  /** Session query tags as "tag1:value1,tag2:value2". */
+  query_tags?: string
 }
 
 export interface TestConnectionResult {
@@ -249,6 +257,23 @@ if (APP_TOKEN) {
   client.defaults.headers.common['X-App-Token'] = APP_TOKEN
 }
 
+/**
+ * Render a FastAPI/Pydantic error `loc` into a readable field path.
+ *
+ * `loc` is an array like `["body", "name"]` (body) or `["body", "query", "x"]`
+ * (nested). The leading source marker ("body"/"query"/"path"/"header"/"cookie")
+ * is dropped, and the remaining parts are joined with dots, e.g. `name`.
+ * Returns '' when no usable field name is present.
+ */
+function formatErrorLocation(loc: unknown): string {
+  const sourceMarkers = new Set(['body', 'query', 'path', 'header', 'cookie'])
+  const parts = (Array.isArray(loc) ? loc : [loc])
+    .filter((part): part is string | number => typeof part === 'string' || typeof part === 'number')
+    .map(String)
+  if (parts.length > 1 && sourceMarkers.has(parts[0])) parts.shift()
+  return parts.join('.')
+}
+
 /** Extract a readable message from an axios error or any unknown failure. */
 function toErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -261,8 +286,15 @@ function toErrorMessage(error: unknown): string {
         const messages = detail
           .map((item) => {
             if (item && typeof item === 'object') {
-              const msg = (item as Record<string, unknown>).msg
-              return typeof msg === 'string' ? msg : JSON.stringify(item)
+              const record = item as Record<string, unknown>
+              const msg = record.msg
+              const text = typeof msg === 'string' ? msg : JSON.stringify(item)
+              // Prefix the offending field (from loc, e.g. ["body","name"])
+              // so a bare "String should have at least 1 character" tells the
+              // user *which* input is at fault. Drop the "body"/"query"/"path"
+              // source marker FastAPI puts first.
+              const field = formatErrorLocation(record.loc)
+              return field ? `${field}: ${text}` : text
             }
             return JSON.stringify(item)
           })
@@ -304,12 +336,23 @@ async function toBlobErrorMessage(error: unknown): Promise<string> {
   return toErrorMessage(error)
 }
 
+/** Thrown when a request is aborted by the caller (e.g. the user cancels a test). */
+export class RequestCancelledError extends Error {
+  constructor() {
+    super('Request cancelled')
+    this.name = 'RequestCancelledError'
+  }
+}
+
 /** Run a request and normalize failures into a thrown Error with a readable message. */
 async function apiFetch<T>(request: Promise<{ data: T }>): Promise<T> {
   try {
     const response = await request
     return response.data
   } catch (error) {
+    // Keep cancellations distinguishable so callers can treat them as a no-op
+    // instead of surfacing an error message.
+    if (axios.isCancel(error)) throw new RequestCancelledError()
     throw new Error(toErrorMessage(error))
   }
 }
@@ -420,17 +463,25 @@ export class QueryCanceledError extends Error {
  * headers arrive, enabling cancellation of the in-flight run.
  * `options.onStep` receives ``{"type":"step",...}`` events from the multi-stage
  * pipelines (e.g. the Color_Data lot-genealogy enrichment).
+ * `options.signal` aborts the stream client-side (Cancel button): the pending
+ * `fetch`/reader rejects with an ``AbortError`` so the UI stops immediately,
+ * even when the backend thread is still blocked inside the ODBC driver.
  */
 async function streamQuery<T>(
   path: string,
   body: unknown,
   onProgress?: (rows: number) => void,
-  options?: { onRunId?: (runId: string) => void; onStep?: (step: ColorEnrichStep) => void },
+  options?: {
+    onRunId?: (runId: string) => void
+    onStep?: (step: ColorEnrichStep) => void
+    signal?: AbortSignal
+  },
 ): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: 'POST',
     headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
+    signal: options?.signal,
   })
   if (!response.ok) {
     let detail = ''
@@ -452,48 +503,75 @@ async function streamQuery<T>(
   let buffer = ''
   let result: T | null = null
   let streamError: Error | null = null
+  // Batched results: the SQL editor path streams `result_begin` → many
+  // `result_rows` → `result_end` instead of one giant `result` line, so a
+  // 200k-row result is assembled incrementally and never held as a single
+  // multi-hundred-MB string (which used to blow the JS string limit).
+  let batchRows: Record<string, unknown>[] = []
+  let batchColumns: { name: string; type: string }[] = []
+  let batchElapsedMs = 0
+  let batchSql = ''
+  let batched = false
+
+  const handleEvent = (evt: Record<string, unknown>) => {
+    if (evt.type === 'progress') {
+      onProgress?.(Number(evt.rows ?? 0))
+    } else if (evt.type === 'step') {
+      options?.onStep?.(evt as unknown as ColorEnrichStep)
+    } else if (evt.type === 'result_begin') {
+      batched = true
+      batchColumns = (evt.columns as { name: string; type: string }[]) ?? []
+      batchSql = String(evt.sql ?? '')
+    } else if (evt.type === 'result_rows') {
+      const batch = (evt.rows as Record<string, unknown>[]) ?? []
+      if (batched) batchRows.push(...batch)
+    } else if (evt.type === 'result_end') {
+      batchElapsedMs = Number(evt.elapsed_ms ?? 0)
+      if (typeof evt.sql === 'string') batchSql = evt.sql
+    } else if (evt.type === 'canceled') {
+      streamError = new QueryCanceledError()
+    } else if (evt.type === 'error') {
+      streamError = new Error(String(evt.detail ?? 'Query failed'))
+    } else if (evt.type === 'result') {
+      result = evt as unknown as T
+    }
+  }
+
+  const processLine = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed) return
+    try {
+      handleEvent(JSON.parse(trimmed) as Record<string, unknown>)
+    } catch {
+      // Skip a malformed line (e.g. a stray newline) rather than aborting.
+    }
+  }
+
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
     let newlineIdx = buffer.indexOf('\n')
     while (newlineIdx >= 0) {
-      const line = buffer.slice(0, newlineIdx).trim()
+      processLine(buffer.slice(0, newlineIdx))
       buffer = buffer.slice(newlineIdx + 1)
-      if (line) {
-        let evt: Record<string, unknown>
-        try {
-          evt = JSON.parse(line) as Record<string, unknown>
-        } catch {
-          // Skip a malformed line (e.g. a stray newline) rather than aborting.
-          newlineIdx = buffer.indexOf('\n')
-          continue
-        }
-        if (evt.type === 'progress') {
-          onProgress?.(Number(evt.rows ?? 0))
-        } else if (evt.type === 'step') {
-          options?.onStep?.(evt as unknown as ColorEnrichStep)
-        } else if (evt.type === 'canceled') {
-          streamError = new QueryCanceledError()
-        } else if (evt.type === 'error') {
-          streamError = new Error(String(evt.detail ?? 'Query failed'))
-        } else if (evt.type === 'result') {
-          result = evt as unknown as T
-        }
-      }
       newlineIdx = buffer.indexOf('\n')
     }
   }
   // Flush any trailing bytes still buffered inside the decoder (a multi-byte
   // character may have been split across two chunks; stream:true holds it).
   buffer += decoder.decode()
-  if (buffer.trim()) {
-    const evt = JSON.parse(buffer.trim()) as Record<string, unknown>
-    if (evt.type === 'error') streamError = new Error(String(evt.detail ?? 'Query failed'))
-    else if (evt.type === 'canceled') streamError = new QueryCanceledError()
-    else if (evt.type === 'result') result = evt as unknown as T
-  }
+  if (buffer.trim()) processLine(buffer)
   if (streamError) throw streamError
+  if (result === null && batched) {
+    result = {
+      rows: batchRows,
+      columns: batchColumns,
+      row_count: batchRows.length,
+      elapsed_ms: batchElapsedMs,
+      sql: batchSql,
+    } as unknown as T
+  }
   if (!result) throw new Error('Query finished without a result.')
   return result
 }
@@ -594,8 +672,8 @@ export const api = {
   deleteConnection: (id: string): Promise<{ ok: boolean }> =>
     apiFetch(client.delete(`/connections/${encodeURIComponent(id)}`)),
 
-  testConnection: (data: ConnectionPayload): Promise<TestConnectionResult> =>
-    apiFetch(client.post('/connections/test', data)),
+  testConnection: (data: ConnectionPayload, signal?: AbortSignal): Promise<TestConnectionResult> =>
+    apiFetch(client.post('/connections/test', data, { signal })),
 
   /** List ODBC DSNs registered in the local Windows registry. */
   detectDsn: (): Promise<DetectedDsn[]> => apiFetch(client.get('/connections/detect')),
@@ -616,7 +694,9 @@ export const api = {
     query: QueryDef,
     onProgress?: (rows: number) => void,
     onRunId?: (runId: string) => void,
-  ): Promise<QueryResult> => streamQuery<QueryResult>('/query/run', { query }, onProgress, { onRunId }),
+    signal?: AbortSignal,
+  ): Promise<QueryResult> =>
+    streamQuery<QueryResult>('/query/run', { query }, onProgress, { onRunId, signal }),
 
   /** Cancel an in-flight run (see ``X-Run-Id`` on run endpoints). */
   cancelQuery: (runId: string): Promise<{ ok: boolean }> =>
@@ -866,12 +946,13 @@ export const api = {
     limit?: number,
     onProgress?: (rows: number) => void,
     onRunId?: (runId: string) => void,
+    signal?: AbortSignal,
   ): Promise<QueryResult> =>
     streamQuery<QueryResult>(
       '/sql/run',
       { connection_id: connectionId, sql, limit },
       onProgress,
-      { onRunId },
+      { onRunId, signal },
     ),
 
   /** Return result column metadata for a raw SQL statement (no rows fetched). */

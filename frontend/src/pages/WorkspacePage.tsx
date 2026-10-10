@@ -35,6 +35,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SaveIcon from '@mui/icons-material/Save'
+import SearchIcon from '@mui/icons-material/Search'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import TableChartIcon from '@mui/icons-material/TableChart'
 import Alert from '@mui/material/Alert'
@@ -56,6 +57,7 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import FormGroup from '@mui/material/FormGroup'
 import Grid from '@mui/material/Grid'
 import IconButton from '@mui/material/IconButton'
+import InputAdornment from '@mui/material/InputAdornment'
 import InputLabel from '@mui/material/InputLabel'
 import Link from '@mui/material/Link'
 import MenuItem from '@mui/material/MenuItem'
@@ -101,6 +103,10 @@ import PredefinedSqlPage from './PredefinedSqlPage'
 import { subscribe } from '../editorBus'
 import type { EditorAction } from '../editorBus'
 import { publishWorkspaceSnapshot } from '../workspaceBus'
+
+/** True when a stream read was aborted by an AbortController (Cancel button). */
+const isAbortError = (err: unknown): boolean =>
+  typeof err === 'object' && err !== null && (err as { name?: string }).name === 'AbortError'
 
 /** sql-formatter dialect for the active connection; T-SQL when it is unknown,
  *  since ODBC/DSN connections default to SQL Server in this app. */
@@ -881,6 +887,29 @@ function hasAnyTemplateFilter(
 
 type Mode = 'builder' | 'sql'
 
+/** One execution mode's grid table. The SQL editor and the Builder each own one
+ *  so that running a query in one never replaces the other's grid. */
+interface GridPanel {
+  result: QueryResult | null
+  computedColumns: ComputedColumn[]
+  /** Stack of grid states before each AI transform/paste, for Revert (newest last). */
+  history: { result: QueryResult; computedColumns: ComputedColumn[] }[]
+  drillFilters: GridDrillFilter[]
+  /** True while the grid shows rows parsed from an uploaded file. */
+  uploadActive: boolean
+  /** Base name (without extension) of the uploaded file — reused for exports. */
+  uploadName: string
+}
+
+const emptyGridPanel = (): GridPanel => ({
+  result: null,
+  computedColumns: [],
+  history: [],
+  drillFilters: [],
+  uploadActive: false,
+  uploadName: '',
+})
+
 interface FilterRow {
   id: number
   column: string
@@ -1202,6 +1231,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const [table, setTable] = useState('')
   /** Table/View filter for the table selector (all | tables | views). */
   const [tableFilter, setTableFilter] = useState<'all' | 'tables' | 'views'>('all')
+  /** Free-text search to quickly find a table or view by name. */
+  const [tableSearch, setTableSearch] = useState('')
   const [columns, setColumns] = useState<ColumnInfo[]>([])
   const [loadingColumns, setLoadingColumns] = useState(false)
   const [schemaReloadKey, setSchemaReloadKey] = useState(0)
@@ -1354,13 +1385,32 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
    *  Declared here (before the results memos) so its derived columns can be
    *  applied to the result as soon as a query returns. */
   const selectedFabOption = fabTemplates.find((o) => o.name === fabOption) ?? null
-  const [result, setResult] = useState<QueryResult | null>(null)
+  /** Per-mode grid tables: the SQL editor and the Builder each keep their own
+   *  result (plus its grid-local state), so running one query never replaces
+   *  the other's grid. */
+  const [gridPanels, setGridPanels] = useState<Record<Mode, GridPanel>>(() => ({
+    sql: emptyGridPanel(),
+    builder: emptyGridPanel(),
+  }))
+  /** Merge a patch into one mode's grid table. */
+  const patchGrid = useCallback((slot: Mode, patch: Partial<GridPanel>) => {
+    setGridPanels((prev) => ({ ...prev, [slot]: { ...prev[slot], ...patch } }))
+  }, [])
+  const activeGrid = gridPanels[mode]
+  const result = activeGrid.result
   /** User-added calculated columns (grid formula helper). Shared with the charts. */
-  const [computedColumns, setComputedColumns] = useState<ComputedColumn[]>([])
+  const computedColumns = activeGrid.computedColumns
+  const gridHistory = activeGrid.history
+  const drillFilters = activeGrid.drillFilters
+  const uploadActive = activeGrid.uploadActive
+  const uploadName = activeGrid.uploadName
   const [running, setRunning] = useState(false)
   const [queryProgress, setQueryProgress] = useState<number | null>(null)
   /** Backend run id of the in-flight query (from X-Run-Id) — used to cancel it. */
   const runIdRef = useRef('')
+  /** Aborts the client-side result stream when Cancel is pressed, so the UI
+   *  stops even if the backend thread is still blocked inside the ODBC driver. */
+  const abortRef = useRef<AbortController | null>(null)
   /** True once a cancel has been requested and is being processed. */
   const [cancelling, setCancelling] = useState(false)
   const cancelPendingRef = useRef(false)
@@ -1379,21 +1429,27 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
    *  so it is visible where the user is working, not in the results panel. */
   const [schemaError, setSchemaError] = useState<string | null>(null)
   const [exporting, setExporting] = useState<ExportFormat | null>(null)
-  /** Drill-through conditions pushed from the Analyze Summary tab onto the grid. */
-  const [drillFilters, setDrillFilters] = useState<GridDrillFilter[]>([])
-  /** Color_Data auto-enrichment: one entry per stage, newest state wins. */
-  const [enrichSteps, setEnrichSteps] = useState<ColorEnrichStep[]>([])
-  /** True while the FabLIMS lot genealogy is being loaded onto the grid. */
-  const [enriching, setEnriching] = useState(false)
-  /** Non-fatal enrichment failure (the queried rows stay in the grid). */
-  const [enrichError, setEnrichError] = useState<string | null>(null)
+  /** Post-query run pipeline progress (one entry per stage, newest state
+   *  wins). Shared by the Color_Data genealogy enrichment and the Process_Data
+   *  Python conversion — the two never run for the same template. */
+  const [pipelineSteps, setPipelineSteps] = useState<ColorEnrichStep[]>([])
+  /** True while a post-query pipeline is running onto the grid. */
+  const [pipelineActive, setPipelineActive] = useState(false)
+  /** Header shown on the pipeline panel (set by whichever pipeline runs). */
+  const [pipelineTitle, setPipelineTitle] = useState('')
+  /** Non-fatal pipeline failure (the queried rows stay in the grid). */
+  const [pipelineError, setPipelineError] = useState<string | null>(null)
 
-  // Calculated columns only make sense for the result they were built on, so
-  // drop them as soon as a new result arrives.
-  useEffect(() => {
-    setComputedColumns([])
-    setDrillFilters([])
-  }, [result])
+  /** Insert or update one stage of the active pipeline panel. */
+  const upsertPipelineStep = useCallback((step: ColorEnrichStep) => {
+    setPipelineSteps((prev) => {
+      const next = [...prev]
+      const index = next.findIndex((entry) => entry.step === step.step)
+      if (index >= 0) next[index] = step
+      else next.push(step)
+      return next
+    })
+  }, [])
 
   /** Derived columns declared by the selected template (e.g. Color_Data parses
    *  LD_item / WOL / Batch / Sample_type out of NAME). Kept out of the
@@ -1422,10 +1478,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const [uploadRows, setUploadRows] = useState<number | null>(null)
   /** Total rows, known once parsing finished — enables "N / total" display. */
   const [uploadTotalRows, setUploadTotalRows] = useState<number | null>(null)
-  /** True while the grid shows rows parsed from an uploaded file. */
-  const [uploadActive, setUploadActive] = useState(false)
-  /** Base name (without extension) of the uploaded file — reused for exports. */
-  const [uploadName, setUploadName] = useState('')
 
   // ---- Custom (pre-defined) query browser ----
   const [customDialogOpen, setCustomDialogOpen] = useState(false)
@@ -1742,7 +1794,11 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   // ---- Builder handlers ----
   const handleConnectionChange = (event: SelectChangeEvent) => {
     setConnectionId(event.target.value)
+    // Switching the target connection clears the SQL editor — the previous
+    // connection's SQL no longer applies to the new one.
+    setSqlText('')
     setTable('')
+    setTableSearch('')
     setColumns([])
     setSelectedColumns([])
     setFilters([])
@@ -1843,13 +1899,39 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     if (!set || set.channels.length === 0) return source
     const connId = connectionId || connections[0]?.id
     if (!connId) return source
-    return api.transformData({
-      connection_id: connId,
-      operation: op,
-      rows: source.rows,
-      channels: set.channels,
-      sql: source.sql,
-    })
+    // Surface the run as a two-stage pipeline: the SQL query (already done) then
+    // the Python wide-table conversion, which is the slow part. The panel is a
+    // progress indicator only — on failure the caller's error alert takes over.
+    setPipelineTitle(t('results.processingData'))
+    setPipelineError(null)
+    setPipelineSteps([
+      {
+        step: 'query',
+        status: 'done',
+        label: t('results.pipelineQuery'),
+        detail: t('results.pipelineRows', { rows: source.row_count.toLocaleString() }),
+      },
+      { step: 'transform', status: 'running', label: t('results.pipelineTransform') },
+    ])
+    setPipelineActive(true)
+    try {
+      const transformed = await api.transformData({
+        connection_id: connId,
+        operation: op,
+        rows: source.rows,
+        channels: set.channels,
+        sql: source.sql,
+      })
+      upsertPipelineStep({
+        step: 'transform',
+        status: 'done',
+        label: t('results.pipelineTransformDone'),
+        detail: t('results.pipelineRows', { rows: transformed.row_count.toLocaleString() }),
+      })
+      return transformed
+    } finally {
+      setPipelineActive(false)
+    }
   }
 
   /**
@@ -1869,20 +1951,14 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     const baked = bakeComputedColumns(source, templateComputedColumns)
     if (!baked.columns.some((col) => col.name.toUpperCase() === 'NAME')) return source
 
-    setEnriching(true)
-    setEnrichSteps([])
-    setEnrichError(null)
+    setPipelineTitle(t('results.enrichAdding'))
+    setPipelineSteps([])
+    setPipelineError(null)
+    setPipelineActive(true)
     try {
       const enriched = await api.enrichColorData(
         { rows: baked.rows, columns: baked.columns },
-        (step) =>
-          setEnrichSteps((prev) => {
-            const next = [...prev]
-            const index = next.findIndex((entry) => entry.step === step.step)
-            if (index >= 0) next[index] = step
-            else next.push(step)
-            return next
-          }),
+        upsertPipelineStep,
       )
       const summary = enriched.summary
       setNotice(
@@ -1897,32 +1973,36 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       )
       return enriched
     } catch (err) {
-      setEnrichError(
+      setPipelineError(
         err instanceof Error ? err.message : t('messages.failLoadGenealogy'),
       )
       return source
     } finally {
-      setEnriching(false)
+      setPipelineActive(false)
     }
   }
 
-  /** Cancel the in-flight query run. Retries briefly while the backend may
-   *  not have registered the run yet (e.g. the connection is still opening). */
+  /** Cancel the in-flight query run.
+   *
+   *  Two independent stops: (1) abort the client-side stream immediately so the
+   *  UI stops even when the backend thread is still blocked inside the ODBC
+   *  driver (e.g. a login Oracle Net keeps retrying); (2) best-effort ask the
+   *  backend to cancel the run. The run is registered before the connection
+   *  opens, so the backend cancel reaches the connect phase too. */
   const handleCancelQuery = async () => {
     if (cancelPendingRef.current) return
     cancelPendingRef.current = true
     setCancelling(true)
     try {
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const runId = runIdRef.current
-        if (runId) {
-          const response = await api.cancelQuery(runId)
-          if (response.ok) return
+      abortRef.current?.abort()
+      const runId = runIdRef.current
+      if (runId) {
+        try {
+          await api.cancelQuery(runId)
+        } catch {
+          // Best effort — the abort above has already stopped the UI.
         }
-        await new Promise((resolve) => setTimeout(resolve, 500))
       }
-    } catch {
-      // Best effort — a hiccup reaching the cancel endpoint shouldn't break the UI.
     } finally {
       cancelPendingRef.current = false
       setCancelling(false)
@@ -1934,54 +2014,16 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     setQueryProgress(0)
     setError(null)
     runIdRef.current = ''
+    const controller = new AbortController()
+    abortRef.current = controller
     try {
-      const response = await api.runQuery(query, (rows) => setQueryProgress(rows), (id) => {
-        runIdRef.current = id
-      })
-      // The query is done — hand the results area over to the enrichment stepper.
-      setRunning(false)
-      setQueryProgress(null)
-      let final = response
-      try {
-        final = await maybeTransform(response)
-        if (final !== response) {
-          setNotice(t('messages.transformed', { count: final.row_count }))
-        }
-      } catch (transformErr) {
-        setError(transformErr instanceof Error ? transformErr.message : t('messages.transformFailed'))
-        final = response
-      }
-      final = await maybeEnrichColorData(final)
-      setGridHistory([])
-      setResult(final)
-      setUploadActive(false)
-      signalRunFeedback(true)
-    } catch (err) {
-      if (err instanceof QueryCanceledError) setNotice(t('messages.queryCanceled'))
-      else {
-        setError(err instanceof Error ? err.message : t('messages.queryFailed'))
-        signalRunFeedback(false)
-      }
-    } finally {
-      setRunning(false)
-      setQueryProgress(null)
-    }
-  }
-
-  const runRawSql = async (connectionIdToUse: string, sql: string) => {
-    setRunning(true)
-    setQueryProgress(0)
-    setError(null)
-    runIdRef.current = ''
-    try {
-      const response = await api.runSql(
-        connectionIdToUse,
-        sql.trim(),
-        undefined,
+      const response = await api.runQuery(
+        query,
         (rows) => setQueryProgress(rows),
         (id) => {
           runIdRef.current = id
         },
+        controller.signal,
       )
       // The query is done — hand the results area over to the enrichment stepper.
       setRunning(false)
@@ -1997,17 +2039,77 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         final = response
       }
       final = await maybeEnrichColorData(final)
-      setGridHistory([])
-      setResult(final)
-      setUploadActive(false)
+      patchGrid('builder', {
+        result: final,
+        computedColumns: [],
+        drillFilters: [],
+        history: [],
+        uploadActive: false,
+      })
       signalRunFeedback(true)
     } catch (err) {
       if (err instanceof QueryCanceledError) setNotice(t('messages.queryCanceled'))
+      else if (isAbortError(err)) setNotice(t('messages.queryStopped'))
       else {
         setError(err instanceof Error ? err.message : t('messages.queryFailed'))
         signalRunFeedback(false)
       }
     } finally {
+      abortRef.current = null
+      setRunning(false)
+      setQueryProgress(null)
+    }
+  }
+
+  const runRawSql = async (connectionIdToUse: string, sql: string) => {
+    setRunning(true)
+    setQueryProgress(0)
+    setError(null)
+    runIdRef.current = ''
+    const controller = new AbortController()
+    abortRef.current = controller
+    try {
+      const response = await api.runSql(
+        connectionIdToUse,
+        sql.trim(),
+        undefined,
+        (rows) => setQueryProgress(rows),
+        (id) => {
+          runIdRef.current = id
+        },
+        controller.signal,
+      )
+      // The query is done — hand the results area over to the enrichment stepper.
+      setRunning(false)
+      setQueryProgress(null)
+      let final = response
+      try {
+        final = await maybeTransform(response)
+        if (final !== response) {
+          setNotice(t('messages.transformed', { count: final.row_count }))
+        }
+      } catch (transformErr) {
+        setError(transformErr instanceof Error ? transformErr.message : t('messages.transformFailed'))
+        final = response
+      }
+      final = await maybeEnrichColorData(final)
+      patchGrid('sql', {
+        result: final,
+        computedColumns: [],
+        drillFilters: [],
+        history: [],
+        uploadActive: false,
+      })
+      signalRunFeedback(true)
+    } catch (err) {
+      if (err instanceof QueryCanceledError) setNotice(t('messages.queryCanceled'))
+      else if (isAbortError(err)) setNotice(t('messages.queryStopped'))
+      else {
+        setError(err instanceof Error ? err.message : t('messages.queryFailed'))
+        signalRunFeedback(false)
+      }
+    } finally {
+      abortRef.current = null
       setRunning(false)
       setQueryProgress(null)
     }
@@ -2032,8 +2134,6 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const gridEmpty = !effectiveResult || effectiveResult.rows.length === 0
 
   // ---- AI grid edit (transform the current grid rows via a generated script) ----
-  /** Stack of grid states before each AI transform, for Revert (newest last). */
-  const [gridHistory, setGridHistory] = useState<{ result: QueryResult; computedColumns: ComputedColumn[] }[]>([])
 
   /** Apply an AI transform: snapshot the current grid, then swap in the new data. */
   const handleGridTransformApply = (
@@ -2045,15 +2145,18 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     // Snapshot the ORIGINAL result + computed columns (not the memoized
     // effective result, which already has computed columns baked in) so that
     // reverting restores exactly the pre-transform state.
-    setGridHistory((prev) => [...prev, { result, computedColumns }])
-    // Computed columns were baked into the transformed rows, so reset them.
-    setComputedColumns([])
-    setResult({
-      rows,
-      columns,
-      row_count: rows.length,
-      elapsed_ms: 0,
-      sql: result.sql,
+    patchGrid(mode, {
+      history: [...gridHistory, { result, computedColumns }],
+      // Computed columns were baked into the transformed rows, so reset them.
+      computedColumns: [],
+      drillFilters: [],
+      result: {
+        rows,
+        columns,
+        row_count: rows.length,
+        elapsed_ms: 0,
+        sql: result.sql,
+      },
     })
     const logLine = log.trim() ? ` — ${log.trim().split('\n').slice(-1)[0].slice(0, 80)}` : ''
     setNotice(t('messages.gridUpdated', { count: rows.length, log: logLine }))
@@ -2063,9 +2166,11 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   const handleGridRevert = () => {
     const last = gridHistory[gridHistory.length - 1]
     if (!last) return
-    setResult(last.result)
-    setComputedColumns(last.computedColumns)
-    setGridHistory((prev) => prev.slice(0, -1))
+    patchGrid(mode, {
+      result: last.result,
+      computedColumns: last.computedColumns,
+      history: gridHistory.slice(0, -1),
+    })
     setNotice(t('messages.gridReverted'))
   }
 
@@ -2073,28 +2178,28 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
    *  into the result's column types as the canonical kind string, so the
    *  chart builders' column panels and the summary tab reflect it in real
    *  time (detectColumnKind recognizes the canonical strings). */
-  const handleColumnTypeChange = useCallback((name: string, kind: ColumnKind) => {
-    setResult((prev) =>
-      prev
-        ? {
-            ...prev,
-            columns: prev.columns.map((column) =>
-              column.name === name ? { ...column, type: kind } : column,
-            ),
-          }
-        : prev,
-    )
-  }, [])
+  const handleColumnTypeChange = useCallback(
+    (name: string, kind: ColumnKind) => {
+      if (!result) return
+      patchGrid(mode, {
+        result: {
+          ...result,
+          columns: result.columns.map((column) =>
+            column.name === name ? { ...column, type: kind } : column,
+          ),
+        },
+      })
+    },
+    [mode, result, patchGrid],
+  )
 
   /** Apply clipboard-pasted rows: snapshot the current grid so Revert can undo
    *  the paste, then swap in the merged rows. Pasting before any query has run
    *  creates a brand-new table, and a replacing paste that includes its header
    *  row passes fresh ``columns`` — the pasted headers become the table's. */
   const handleGridPaste = (rows: Record<string, unknown>[], columns?: QueryResult['columns']) => {
-    setGridHistory((prev) => (result ? [...prev, { result, computedColumns }] : prev))
     // Pasted rows carry computed columns already baked in (the grid hands its
     // effective rows back), so reset them — same contract as the AI transform.
-    setComputedColumns([])
     // A replacing paste with a header row redefines the columns; a fill paste
     // omits them and keeps the current column set.
     const nextColumns =
@@ -2103,12 +2208,17 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         : result
           ? (effectiveResult?.columns ?? result.columns)
           : []
-    setResult({
-      rows,
-      columns: nextColumns,
-      row_count: rows.length,
-      elapsed_ms: 0,
-      sql: result?.sql ?? '',
+    patchGrid(mode, {
+      history: result ? [...gridHistory, { result, computedColumns }] : gridHistory,
+      computedColumns: [],
+      drillFilters: [],
+      result: {
+        rows,
+        columns: nextColumns,
+        row_count: rows.length,
+        elapsed_ms: 0,
+        sql: result?.sql ?? '',
+      },
     })
   }
 
@@ -2127,16 +2237,20 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         if (typeof p.rows === 'number') setUploadRows(p.rows)
         if (typeof p.totalRows === 'number') setUploadTotalRows(p.totalRows)
       })
-      setGridHistory([])
-      setResult({
-        rows: response.rows,
-        columns: response.columns,
-        row_count: response.row_count,
-        elapsed_ms: response.elapsed_ms,
-        sql: '',
+      patchGrid(mode, {
+        history: [],
+        computedColumns: [],
+        drillFilters: [],
+        result: {
+          rows: response.rows,
+          columns: response.columns,
+          row_count: response.row_count,
+          elapsed_ms: response.elapsed_ms,
+          sql: '',
+        },
+        uploadActive: true,
+        uploadName: file.name.replace(/\.[^.]+$/, '') || 'uploaded',
       })
-      setUploadActive(true)
-      setUploadName(file.name.replace(/\.[^.]+$/, '') || 'uploaded')
       setNotice(t('messages.uploaded', { name: file.name, count: response.row_count }))
     } catch (err) {
       setError(err instanceof Error ? err.message : t('messages.uploadFailed'))
@@ -2658,15 +2772,19 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
         // The BI page loads a stored snapshot back into this grid. Like a file
         // upload it replaces the whole grid, so the revert history restarts.
         const { name, columns, rows } = action.payload
-        setGridHistory([])
-        setResult({
-          rows,
-          columns,
-          row_count: rows.length,
-          elapsed_ms: 0,
-          sql: '',
+        patchGrid(mode, {
+          history: [],
+          computedColumns: [],
+          drillFilters: [],
+          result: {
+            rows,
+            columns,
+            row_count: rows.length,
+            elapsed_ms: 0,
+            sql: '',
+          },
+          uploadActive: false,
         })
-        setUploadActive(false)
         setNotice(t('messages.loadedRows', { name, count: rows.length }))
         window.setTimeout(() => {
           gridAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -2686,12 +2804,15 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   // No columns selected is valid — it means "SELECT *" (all columns).
   const canRunBuilder = Boolean(connectionId && table)
 
-  /** Tables/views list filtered by the All | Tables | Views toggle. */
-  const filteredTables = useMemo(
-    () =>
-      tables.filter((t) => tableFilter === 'all' || t.type === (tableFilter === 'tables' ? 'table' : 'view')),
-    [tables, tableFilter],
-  )
+  /** Tables/views list filtered by the All | Tables | Views toggle and search. */
+  const filteredTables = useMemo(() => {
+    const query = tableSearch.trim().toLowerCase()
+    return tables.filter(
+      (t) =>
+        (tableFilter === 'all' || t.type === (tableFilter === 'tables' ? 'table' : 'view')) &&
+        (!query || t.name.toLowerCase().includes(query)),
+    )
+  }, [tables, tableFilter, tableSearch])
 
   /** SQL auto-generated from the current builder criteria (read-only preview). */
   const previewSql = useMemo(() => {
@@ -2730,7 +2851,11 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
   }
 
   const handleModeChange = (_event: SyntheticEvent, value: Mode) => {
-    if (value) setMode(value)
+    if (value) {
+      setMode(value)
+      // Errors belong to the mode that produced them; don't carry them across.
+      setError(null)
+    }
   }
 
   const exportDisabled = !result || exporting !== null || running
@@ -2855,25 +2980,26 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           </Alert>
         )}
 
-        {/* Color_Data auto-enrichment progress: one line per stage, collapsing
-            to the snackbar summary once the genealogy has been added. */}
-        {(enriching || enrichError) && (
+        {/* Post-query pipeline progress: one line per stage. Used by the
+            Process_Data template (SQL query → Python wide-table conversion)
+            and the Color_Data genealogy enrichment. */}
+        {(pipelineActive || pipelineError) && (
           <Alert
-            severity={enrichError ? 'warning' : 'info'}
-            onClose={enrichError ? () => setEnrichError(null) : undefined}
+            severity={pipelineError ? 'warning' : 'info'}
+            onClose={pipelineError ? () => setPipelineError(null) : undefined}
             sx={{ mx: { xs: 1, sm: 1.5 }, mt: 1, borderRadius: 1.5 }}
           >
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              {enrichError ? t('results.enrichNotLoaded') : t('results.enrichAdding')}
+              {pipelineError ? t('results.enrichNotLoaded') : pipelineTitle}
             </Typography>
-            {enrichError ? (
+            {pipelineError ? (
               <Typography variant="body2" sx={{ mt: 0.5 }}>
-                {enrichError}
+                {pipelineError}
               </Typography>
             ) : (
               <>
                 <Stack spacing={0.25} sx={{ mt: 0.75 }}>
-                  {enrichSteps.map((step) => (
+                  {pipelineSteps.map((step) => (
                     <Stack key={step.step} direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
                       <Box
                         sx={{
@@ -2910,14 +3036,16 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           <ResultsGrid
             ref={gridHandleRef}
             result={effectiveResult}
-            onAddComputedColumn={(col) => setComputedColumns((prev) => [...prev, col])}
+            onAddComputedColumn={(col) =>
+              patchGrid(mode, { computedColumns: [...computedColumns, col] })
+            }
             onAiTransformApply={handleGridTransformApply}
             onRevertGrid={gridHistory.length > 0 ? handleGridRevert : undefined}
             onRowsPasted={handleGridPaste}
             onColumnTypeChange={handleColumnTypeChange}
             onSaveToWarehouse={openWarehouseSave}
             drillFilters={drillFilters}
-            onClearDrill={() => setDrillFilters([])}
+            onClearDrill={() => patchGrid(mode, { drillFilters: [] })}
           />
           {running && (
             <Box
@@ -3171,9 +3299,16 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     const valueTooltip = isLikeOp ? t('tooltips.likeValue') : isInOp ? t('tooltips.inValue') : ''
     // Field label stays pinned above the input (like the Op label), never inside it.
     const inputProps = { inputLabel: { shrink: true } }
+    // Date criteria render as date-only (no time component) in the SQL editor.
+    const isDateField = DATE_TYPE_RE.test(field.type)
+    // Persisted sessions may carry a time component; show only the date part.
+    const fieldValue = (key: string): string => {
+      const raw = fabValues[key] ?? ''
+      return isDateField ? raw.slice(0, 10) : raw
+    }
     // Date criteria are mandatory for template runs; flag their labels with a
     // red asterisk. IS NULL / IS NOT NULL need no value, so no marker there.
-    const isRequiredDate = DATE_TYPE_RE.test(field.type) && !isNullOp
+    const isRequiredDate = isDateField && !isNullOp
     const withRequiredMark = (text: string): ReactNode =>
       isRequiredDate ? (
         <span>
@@ -3239,8 +3374,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             <TextField
               size="small"
               label={withRequiredMark(t('sqlEditor.fieldFrom', { label: field.label }))}
-              type={field.type === 'datetime' ? 'datetime-local' : 'text'}
-              value={fabValues[field.key] ?? ''}
+              type={isDateField ? 'date' : 'text'}
+              value={fieldValue(field.key)}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                 setFabValues((current) => ({
                   ...current,
@@ -3253,8 +3388,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
             <TextField
               size="small"
               label={t('sqlEditor.to')}
-              type={field.type === 'datetime' ? 'datetime-local' : 'text'}
-              value={fabValues[`${field.key}__to`] ?? ''}
+              type={isDateField ? 'date' : 'text'}
+              value={fieldValue(`${field.key}__to`)}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                 setFabValues((current) => ({
                   ...current,
@@ -3271,8 +3406,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               <TextField
                 size="small"
                 label={withRequiredMark(field.label)}
-                type={field.type === 'datetime' ? 'datetime-local' : 'text'}
-                value={fabValues[field.key] ?? ''}
+                type={isDateField ? 'date' : 'text'}
+                value={fieldValue(field.key)}
                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                   setFabValues((current) => ({
                     ...current,
@@ -3289,8 +3424,8 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
           <TextField
             size="small"
             label={withRequiredMark(field.label)}
-            type={field.type === 'datetime' ? 'datetime-local' : 'text'}
-            value={fabValues[field.key] ?? ''}
+            type={isDateField ? 'date' : 'text'}
+            value={fieldValue(field.key)}
             onChange={(event: ChangeEvent<HTMLInputElement>) =>
               setFabValues((current) => ({
                 ...current,
@@ -3394,7 +3529,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
               direction={{ xs: 'column', sm: 'row' }}
               spacing={1}
               useFlexGap
-              sx={{ alignItems: { xs: 'stretch', sm: 'center' }, maxWidth: 760 }}
+              sx={{ alignItems: { xs: 'stretch', sm: 'center' }, maxWidth: 880 }}
             >
               <ToggleButtonGroup
                 size="small"
@@ -3415,7 +3550,7 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   {t('builder.views')}
                 </ToggleButton>
               </ToggleButtonGroup>
-              <FormControl fullWidth size="small">
+              <FormControl fullWidth size="small" sx={{ minWidth: 0 }}>
                 <InputLabel id="table-label">{t('builder.tableView')}</InputLabel>
                 <Select
                   labelId="table-label"
@@ -3434,6 +3569,36 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
                   ))}
                 </Select>
               </FormControl>
+              <TextField
+                size="small"
+                value={tableSearch}
+                onChange={(event) => setTableSearch(event.target.value)}
+                placeholder={t('builder.searchTables')}
+                disabled={!connectionId}
+                sx={{ width: { xs: '100%', sm: 220 }, flexShrink: 0 }}
+                slotProps={{
+                  htmlInput: { 'aria-label': t('builder.searchTables') },
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                    endAdornment: tableSearch ? (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          edge="end"
+                          aria-label={t('builder.clearSearch')}
+                          onClick={() => setTableSearch('')}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : undefined,
+                  },
+                }}
+              />
               {loadingTables && <CircularProgress size={20} sx={{ flexShrink: 0 }} />}
             </Stack>
 

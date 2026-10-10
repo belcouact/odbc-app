@@ -1,27 +1,27 @@
 [
   {
-    "version": "2.6.3",
+    "version": "2.6.8",
+    "date": "2026-10-10",
+    "notes": "1. The SQL editor and the query Builder now keep separate result grids — running a Builder query no longer overwrites the SQL editor's results, and vice versa.\n2. Running the Process_Data template now shows a step-by-step progress panel (the SQL query, then the Python wide-table conversion), so you can see it is still working instead of appearing frozen.\n3. In the SQL editor's criteria section, date fields now show only the date (no time), and the Yield Summary template's criteria were updated to match the current SQL."
+  },
+  {
+    "version": "2.6.7",
     "date": "2026-10-09",
-    "notes": "1. The app now opens maximized when launched (including from the desktop shortcut), so its window fills the screen straight away instead of starting small and needing a manual resize.\n2. Access-file templates (e.g. Color Data) now follow the database file name — anything pointing at ColorDB.mdb loads the ColorDB templates — so they keep working even if the connection is renamed."
+    "notes": "1. Query results now have a search box at the top: type to filter rows across every column at once, with a one-click clear button.\n2. In the SQL Builder the table/view selector gained its own search box, so you can find a table or view by name instead of scrolling through a long list.\n3. The Analyze tab's Copilot prompt now tells the AI to deliver its findings as a self-contained HTML report with Apache ECharts charts, save it to your Downloads folder and open it when done, and — when the task needs your input — show a native Windows dialog the same way this app does (console/tkinter prompts cannot work in a non-interactive run)."
   },
   {
-    "version": "2.6.2",
-    "date": "2026-10-08",
-    "notes": "1. Self-update now actually installs: previously the app closed to apply an update but the swap never ran, so the version never changed. Updates now install and the app restarts automatically on the new version.\n2. Fixed date-range filters on Oracle: the Builder now wraps the start and end dates in TO_DATE, so a generated query no longer fails with ORA-01861.\n3. Fixed date-range filters on Access / Excel (Jet) data sources: date values are written in the Jet #...# form, matching the SQL preview, so the query runs instead of raising a data-type mismatch.\n4. Excel/CSV exports now actually save: choosing an export opens the native \"Save As\" dialog (defaulting to your Downloads folder). Previously the export reported success but the file was silently discarded.\n5. Removed the obsolete \"Save the app as a bookmark\" step from the \"How to use this app\" guide, since the app now opens in its own desktop window."
+    "version": "2.6.6",
+    "date": "2026-10-09",
+    "notes": "1. Fixed the failed update that could leave the app showing an error page (HTTP 500) after restarting: the app now starts correctly on the newly installed version, and an update can no longer install into a leftover backup folder."
   },
   {
-    "version": "2.6.1",
-    "date": "2026-10-08",
-    "notes": "1. Fixed date-range filters on Oracle: the Builder now wraps the start and end dates in TO_DATE, so a generated query no longer fails with ORA-01861.\n2. Fixed date-range filters on Access / Excel (Jet) data sources: date values are written in the Jet #...# form, matching the SQL preview, so the query runs instead of raising a data-type mismatch.\n3. Excel/CSV exports now actually save: choosing an export opens the native \"Save As\" dialog (defaulting to your Downloads folder). Previously the export reported success but the file was silently discarded.\n4. Removed the obsolete \"Save the app as a bookmark\" step from the \"How to use this app\" guide, since the app now opens in its own desktop window."
+    "version": "2.6.5",
+    "date": "2026-10-09",
+    "notes": "1. Large SQL editor queries (200,000+ rows) now stream in batches, so results start appearing immediately and no longer stall or fail partway through.\n2. Excel/CSV export from the SQL editor no longer stops at 100,000 rows — the full result is exported.\n3. Databricks connections now remember your authorization, so the sign-in window only appears when a fresh sign-in is actually needed (instead of on every test or page refresh), and the leftover callback tab closes itself."
   },
   {
-    "version": "2.6.0",
-    "date": "2026-10-08",
-    "notes": "1. The app now opens in its own dedicated desktop window instead of a browser tab, so it no longer suffers from \"lost connection\" or accidental tab-close problems.\n2. Template sample dashboards now preview inside an in-app viewer window, so you can check a template's output before running a query."
-  },
-  {
-    "version": "2.5.4",
-    "date": "2026-10-08",
-    "notes": "1. The Script page now offers an \"AOI Defect Map\" template: it plots every AOI defect on a CD/MD coordinate map coloured by class and sized by severity, with a filter sidebar, hover defect images and a full-screen image gallery. A sample output is linked so you can preview it before running.\n2. Fixed the intro screen where the \"ODBC\" label was hidden behind the database cylinder.\n3. The Connections table's Username column no longer wraps the header or a Chinese name onto two lines."
+    "version": "2.6.4",
+    "date": "2026-10-09",
+    "notes": "1. Validation errors now name the field at fault, so \"String should have at least 1 character\" shows which input (e.g. \"name\") needs a value instead of leaving you to guess.\n2. The connection-type selector is laid out as a single horizontal row of tabs, and remains usable on narrow phone screens.\n3. On the connection dialog, the result of a test is now pinned directly above the buttons, so \"Connection successful\" (or an error) stays in view instead of scrolling out of sight."
   }
 ]

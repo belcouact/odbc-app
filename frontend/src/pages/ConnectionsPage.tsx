@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import AddIcon from '@mui/icons-material/Add'
@@ -6,9 +6,13 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import ErrorIcon from '@mui/icons-material/Error'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import RadarIcon from '@mui/icons-material/Radar'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import StorageIcon from '@mui/icons-material/Storage'
+import Accordion from '@mui/material/Accordion'
+import AccordionDetails from '@mui/material/AccordionDetails'
+import AccordionSummary from '@mui/material/AccordionSummary'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -44,13 +48,13 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { api } from '../api/client'
+import { api, RequestCancelledError } from '../api/client'
 import type { ConnectionPayload } from '../api/client'
 import type { DatabaseType, DbConnection, DetectedDsn } from '../types'
 
 interface ConnectionForm {
   name: string
-  type: 'dsn' | 'string' | 'access'
+  type: 'dsn' | 'string' | 'access' | 'databricks'
   dsn: string
   connection_string: string
   driver: string
@@ -62,6 +66,10 @@ interface ConnectionForm {
   database_type: DatabaseType
   url: string
   local_path: string
+  server_hostname: string
+  http_path: string
+  default_catalog: string
+  query_tags: string
 }
 
 const DATABASE_TYPES: { value: DatabaseType; labelKey: string }[] = [
@@ -106,6 +114,19 @@ function connectionDetailLines(connection: DbConnection, t: TFunction): string[]
   if (connection.type === 'dsn') {
     return [t('detail.dsn', { dsn: connection.dsn || '—' })]
   }
+  if (connection.type === 'databricks') {
+    const lines: string[] = []
+    if (connection.server_hostname) {
+      lines.push(t('detail.databricksHost', { host: connection.server_hostname }))
+    }
+    if (connection.http_path) {
+      lines.push(t('detail.databricksHttpPath', { path: connection.http_path }))
+    }
+    if (connection.default_catalog) {
+      lines.push(t('detail.database', { database: connection.default_catalog }))
+    }
+    return lines.length > 0 ? lines : [t('detail.directConnection')]
+  }
   const target =
     [
       connection.driver && t('detail.driver', { driver: connection.driver }),
@@ -133,10 +154,14 @@ const EMPTY_FORM: ConnectionForm = {
   database_type: 'auto',
   url: '',
   local_path: '',
+  server_hostname: '',
+  http_path: '',
+  default_catalog: '',
+  query_tags: '',
 }
 
 interface Notice {
-  severity: 'success' | 'error'
+  severity: 'success' | 'error' | 'info'
   message: string
   details?: string
 }
@@ -156,6 +181,10 @@ function connectionToForm(connection: DbConnection): ConnectionForm {
     database_type: connection.database_type ?? 'auto',
     url: connection.url ?? '',
     local_path: connection.local_path ?? '',
+    server_hostname: connection.server_hostname ?? '',
+    http_path: connection.http_path ?? '',
+    default_catalog: connection.default_catalog ?? '',
+    query_tags: connection.query_tags ?? '',
   }
 }
 
@@ -179,6 +208,16 @@ function formToPayload(form: ConnectionForm): ConnectionPayload {
     }
     return base
   }
+  if (form.type === 'databricks') {
+    if (form.server_hostname.trim()) base.server_hostname = form.server_hostname.trim()
+    if (form.http_path.trim()) base.http_path = form.http_path.trim()
+    if (form.default_catalog.trim()) base.default_catalog = form.default_catalog.trim()
+    if (form.database.trim()) base.database = form.database.trim()
+    if (form.query_tags.trim()) base.query_tags = form.query_tags.trim()
+    // Personal access token, stored in the OS keyring via the password field.
+    if (form.password) base.password = form.password
+    return base
+  }
   if (form.connection_string.trim()) base.connection_string = form.connection_string.trim()
   if (form.driver.trim()) base.driver = form.driver.trim()
   if (form.server.trim()) base.server = form.server.trim()
@@ -198,6 +237,12 @@ function validateForm(form: ConnectionForm, t: TFunction): string | null {
     return null
   }
   if (form.type === 'dsn' && !form.dsn.trim()) return t('validation.dsnRequired')
+  if (form.type === 'databricks') {
+    if (!form.server_hostname.trim() || !form.http_path.trim()) {
+      return t('validation.databricksRequired')
+    }
+    return null
+  }
   if (form.type === 'string' && !form.connection_string.trim() && !form.driver.trim()) {
     return t('validation.stringRequired')
   }
@@ -222,6 +267,11 @@ export default function ConnectionsPage() {
   const [deleteTarget, setDeleteTarget] = useState<DbConnection | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
+
+  // Abort controllers for in-flight connection tests, so a test can be
+  // cancelled at any time (dialog test and per-row test are independent).
+  const dialogTestAbortRef = useRef<AbortController | null>(null)
+  const rowTestAbortRef = useRef<AbortController | null>(null)
 
   // ---- Detect ODBC DSNs ----
   const [detectOpen, setDetectOpen] = useState(false)
@@ -303,6 +353,8 @@ export default function ConnectionsPage() {
   }
 
   const testPayloadFromForm = async () => {
+    const controller = new AbortController()
+    dialogTestAbortRef.current = controller
     setTesting(true)
     setDialogNotice(null)
     try {
@@ -310,7 +362,7 @@ export default function ConnectionsPage() {
       // When editing a saved connection, let the backend fall back to the
       // stored keyring password if the form leaves the password field empty.
       if (editing) payload.id = editing.id
-      const result = await api.testConnection(payload)
+      const result = await api.testConnection(payload, controller.signal)
       setDialogNotice({
         severity: result.ok ? 'success' : 'error',
         message:
@@ -319,23 +371,35 @@ export default function ConnectionsPage() {
         details: result.details,
       })
     } catch (err) {
-      setDialogNotice({
-        severity: 'error',
-        message: err instanceof Error ? err.message : t('messages.testFailed'),
-      })
+      if (err instanceof RequestCancelledError) {
+        setDialogNotice({ severity: 'info', message: t('messages.testCancelled') })
+      } else {
+        setDialogNotice({
+          severity: 'error',
+          message: err instanceof Error ? err.message : t('messages.testFailed'),
+        })
+      }
     } finally {
+      if (dialogTestAbortRef.current === controller) dialogTestAbortRef.current = null
       setTesting(false)
     }
   }
 
+  /** Abort an in-flight dialog connection test. */
+  const cancelTest = () => {
+    dialogTestAbortRef.current?.abort()
+  }
+
   const testExisting = async (connection: DbConnection) => {
+    const controller = new AbortController()
+    rowTestAbortRef.current = controller
     setTestingId(connection.id)
     try {
       const payload: ConnectionPayload = connectionToForm(connection)
       // The public connection object never carries the password; pass the id
       // so the backend tests with the stored keyring password.
       payload.id = connection.id
-      const result = await api.testConnection(payload)
+      const result = await api.testConnection(payload, controller.signal)
       setNotice({
         severity: result.ok ? 'success' : 'error',
         message: `${connection.name}: ${
@@ -345,15 +409,25 @@ export default function ConnectionsPage() {
         details: result.details,
       })
     } catch (err) {
-      setNotice({
-        severity: 'error',
-        message: `${connection.name}: ${
-          err instanceof Error ? err.message : t('messages.testFailedShort')
-        }`,
-      })
+      if (err instanceof RequestCancelledError) {
+        setNotice({ severity: 'info', message: `${connection.name}: ${t('messages.testCancelled')}` })
+      } else {
+        setNotice({
+          severity: 'error',
+          message: `${connection.name}: ${
+            err instanceof Error ? err.message : t('messages.testFailedShort')
+          }`,
+        })
+      }
     } finally {
+      if (rowTestAbortRef.current === controller) rowTestAbortRef.current = null
       setTestingId(null)
     }
+  }
+
+  /** Abort an in-flight per-row connection test. */
+  const cancelRowTest = () => {
+    rowTestAbortRef.current?.abort()
   }
 
   const handleDelete = async () => {
@@ -640,26 +714,37 @@ export default function ConnectionsPage() {
                         spacing={0.25}
                         sx={{ justifyContent: 'flex-end', alignItems: 'center' }}
                       >
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={
-                            testingId === connection.id ? (
-                              <CircularProgress size={16} />
-                            ) : (
-                              <CheckCircleIcon />
-                            )
-                          }
-                          onClick={() => void testExisting(connection)}
-                          disabled={testingId !== null}
-                          sx={{
-                            minHeight: { xs: 48, md: 32 },
-                            px: { md: 1 },
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {t('actions.test')}
-                        </Button>
+                        {testingId === connection.id ? (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            startIcon={<CircularProgress size={16} />}
+                            onClick={cancelRowTest}
+                            sx={{
+                              minHeight: { xs: 48, md: 32 },
+                              px: { md: 1 },
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {t('actions.cancelTest')}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<CheckCircleIcon />}
+                            onClick={() => void testExisting(connection)}
+                            disabled={testingId !== null}
+                            sx={{
+                              minHeight: { xs: 48, md: 32 },
+                              px: { md: 1 },
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {t('actions.test')}
+                          </Button>
+                        )}
                         <Tooltip title={t('actions.edit')}>
                           <IconButton
                             size="small"
@@ -712,11 +797,27 @@ export default function ConnectionsPage() {
               </Typography>
               <ToggleButtonGroup
                 exclusive
-                fullWidth
                 value={form.type}
                 disabled={editing !== null}
-                onChange={(_event: ReactMouseEvent<HTMLElement>, value: 'dsn' | 'string' | 'access' | null) => {
+                onChange={(_event: ReactMouseEvent<HTMLElement>, value: 'dsn' | 'string' | 'access' | 'databricks' | null) => {
                   if (value) setForm((current) => ({ ...current, type: value }))
+                }}
+                sx={{
+                  display: 'flex',
+                  width: '100%',
+                  // Lay the four types out side by side in a single row. MUI's
+                  // `fullWidth` prop would instead stretch *each* button to
+                  // 100% (stacking them vertically), so share the row evenly
+                  // via flex and let longer labels wrap inside their button.
+                  '& .MuiToggleButtonGroup-grouped': {
+                    flex: 1,
+                    minWidth: 0,
+                    px: 0.5,
+                    fontSize: { xs: '0.7rem', sm: '0.8125rem' },
+                    lineHeight: 1.2,
+                    whiteSpace: 'normal',
+                    textTransform: 'none',
+                  },
                 }}
               >
                 <ToggleButton value="dsn" sx={{ minHeight: 48 }}>
@@ -727,6 +828,9 @@ export default function ConnectionsPage() {
                 </ToggleButton>
                 <ToggleButton value="access" sx={{ minHeight: 48 }}>
                   {t('dialog.typeAccess')}
+                </ToggleButton>
+                <ToggleButton value="databricks" sx={{ minHeight: 48 }}>
+                  {t('dialog.typeDatabricks')}
                 </ToggleButton>
               </ToggleButtonGroup>
             </Box>
@@ -755,7 +859,7 @@ export default function ConnectionsPage() {
                   helperText={t('dialog.localPathHelper')}
                 />
               </>
-            ) : (
+            ) : form.type === 'databricks' ? null : (
               <FormControl fullWidth>
                 <InputLabel id="database-type-label">{t('dialog.databaseTypeLabel')}</InputLabel>
                 <Select
@@ -822,6 +926,72 @@ export default function ConnectionsPage() {
                   </Grid>
                 )}
               </>
+            ) : form.type === 'databricks' ? (
+              <>
+                <TextField
+                  label={t('dialog.databricksHostnameLabel')}
+                  value={form.server_hostname}
+                  onChange={updateField('server_hostname')}
+                  fullWidth
+                  required
+                  placeholder={t('dialog.databricksHostnamePlaceholder')}
+                />
+                <TextField
+                  label={t('dialog.databricksHttpPathLabel')}
+                  value={form.http_path}
+                  onChange={updateField('http_path')}
+                  fullWidth
+                  required
+                  placeholder={t('dialog.databricksHttpPathPlaceholder')}
+                />
+                <TextField
+                  label={t('dialog.databricksTokenLabel')}
+                  type="password"
+                  value={form.password}
+                  onChange={updateField('password')}
+                  fullWidth
+                  autoComplete="new-password"
+                  helperText={t('dialog.databricksTokenHelper')}
+                />
+                <TextField
+                  label={t('dialog.databricksDatabaseLabel')}
+                  value={form.database}
+                  onChange={updateField('database')}
+                  fullWidth
+                  placeholder={t('dialog.databricksDatabasePlaceholder')}
+                />
+                <Accordion
+                  disableGutters
+                  elevation={0}
+                  sx={{ border: 1, borderColor: 'divider', borderRadius: 1, '&:before': { display: 'none' } }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 48 }}>
+                    <Typography variant="body2">{t('dialog.databricksAdvanced')}</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12 }}>
+                        <TextField
+                          label={t('dialog.databricksCatalogLabel')}
+                          value={form.default_catalog}
+                          onChange={updateField('default_catalog')}
+                          fullWidth
+                          placeholder={t('dialog.databricksCatalogPlaceholder')}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12 }}>
+                        <TextField
+                          label={t('dialog.databricksQueryTagsLabel')}
+                          value={form.query_tags}
+                          onChange={updateField('query_tags')}
+                          fullWidth
+                          placeholder={t('dialog.databricksQueryTagsPlaceholder')}
+                        />
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+              </>
             ) : (
               <>
                 <Grid container spacing={2}>
@@ -873,31 +1043,53 @@ export default function ConnectionsPage() {
             )}
 
             {formError && <Alert severity="error">{formError}</Alert>}
-            {dialogNotice && (
-              <Alert
-                severity={dialogNotice.severity}
-                icon={dialogNotice.severity === 'success' ? <CheckCircleIcon /> : <ErrorIcon />}
-              >
-                {dialogNotice.message}
-                {dialogNotice.details && (
-                  <Box component="div" sx={{ mt: 0.5, wordBreak: 'break-word', fontSize: '0.85em' }}>
-                    {dialogNotice.details}
-                  </Box>
-                )}
-              </Alert>
-            )}
           </Stack>
         </DialogContent>
+        {/* Pin the test result below the scrollable form and above the action
+            buttons, so it is always in view instead of scrolled out of sight. */}
+        {dialogNotice && (
+          <Box sx={{ px: 3, pt: 2 }}>
+            <Alert
+              severity={dialogNotice.severity}
+              icon={
+                dialogNotice.severity === 'success' ? (
+                  <CheckCircleIcon />
+                ) : dialogNotice.severity === 'error' ? (
+                  <ErrorIcon />
+                ) : undefined
+              }
+            >
+              {dialogNotice.message}
+              {dialogNotice.details && (
+                <Box component="div" sx={{ mt: 0.5, wordBreak: 'break-word', fontSize: '0.85em' }}>
+                  {dialogNotice.details}
+                </Box>
+              )}
+            </Alert>
+          </Box>
+        )}
         <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
-          <Button
-            onClick={() => void testPayloadFromForm()}
-            startIcon={testing ? <CircularProgress size={16} /> : <CheckCircleIcon />}
-            disabled={testing || saving}
-            variant="outlined"
-            sx={{ minHeight: 44 }}
-          >
-            {t('actions.test')}
-          </Button>
+          {testing ? (
+            <Button
+              onClick={cancelTest}
+              startIcon={<CircularProgress size={16} />}
+              variant="outlined"
+              color="error"
+              sx={{ minHeight: 44 }}
+            >
+              {t('actions.cancelTest')}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => void testPayloadFromForm()}
+              startIcon={<CheckCircleIcon />}
+              disabled={saving}
+              variant="outlined"
+              sx={{ minHeight: 44 }}
+            >
+              {t('actions.test')}
+            </Button>
+          )}
           <Box sx={{ flexGrow: 1 }} />
           <Button onClick={closeDialog} disabled={saving || testing} sx={{ minHeight: 44 }}>
             {t('actions.cancel')}

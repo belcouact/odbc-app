@@ -32,6 +32,8 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import IconButton from '@mui/material/IconButton'
+import InputAdornment from '@mui/material/InputAdornment'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemText from '@mui/material/ListItemText'
 import Menu from '@mui/material/Menu'
@@ -56,6 +58,7 @@ import LowPriorityIcon from '@mui/icons-material/LowPriority'
 import PushPinIcon from '@mui/icons-material/PushPin'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import SaveIcon from '@mui/icons-material/Save'
+import SearchIcon from '@mui/icons-material/Search'
 import StraightenIcon from '@mui/icons-material/Straighten'
 import SwapVertIcon from '@mui/icons-material/SwapVert'
 import TuneIcon from '@mui/icons-material/Tune'
@@ -544,6 +547,8 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
   const [pasteNotice, setPasteNotice] = useState('')
   /** Timer id of the running paste-notice timeout, so a new paste restarts it. */
   const pasteNoticeTimer = useRef<number | undefined>(undefined)
+  /** Global search term, applied as AG Grid's quick filter across every column. */
+  const [globalSearch, setGlobalSearch] = useState('')
   /** Latest pointer position. Captured in the capture phase, because AG Grid's
    *  own `cellContextMenu` callback fires before our bubble-phase handler. */
   const pointerRef = useRef({ x: 0, y: 0 })
@@ -1289,6 +1294,37 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
           )}
         </Stack>
         <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          {!empty && (
+            <TextField
+              size="small"
+              value={globalSearch}
+              onChange={(event) => setGlobalSearch(event.target.value)}
+              placeholder={t('search.placeholder')}
+              sx={{ width: { xs: '100%', sm: 260 } }}
+              slotProps={{
+                htmlInput: { 'aria-label': t('search.placeholder') },
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: globalSearch ? (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        edge="end"
+                        aria-label={t('search.clear')}
+                        onClick={() => setGlobalSearch('')}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ) : undefined,
+                },
+              }}
+            />
+          )}
           {onRevertGrid && (
             <Tooltip title={t('revert.tooltip')}>
               <Button
@@ -1354,6 +1390,7 @@ const ResultsGrid = forwardRef<ResultsGridHandle, ResultsGridProps>(function Res
             localeText={i18n.language.startsWith('zh') ? AG_GRID_LOCALE_ZH : undefined}
             ref={gridRef}
             rowData={result.rows}
+            quickFilterText={globalSearch}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             headerHeight={52}

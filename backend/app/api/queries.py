@@ -196,9 +196,10 @@ def run_query_endpoint(payload: RunQueryRequest):
 def cancel_query(run_id: str):
     """Cancel the in-flight query run identified by ``run_id``.
 
-    Always returns 200 with ``{ok: bool}`` — ``ok`` is ``False`` when the run
-    already finished or is not registered yet (e.g. still connecting), so the
-    client can retry while its run is still in flight.
+    Always returns 200 with ``{ok: bool}`` — ``ok`` is ``False`` only when the
+    run is unknown (already finished or never registered). A run is registered
+    before its connection opens, so a cancel also lands while the connection is
+    still opening: it is remembered and applied once the driver is responsive.
     """
     ok = odbc.cancel_run(run_id)
     logging_utils.log_info(

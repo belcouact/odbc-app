@@ -30,7 +30,7 @@ def generate_report(
     df = data.copy() if isinstance(data, pd.DataFrame) else pd.DataFrame(data)
     df.columns = [str(c).strip().lower() for c in df.columns]
 
-    required = ["raw_item", "raw_lot", "raw_lot_qty"]
+    required = ["raw_item", "raw_lot", "raw_quantity"]
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {', '.join(missing)}")
@@ -38,7 +38,7 @@ def generate_report(
     df = df[required].copy()
     df["raw_item"] = df["raw_item"].astype("string").str.strip()
     df["raw_lot"] = df["raw_lot"].astype("string").str.strip()
-    df["raw_lot_qty"] = pd.to_numeric(df["raw_lot_qty"], errors="coerce")
+    df["raw_quantity"] = pd.to_numeric(df["raw_quantity"], errors="coerce")
     df = df.dropna(subset=required)
     df = df[(df["raw_item"] != "") & (df["raw_lot"] != "")]
 
@@ -46,9 +46,9 @@ def generate_report(
         raise ValueError("No valid rows remain after cleaning the required fields.")
 
     lot_sum = (
-        df.groupby(["raw_item", "raw_lot"], as_index=False, sort=True)["raw_lot_qty"]
+        df.groupby(["raw_item", "raw_lot"], as_index=False, sort=True)["raw_quantity"]
         .sum()
-        .rename(columns={"raw_lot_qty": "summed_raw_lot_qty"})
+        .rename(columns={"raw_quantity": "summed_raw_lot_qty"})
     )
 
     payload: list[dict[str, Any]] = []
@@ -167,7 +167,7 @@ body.modal-open{{overflow:hidden}}
 </style>
 </head>
 <body>
-<header><h1>Raw Item Statistical Report</h1><p>Statistics use summed raw_lot_qty for each unique raw_lot within each raw_item.</p></header>
+<header><h1>Raw Item Statistical Report</h1><p>Statistics use summed raw_quantity for each unique raw_lot within each raw_item.</p></header>
 <main>
 <section class="kpis">
 <div class="kpi"><small>Valid source rows</small><strong>{len(df):,}</strong></div>
@@ -181,7 +181,7 @@ body.modal-open{{overflow:hidden}}
 </tr></thead><tbody id="tableBody"></tbody></table></div>
 <footer><span id="status"></span><div><button id="prev">Previous</button> <span id="pageText"></span> <button id="next">Next</button></div></footer>
 </section>
-<section class="panel"><h2 class="chart-title">Distribution by Raw Item</h2><p class="chart-help">ECharts boxplot of summed raw_lot_qty by raw_lot.</p><div id="boxplot"></div></section>
+<section class="panel"><h2 class="chart-title">Distribution by Raw Item</h2><p class="chart-help">ECharts boxplot of summed raw_quantity by raw_lot.</p><div id="boxplot"></div></section>
 </main>
 <div id="histogramModal" class="modal">
 <div class="modal-bar"><h2 id="modalTitle">Histogram</h2><button id="modalClose" class="modal-close">Close</button></div>
@@ -252,7 +252,7 @@ function renderBoxplot(){{
   tooltip:{{trigger:'item'}},
   grid:{{left:75,right:30,top:25,bottom:125}},
   xAxis:{{type:'category',data:d.map(x=>x.raw_item),axisLabel:{{rotate:55,fontSize:10}}}},
-  yAxis:{{type:'value',name:'Summed raw_lot_qty'}},
+  yAxis:{{type:'value',name:'Summed raw_quantity'}},
   dataZoom:[{{type:'inside'}},{{type:'slider',bottom:35}}],
   series:[{{type:'boxplot',data:d.map(x=>[x.box_low,x.q1,x.median,x.q3,x.box_high])}}]
  }},true);

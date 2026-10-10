@@ -215,6 +215,13 @@ a = Analysis(
         "keyring.backends.Windows",
         # Lazy SQL parser used by the read-only guard (app.db.odbc).
         "sqlglot",
+        # Azure Databricks connector (app.db.databricks).  Imported lazily via
+        # ``from databricks import sql`` inside the connector, so PyInstaller
+        # cannot see it — without these entries the frozen app raises
+        # "databricks-sql-connector is not installed" when a databricks-type
+        # connection is used.
+        "databricks",
+        "databricks.sql",
         # Native window shell (pywebview).  The Windows backend is imported
         # dynamically at runtime (webview.guilib -> webview.platforms.winforms),
         # so PyInstaller cannot see it and must be told explicitly.  The

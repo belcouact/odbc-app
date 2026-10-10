@@ -129,6 +129,35 @@ def _staging_dir() -> str:
     return os.path.join(APP_DATA_DIR, "update_staging")
 
 
+def _install_target() -> str:
+    """Folder an update installs into: the exe's dir, minus a '.old' backup.
+
+    A post-update process can end up running from the ``<install>.<version>.old``
+    folder the updater renamed aside; installing into that backup would nest the
+    app one level deeper on every update.  When the exe sits in such a backup,
+    recover the real install folder beside it (when it exists).
+    """
+    install_dir = os.path.dirname(os.path.abspath(sys.executable))
+    name = os.path.basename(install_dir)
+    if not name.endswith(".old"):
+        return install_dir
+    parent = os.path.dirname(install_dir)
+    try:
+        entries = os.listdir(parent)
+    except OSError:
+        return install_dir
+    best = ""
+    for entry in entries:
+        if (
+            len(entry) < len(name)
+            and name.startswith(entry + ".")
+            and os.path.isdir(os.path.join(parent, entry))
+            and len(entry) > len(best)
+        ):
+            best = entry
+    return os.path.join(parent, best) if best else install_dir
+
+
 def _configured_source() -> str | None:
     """Resolve the manifest location: env var → settings file → beside exe → default."""
     env = (os.environ.get("ODBC_UPDATE_MANIFEST") or "").strip()
@@ -464,7 +493,7 @@ def _install_worker() -> None:
         if not os.path.isfile(os.path.join(staged_dir, os.path.basename(sys.executable))):
             raise RuntimeError("The downloaded package does not contain the app.")
 
-        target = os.path.dirname(sys.executable)
+        target = _install_target()
         pending = {"package": staged_dir, "target": target, "version": version}
         with open(_pending_file(), "w", encoding="utf-8") as fh:
             json.dump(pending, fh)

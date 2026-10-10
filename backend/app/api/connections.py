@@ -23,7 +23,7 @@ class ConnectionCreate(BaseModel):
     # Test-only: when set, the test may fall back to the stored connection's
     # keyring password (the API never sends passwords back to the client).
     id: Optional[str] = None
-    type: Literal["dsn", "string", "access"]
+    type: Literal["dsn", "string", "access", "databricks"]
     dsn: Optional[str] = None
     connection_string: Optional[str] = None
     driver: Optional[str] = None
@@ -36,13 +36,18 @@ class ConnectionCreate(BaseModel):
     # Access-file connections (SharePoint link and/or local path).
     url: Optional[str] = None
     local_path: Optional[str] = None
+    # Azure Databricks connections (databricks-sql-connector).
+    server_hostname: Optional[str] = None
+    http_path: Optional[str] = None
+    default_catalog: Optional[str] = None
+    query_tags: Optional[str] = None
 
 
 class ConnectionUpdate(BaseModel):
     """Partial update body for PUT /connections/{id}."""
 
     name: Optional[str] = Field(default=None, min_length=1)
-    type: Optional[Literal["dsn", "string", "access"]] = None
+    type: Optional[Literal["dsn", "string", "access", "databricks"]] = None
     dsn: Optional[str] = None
     connection_string: Optional[str] = None
     driver: Optional[str] = None
@@ -54,6 +59,10 @@ class ConnectionUpdate(BaseModel):
     database_type: Optional[str] = None
     url: Optional[str] = None
     local_path: Optional[str] = None
+    server_hostname: Optional[str] = None
+    http_path: Optional[str] = None
+    default_catalog: Optional[str] = None
+    query_tags: Optional[str] = None
 
 
 def load_stored_connections() -> list:
@@ -179,6 +188,8 @@ def _connection_signature(conn: dict) -> str:
         conn.get("connection_string") or "",
         conn.get("url") or "",
         conn.get("local_path") or "",
+        conn.get("server_hostname") or "",
+        conn.get("http_path") or "",
     )
     return "|".join(parts).lower()
 

@@ -1,2 +1,3 @@
-1. The app now opens maximized when launched (including from the desktop shortcut), so its window fills the screen straight away instead of starting small and needing a manual resize.
-2. Access-file templates (e.g. Color Data) now follow the database file name — anything pointing at ColorDB.mdb loads the ColorDB templates — so they keep working even if the connection is renamed.
+1. The SQL editor and the query Builder now keep separate result grids — running a Builder query no longer overwrites the SQL editor's results, and vice versa.
+2. Running the Process_Data template now shows a step-by-step progress panel (the SQL query, then the Python wide-table conversion), so you can see it is still working instead of appearing frozen.
+3. In the SQL editor's criteria section, date fields now show only the date (no time), and the Yield Summary template's criteria were updated to match the current SQL.

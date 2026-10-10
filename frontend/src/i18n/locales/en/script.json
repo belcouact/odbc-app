@@ -106,15 +106,15 @@
     "step3": "<b>Run script</b> — the output panel shows what the script printed (errors included). Files the script saves land in your Downloads folder — see the Excel example.",
     "step4": "<b>Reuse</b> — <b>Insert example</b> loads ready-made snippets, <b>Use template / View</b> opens the shared template library, and <b>Save</b> + <b>Custom</b> keep your own scripts one click away.",
     "tipTitle": "Tip — let Copilot (or any AI) write the script for you",
-    "tipIntro": "Ask an external LLM such as <b>GitHub Copilot Chat</b> or <b>ChatGPT</b>, and give it three things:",
+    "tipIntro": "Ask an external LLM such as <b>M365 Copilot Chat</b>, and give it three things:",
     "tipTask": "the <b>task</b> you want done — e.g. “top 10 HOLD_CODEs by row count”,",
     "tipContract": "the <b>contract</b> — rows come in <code>data</code> (a list of dicts), pandas is available, results are shown via <code>print()</code>,",
-    "tipSample": "a <b>sample of your data</b> — copy a few rows from the grid and paste them in.",
-    "tipOutro": "The prompt below already covers the contract — fill in the task and paste your sample rows:",
+    "tipSample": "a <b>sample of your data</b> — upload a sample file or copy a few rows from the grid and paste them in.",
+    "tipOutro": "The prompt below already covers the contract — it also tells the AI to build an HTML report with Apache ECharts charts, save it to your Downloads folder, open it when done, and (when the task needs your input) show a native Windows dialog the same way this app does. Fill in the task plus the uploaded or pasted sample data:",
     "promptHeading": "Prompt for Copilot",
     "copied": "Copied",
     "copy": "Copy",
-    "copilotPrompt": "Write a Python 3 script for the ODBC Query App \"Script\" tab.\n\nContract:\n- My query result is already loaded in a variable called data — a list of dicts, one dict per row, e.g. [{'LOT_ID': 'A123', 'QTY': 10}, ...].\n- pandas is available (import pandas as pd). Built-ins like math/json are fine.\n- Show every result with print() — that output is exactly what the app displays.\n- Use plain Python/pandas only; do not install packages, open dialogs, or touch the database.\n\nTask: <describe what you want, e.g. \"count rows per HOLD_CODE, sort by count, show the top 10\">\n\nMy data (columns plus a few sample rows, copied from the grid):\n<paste a handful of rows here>"
+    "copilotPrompt": "Write a Python 3 script for the ODBC Query App \"Script\" tab.\n\nContext: this script will be executed automatically inside the app (not run by a human from a terminal) — there is no command line, no stdin, and no user typing input while it runs.\n\nContract:\n- My query result is already loaded in a variable called data — a list of dicts, one dict per row, e.g. [{'LOT_ID': 'A123', 'QTY': 10}, ...].\n- pandas is available (import pandas as pd). Built-ins like math/json are fine.\n- Use plain Python/pandas only; do not install packages or touch the database.\n\nOutput requirements:\n- Present the result as a single self-contained HTML report (inline the data and tables directly in the HTML; no other external files or network calls).\n- Use Apache ECharts for any charts. The app bundles it — do `from app.resources.echarts import get_echarts_js` and inline the returned JS into the HTML; do NOT use a CDN. Render each chart in its own sized <div>.\n- Save the HTML file into the user's Downloads folder, falling back to the OS temp folder if Downloads is not writable (probe writability first), using an absolute path with a timestamped filename like report_YYYYMMDD_HHMMSS.html.\n- After writing the file, open it in the default browser with webbrowser.open(Path(path).as_uri()).\n- Also print() a short confirmation (and any key findings) so the app's output panel shows what happened.\n\nInteractive dialogs (only if the task needs to ask the user something):\n- The script runs non-interactively (no stdin) and tkinter is NOT available, so do NOT use input(), tkinter or console prompts.\n- Follow the app's practice: launch a native Windows dialog as a child process — write the choices to a JSON file in a temp dir, run a PowerShell + WinForms script via subprocess.run([powershell, \"-NoProfile\", \"-STA\", \"-ExecutionPolicy\", \"Bypass\", \"-File\", ps_path, in_path, out_path], creationflags=subprocess.CREATE_NO_WINDOW), then read the user's selection back from another JSON file.\n- Guard it: skip the dialog when os.name != \"nt\" or PowerShell is missing, support an env-var skip, apply a timeout, and fall back to sensible defaults instead of failing.\n\nTask: <describe what you want, e.g. \"count rows per HOLD_CODE, sort by count, show the top 10\">\n\nMy data (columns plus a few sample rows, copied from the grid):\n<paste a handful of rows here>"
   },
   "custom": {
     "title": "Custom scripts",
@@ -169,6 +169,13 @@
   "deleteDialog": {
     "title": "Delete “{{name}}”?",
     "body": "This pre-defined script will be permanently deleted."
+  },
+  "noDataDialog": {
+    "title": "Run without grid data?",
+    "warning": "No grid data — the Query grid is empty.",
+    "body": "The script will run with an empty data list, so any code that reads rows will see nothing. Continue only if the script does not need the queried data (for example, it generates its own data or reads a file).",
+    "proceed": "Run anyway",
+    "stop": "Stop"
   },
   "notices": {
     "deleted": "Deleted \"{{name}}\".",

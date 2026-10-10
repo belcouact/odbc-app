@@ -740,6 +740,14 @@ if (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) {
 }
 Start-Sleep -Milliseconds 500
 
+# Never hand PyInstaller's private launch variables to the relaunched build: a
+# stale _PYI_APPLICATION_HOME_DIR makes its bootloader resolve <_MEIPASS> to a
+# renamed-aside '.old' folder, so it would serve files that no longer exist.
+Remove-Item Env:_PYI_ARCHIVE_FILE -ErrorAction SilentlyContinue
+Remove-Item Env:_PYI_APPLICATION_HOME_DIR -ErrorAction SilentlyContinue
+Remove-Item Env:_PYI_PARENT_PROCESS_LEVEL -ErrorAction SilentlyContinue
+Remove-Item Env:_PYI_SPLASH_IPC -ErrorAction SilentlyContinue
+
 try {
   if (Test-Path -LiteralPath $backup) {
     Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue

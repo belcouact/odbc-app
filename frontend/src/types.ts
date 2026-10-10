@@ -13,7 +13,7 @@ export type DatabaseType =
 export interface DbConnection {
   id: string
   name: string
-  type: 'dsn' | 'string' | 'access'
+  type: 'dsn' | 'string' | 'access' | 'databricks'
   dsn?: string
   connection_string?: string
   driver?: string
@@ -23,6 +23,14 @@ export interface DbConnection {
   password?: string
   trusted_connection?: boolean
   database_type?: DatabaseType
+  /** Azure Databricks SQL warehouse host (e.g. adb-1234.5.azuredatabricks.net). */
+  server_hostname?: string
+  /** Databricks HTTP path (e.g. /sql/1.0/warehouses/abcdef1234567890). */
+  http_path?: string
+  /** Default Unity Catalog catalog opened for the session. */
+  default_catalog?: string
+  /** Session query tags as "tag1:value1,tag2:value2". */
+  query_tags?: string
   /** Resolved server type label (e.g. "Microsoft SQL Server", "Oracle"), set
    *  by the backend on GET /connections. Empty when it could not be resolved. */
   resolved_dbms?: string

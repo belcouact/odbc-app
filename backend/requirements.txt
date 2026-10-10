@@ -8,3 +8,4 @@ python-multipart
 keyring
 sqlglot
 pywebview
+databricks-sql-connector

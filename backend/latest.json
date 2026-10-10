@@ -1,8 +1,8 @@
 {
-  "version": "2.6.3",
+  "version": "2.6.8",
   "min_version": "1.0.0",
-  "notes": "1. The app now opens maximized when launched (including from the desktop shortcut), so its window fills the screen straight away instead of starting small and needing a manual resize.\n2. Access-file templates (e.g. Color Data) now follow the database file name — anything pointing at ColorDB.mdb loads the ColorDB templates — so they keep working even if the connection is renamed.",
+  "notes": "1. The SQL editor and the query Builder now keep separate result grids — running a Builder query no longer overwrites the SQL editor's results, and vice versa.\n2. Running the Process_Data template now shows a step-by-step progress panel (the SQL query, then the Python wide-table conversion), so you can see it is still working instead of appearing frozen.\n3. In the SQL editor's criteria section, date fields now show only the date (no time), and the Yield Summary template's criteria were updated to match the current SQL.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "7131cd1aadf5c5f24a034dc5bf9913fd287dbee8323dd96a5470c4be1af09276",
+  "sha256": "4032976e0e5568c03cf0b045efb902e910dbf0e8c5f019096f731f79f232690b",
   "installer": "ODBCQueryApp-Setup-latest.exe"
 }

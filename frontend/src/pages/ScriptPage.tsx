@@ -309,6 +309,8 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
     rows: Record<string, unknown>[]
   } | null>(null)
   const [snapshotRowsLoading, setSnapshotRowsLoading] = useState(false)
+  /** Confirmation shown when the grid has no rows: run anyway, or stop. */
+  const [runWithoutDataOpen, setRunWithoutDataOpen] = useState(false)
 
   // ---- Template scripts (Supabase ``templates/`` catalog, bundled fallback) ----
   /** Available template scripts, as published in the bucket's catalog. */
@@ -546,6 +548,8 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   const resolveScriptData = async (): Promise<{
     rows?: Record<string, unknown>[]
     error?: string
+    /** True when the grid is simply empty — the user may still run without data. */
+    emptyGrid?: boolean
   }> => {
     if (dataSource === 'snapshot') {
       if (!snapshotId) {
@@ -573,7 +577,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
     }
     const snapshotNow = getWorkspaceSnapshot()
     if (!snapshotNow.rows || snapshotNow.rows.length === 0) {
-      return { error: t('notices.noGridData') }
+      return { error: t('notices.noGridData'), emptyGrid: true }
     }
     return { rows: snapshotNow.rows }
   }
@@ -664,6 +668,12 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
       return
     }
     const resolved = await resolveScriptData()
+    if (resolved.emptyGrid) {
+      // No grid data is not fatal — let the user decide whether to proceed with
+      // an empty `data` list or stop and load some data first.
+      setRunWithoutDataOpen(true)
+      return
+    }
     if (resolved.error) {
       setScriptResult({
         ok: false,
@@ -681,6 +691,12 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
       script: scriptText,
       rows: resolved.rows ?? null,
     })
+  }
+
+  /** The user chose to run despite an empty grid: pass no rows to the script. */
+  const handleConfirmRunWithoutData = async () => {
+    setRunWithoutDataOpen(false)
+    await runScriptPayload({ language: 'python', script: scriptText, rows: null })
   }
 
   // ---- Save as pre-defined ----
@@ -2326,6 +2342,38 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
             sx={{ minHeight: 44 }}
           >
             {t('common.delete')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Run without grid data — the grid is empty, but the script may not need it */}
+      <Dialog
+        open={runWithoutDataOpen}
+        onClose={() => setRunWithoutDataOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t('noDataDialog.title')}</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 1.5 }}>
+            {t('noDataDialog.warning')}
+          </Alert>
+          <Typography variant="body2" color="text.secondary">
+            {t('noDataDialog.body')}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRunWithoutDataOpen(false)} sx={{ minHeight: 44 }}>
+            {t('noDataDialog.stop')}
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            startIcon={<PlayArrowIcon />}
+            onClick={() => void handleConfirmRunWithoutData()}
+            sx={{ minHeight: 44 }}
+          >
+            {t('noDataDialog.proceed')}
           </Button>
         </DialogActions>
       </Dialog>

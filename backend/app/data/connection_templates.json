@@ -70,11 +70,11 @@
       {
         "name": "Yield_Summary",
         "fields": [
-          { "key": "branch_plant", "alias": "Branch_Plant", "label": "mys.branch_plant", "type": "varchar", "operator": "=", "optional": true, "default": "B180" },
-          { "key": "jde_wo_number", "alias": "WO", "label": "mys.jde_wo_number", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "main_group", "alias": "Main_Group", "label": "mys.MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "product", "alias": "Item", "label": "mys.product", "type": "varchar", "operator": "like", "optional": true },
-          { "key": "fmi_date", "alias": "FMI_Date", "label": "mys.fmi_date", "type": "datetime", "operator": ">=", "optional": true }
+          { "key": "branch_plant", "alias": "Branch_Plant", "label": "mesa_yield_summary.branch_plant", "type": "varchar", "operator": "=", "optional": true, "default": "B180" },
+          { "key": "jde_wo_number", "alias": "WO", "label": "mesa_yield_summary.jde_wo_number", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "main_group", "alias": "Main_Group", "label": "mesa_yield_summary.MAIN_GROUP", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "product", "alias": "Item", "label": "mesa_yield_summary.product", "type": "varchar", "operator": "like", "optional": true },
+          { "key": "fmi_date", "alias": "FMI_Date", "label": "mesa_yield_summary.fmi_date", "type": "datetime", "operator": ">=", "optional": true }
         ]
       },
       {

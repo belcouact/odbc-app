@@ -15,42 +15,96 @@ from typing import Iterator
 import pyodbc
 
 CONNECT_TIMEOUT = 10
+# Oracle Net may retry an unreachable host well past pyodbc's login timeout
+# (tnsnames CONNECT_TIMEOUT / RETRY_COUNT / RETRY_DELAY dominate it), so the
+# whole connect attempt is also capped by a wall-clock deadline a little above
+# the login timeout — see :func:`_open_connection_with_deadline`.
+CONNECT_DEADLINE_GRACE = 5
 
 # ---- Running-query registry (for cancellation) -------------------------------
 # Maps a run id to the live cursor executing it so a cancel request from
 # another thread can issue ODBC SQLCancel against the in-flight statement.
 # Note: pyodbc's cancel API lives on Cursor (Connection has no cancel()).
-_ACTIVE_RUNS: dict[str, "pyodbc.Cursor"] = {}
+class _ActiveRun:
+    """Bookkeeping for one in-flight run.
+
+    The holder is created the moment a run starts — before the driver
+    connection is even opened — so a cancel that arrives during a slow or hung
+    connect is still recorded: it sets :attr:`aborted`, and the run raises a
+    cancellation as soon as the driver becomes responsive (see
+    :func:`is_cancellation`).
+    """
+
+    __slots__ = ("cursor", "aborted")
+
+    def __init__(self) -> None:
+        self.cursor: "pyodbc.Cursor | None" = None
+        self.aborted = False
+
+
+_ACTIVE_RUNS: dict[str, _ActiveRun] = {}
 _ACTIVE_RUNS_LOCK = threading.Lock()
 
 
-def register_run(run_id: str, cursor: "pyodbc.Cursor") -> None:
-    """Track a cursor under ``run_id`` so it can be cancelled."""
+def begin_run(run_id: str) -> _ActiveRun:
+    """Register ``run_id`` before its connection is opened (cancel-safe start)."""
+    state = _ActiveRun()
     with _ACTIVE_RUNS_LOCK:
-        _ACTIVE_RUNS[run_id] = cursor
+        _ACTIVE_RUNS[run_id] = state
+    return state
+
+
+def register_run(run_id: str, cursor: "pyodbc.Cursor") -> None:
+    """Attach the live cursor of ``run_id`` so it can be cancelled.
+
+    Safe after :func:`begin_run`: if a cancel already arrived while the
+    connection was opening, the statement is cancelled immediately.
+    """
+    with _ACTIVE_RUNS_LOCK:
+        state = _ACTIVE_RUNS.get(run_id)
+        if state is None:
+            state = _ActiveRun()
+            _ACTIVE_RUNS[run_id] = state
+        state.cursor = cursor
+        aborted = state.aborted
+    if aborted:
+        try:
+            cursor.cancel()
+        except Exception:  # noqa: BLE001 - driver-specific cancel failures
+            pass
 
 
 def unregister_run(run_id: str) -> None:
-    """Forget the cursor registered under ``run_id`` (run finished)."""
+    """Forget the run registered under ``run_id`` (run finished)."""
     with _ACTIVE_RUNS_LOCK:
         _ACTIVE_RUNS.pop(run_id, None)
 
 
 def cancel_run(run_id: str) -> bool:
-    """Cancel the in-flight statement of the run registered under ``run_id``.
+    """Request cancellation of the run registered under ``run_id``.
 
-    Returns ``False`` when the run is unknown (already finished or not yet
-    started) or the driver rejects the cancel.
+    Returns ``True`` when the run is known — even if its driver connection is
+    still opening (the abort is remembered and applied once it is available).
+    Returns ``False`` only when the run is unknown (already finished).
     """
     with _ACTIVE_RUNS_LOCK:
-        cursor = _ACTIVE_RUNS.get(run_id)
+        state = _ACTIVE_RUNS.get(run_id)
+        if state is None:
+            return False
+        state.aborted = True
+        cursor = state.cursor
     if cursor is None:
-        return False
+        return True
     try:
         cursor.cancel()
     except Exception:  # noqa: BLE001 - driver-specific cancel failures
         return False
     return True
+
+
+def _cancellation_error() -> pyodbc.Error:
+    """A pyodbc error that :func:`is_cancellation` recognises as a cancel."""
+    return pyodbc.Error("HY008", "Operation canceled by user")
 
 
 def is_cancellation(exc: BaseException) -> bool:
@@ -249,6 +303,12 @@ def open_connection(conn: dict, timeout: int | None = None):
     drivers (Jet/ACE family: Access, Excel, Text/dBASE) do not implement
     ``SQL_ATTR_AUTOCOMMIT`` and reject it, so we fall back to the driver default. Read-only safety is still enforced by :func:`assert_read_only`.
     """
+    # Databricks uses its own HTTP/Thrift protocol (databricks-sql-connector),
+    # not ODBC, so it is served by a dedicated module.
+    if conn.get("type") == "databricks":
+        from app.db import databricks as databricks_db  # local import to avoid cycle
+
+        return databricks_db.open_connection(conn, timeout)
     # Undo PyInstaller's DLL-directory override so packaged exes can load
     # native ODBC drivers (Oracle SQORA32: error 1114 otherwise), then make
     # sure the driver's own co-located dependency DLLs (e.g. Oracle's oci.dll)
@@ -270,6 +330,45 @@ def open_connection(conn: dict, timeout: int | None = None):
         return pyodbc.connect(connection_string, timeout=connect_timeout, autocommit=True)
 
 
+def _open_connection_with_deadline(conn: dict, run_state: "_ActiveRun | None" = None):
+    """Open a connection, capped by a wall-clock deadline.
+
+    pyodbc's login ``timeout`` is not honoured by every driver: Oracle's ODBC
+    driver defers to Oracle Net, whose tnsnames settings (CONNECT_TIMEOUT,
+    RETRY_COUNT, RETRY_DELAY) can keep retrying an unreachable host for minutes.
+    Run the blocking connect on a daemon thread and give up once the deadline
+    (:data:`CONNECT_TIMEOUT` plus :data:`CONNECT_DEADLINE_GRACE`) passes, so the
+    request always returns instead of hanging forever. The orphaned thread
+    unwinds on its own when the driver finally gives up and its connection is
+    collected.
+
+    A user cancel that arrived while connecting (``run_state.aborted``) is
+    reported as a cancellation rather than a timeout.
+    """
+    deadline = CONNECT_TIMEOUT + CONNECT_DEADLINE_GRACE
+    box: dict = {}
+
+    def _worker() -> None:
+        try:
+            box["cnxn"] = open_connection(conn, timeout=CONNECT_TIMEOUT)
+        except BaseException as exc:  # noqa: BLE001 - forwarded on the caller thread
+            box["error"] = exc
+
+    thread = threading.Thread(target=_worker, daemon=True, name="odbc-connect")
+    thread.start()
+    thread.join(deadline)
+    if thread.is_alive():
+        if run_state is not None and run_state.aborted:
+            raise _cancellation_error()
+        raise pyodbc.Error(
+            "08001",
+            f"Connection timed out after {deadline}s — the server did not respond.",
+        )
+    if "error" in box:
+        raise box["error"]
+    return box["cnxn"]
+
+
 def test_connection(conn: dict) -> tuple[bool, str]:
     """Try to connect and run a trivial probe query; return ``(ok, message)``.
 
@@ -278,6 +377,10 @@ def test_connection(conn: dict) -> tuple[bool, str]:
     from the driver-reported DBMS name. Raw ODBC error text is sanitized before
     being returned to the caller.
     """
+    if conn.get("type") == "databricks":
+        from app.db import databricks as databricks_db  # local import to avoid cycle
+
+        return databricks_db.test_connection(conn)
     try:
         cnxn = open_connection(conn)
         try:
@@ -298,6 +401,10 @@ def test_connection(conn: dict) -> tuple[bool, str]:
 
 def list_tables(conn: dict) -> list[dict]:
     """List tables and views reachable through the connection."""
+    if conn.get("type") == "databricks":
+        from app.db import databricks as databricks_db  # local import to avoid cycle
+
+        return databricks_db.list_tables(conn)
     tables: list[dict] = []
     cnxn = open_connection(conn)
     try:
@@ -362,6 +469,10 @@ def _oracle_catalog_columns(cursor, table_name: str) -> list[dict]:
 
 def list_columns(conn: dict, table: str) -> list[dict]:
     """List columns for a table (if the name is qualified, use the last segment)."""
+    if conn.get("type") == "databricks":
+        from app.db import databricks as databricks_db  # local import to avoid cycle
+
+        return databricks_db.list_columns(conn, table)
     table_name = table.split(".")[-1] if "." in table else table
     columns: list[dict] = []
     cnxn = open_connection(conn)
@@ -407,6 +518,10 @@ def run_query(
     When ``row_cap`` is set, rows are fetched in batches and at most ``row_cap``
     rows are returned (the ``(row_cap + 1)``-th row is never fetched).
     """
+    if conn.get("type") == "databricks":
+        from app.db import databricks as databricks_db  # local import to avoid cycle
+
+        return databricks_db.run_query(conn, sql, params, row_cap)
     cnxn = open_connection(conn)
     try:
         cursor = cnxn.cursor()
@@ -452,11 +567,20 @@ def iter_query(
     duration of the run so :func:`cancel_run` can cancel the in-flight
     statement from another request.
     """
-    cnxn = open_connection(conn)
+    if conn.get("type") == "databricks":
+        from app.db import databricks as databricks_db  # local import to avoid cycle
+
+        yield from databricks_db.iter_query(conn, sql, params, row_cap, batch_size, run_id)
+        return
+    state = begin_run(run_id) if run_id else None
+    cnxn = None
     try:
+        cnxn = _open_connection_with_deadline(conn, state)
         cursor = cnxn.cursor()
         if run_id:
             register_run(run_id, cursor)
+            if state is not None and state.aborted:
+                raise _cancellation_error()
         cursor.execute(sql, params or [])
         if cursor.description is None:
             yield "done", [], []
@@ -478,7 +602,79 @@ def iter_query(
     finally:
         if run_id:
             unregister_run(run_id)
-        cnxn.close()
+        if cnxn is not None:
+            cnxn.close()
+
+
+def iter_query_batches(
+    conn: dict,
+    sql: str,
+    params: list | None = None,
+    row_cap: int | None = None,
+    batch_size: int = 5000,
+    run_id: str | None = None,
+) -> Iterator[tuple[str, list, list]]:
+    """Generator that streams a query result as row batches (SQL editor path).
+
+    Unlike :func:`iter_query` (which buffers every row and only reports a count
+    while fetching), this yields each fetched batch as it arrives:
+
+    * ``("batch", rows, columns)`` — one dict-row batch, repeatedly, then
+    * ``("done", total_rows, columns)`` — the final row count.
+
+    This lets the streaming run endpoint forward rows to the client
+    incrementally instead of accumulating one giant payload, which is what made
+    multi-100k-row results slow (client-side quadratic string scanning) and
+    eventually fail (JS string length limit). ``cursor.arraysize`` is bumped so
+    the driver fetches ``batch_size`` rows per round-trip.
+
+    When ``run_id`` is given, the cursor is registered under it for the
+    duration of the run so :func:`cancel_run` can cancel the in-flight
+    statement from another request.
+    """
+    if conn.get("type") == "databricks":
+        from app.db import databricks as databricks_db  # local import to avoid cycle
+
+        yield from databricks_db.iter_query_batches(conn, sql, params, row_cap, batch_size, run_id)
+        return
+    state = begin_run(run_id) if run_id else None
+    cnxn = None
+    try:
+        cnxn = _open_connection_with_deadline(conn, state)
+        cursor = cnxn.cursor()
+        try:
+            cursor.arraysize = batch_size
+        except Exception:  # noqa: BLE001 - optional driver tuning
+            pass
+        if run_id:
+            register_run(run_id, cursor)
+            if state is not None and state.aborted:
+                raise _cancellation_error()
+        cursor.execute(sql, params or [])
+        if cursor.description is None:
+            yield "done", 0, []
+            return
+        columns = [(d[0], d[1]) for d in cursor.description]
+        total = 0
+        cap = row_cap
+        while cap is None or total < cap:
+            size = batch_size if cap is None else min(batch_size, cap - total)
+            batch = cursor.fetchmany(size)
+            if not batch:
+                break
+            rows = []
+            for record in batch:
+                rows.append({col[0]: _normalize_value(value) for col, value in zip(columns, record)})
+                total += 1
+                if cap is not None and total >= cap:
+                    break
+            yield "batch", rows, columns
+        yield "done", total, columns
+    finally:
+        if run_id:
+            unregister_run(run_id)
+        if cnxn is not None:
+            cnxn.close()
 
 
 def assert_read_only(sql: str) -> None:

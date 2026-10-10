@@ -69,6 +69,7 @@ _DBMS_TYPE_MAP = {
     "mysql": "MySQL",
     "postgresql": "PostgreSQL",
     "jet": "Microsoft Access",
+    "databricks": "Databricks",
 }
 
 
@@ -338,6 +339,9 @@ def dbms_from_hints(conn: dict) -> str | None:
     if conn.get("type") == "access":
         # Access-file connections always target the Microsoft Access/ACE engine.
         return "Microsoft Access"
+    if conn.get("type") == "databricks":
+        # Databricks connections are not ODBC; the product is known from the type.
+        return "Databricks"
     hint = _dbms_from_driver(conn.get("driver"))
     if hint:
         return hint
@@ -357,6 +361,9 @@ def detect_dbms(conn: dict) -> str | None:
     returning ``None`` for a reachable Oracle connection silently downgrades its
     date handling to a bare string bind, which raises ORA-01861.
     """
+    if conn.get("type") == "databricks":
+        # Not ODBC: SQL_DBMS_NAME is unavailable, and the product is known.
+        return dbms_from_hints(conn)
     try:
         from app.db.odbc import open_connection
 

@@ -7,6 +7,10 @@
     "noResult": "Run a query, upload a file, or paste data to see results here.",
     "noRows": "The query returned no rows."
   },
+  "search": {
+    "placeholder": "Search all columns",
+    "clear": "Clear search"
+  },
   "rows": {
     "drilled": "{{drilled}} of {{total}} rows",
     "count_one": "{{value}} row",

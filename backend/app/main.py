@@ -252,21 +252,48 @@ app.include_router(update.router, prefix="/api", tags=["update"])
 app.include_router(feedback.router, prefix="/api", tags=["feedback"])
 
 
-def frontend_dist_dir() -> str | None:
-    """Return the directory containing the built frontend `index.html`, or None.
+def _bundle_roots() -> list[str]:
+    """Candidate bundle roots that may hold ``frontend/dist``, best first.
 
-    It lives at ``<project_root>/frontend/dist`` (present only after
-    ``npm run build``), where project_root is the parent of the backend dir.
-
-    Returns None in dev mode (the Vite dev server + proxy serves the frontend).
+    A frozen (PyInstaller onedir) build ships the frontend inside
+    ``<exe_dir>/_internal/frontend/dist``.  A process relaunched by the update
+    helper can inherit a *stale* bundle root that points at the
+    ``<install>.<version>.old`` folder the helper renamed aside — trusting
+    ``sys._MEIPASS`` alone then served (and 500-ed on) files that no longer
+    exist.  So the exe's own folder is trusted ahead of it, and every candidate
+    is validated by the caller.
     """
-    if getattr(sys, "_MEIPASS", None):  # PyInstaller bundle root
-        project_root = sys._MEIPASS
-    else:
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    dev_dist = os.path.join(project_root, "frontend", "dist")
-    if os.path.isdir(dev_dist):
-        return dev_dist
+    roots: list[str] = []
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        roots += [os.path.join(exe_dir, "_internal"), exe_dir]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        roots.append(meipass)
+    if not roots:
+        roots.append(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        )
+    unique: list[str] = []
+    for root in roots:
+        if root not in unique:
+            unique.append(root)
+    return unique
+
+
+def frontend_dist_dir() -> str | None:
+    """Return the directory containing the built frontend ``index.html``, or None.
+
+    It lives at ``<bundle_root>/frontend/dist`` and is present only after
+    ``npm run build`` (dev) or inside the PyInstaller bundle (packaged).  The
+    first candidate that actually contains ``index.html`` wins, so a stale
+    bundle root left over by an update cannot make the app serve a missing
+    file.  Returns None when no build is found (the Vite dev server serves it).
+    """
+    for root in _bundle_roots():
+        dist = os.path.join(root, "frontend", "dist")
+        if os.path.isfile(os.path.join(dist, "index.html")):
+            return dist
     return None
 
 
@@ -274,6 +301,15 @@ _DIST_DIR = frontend_dist_dir()
 # Always revalidate static responses: index.html must never come from a stale
 # browser cache after the exe is rebuilt (asset hashes change each build).
 _NO_CACHE_HEADERS = {"Cache-Control": "no-cache, must-revalidate"}
+
+
+def _live_dist_dir() -> str | None:
+    """Dist dir re-resolved per request so a vanished bundle root self-heals."""
+    if _DIST_DIR and os.path.isfile(os.path.join(_DIST_DIR, "index.html")):
+        return _DIST_DIR
+    return frontend_dist_dir()
+
+
 if _DIST_DIR is not None:
     # Static frontend serving. Registered after all API routers so /api always
     # wins. The catch-all SPA route runs before the "/" mount: a "/" mount alone
@@ -282,15 +318,20 @@ if _DIST_DIR is not None:
     # making deep links / refreshes work. Unknown /api paths keep returning 404.
     @app.get("/{full_path:path}")
     def spa_fallback(full_path: str) -> FileResponse:
-        if full_path.startswith("api/"):
+        dist = _live_dist_dir()
+        if dist is None or full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not Found")
-        file_path = os.path.join(_DIST_DIR, full_path)
+        file_path = os.path.join(dist, full_path)
         if full_path and os.path.isfile(file_path):
             return FileResponse(file_path, headers=_NO_CACHE_HEADERS)
         # no-cache: the browser must always revalidate index.html so a rebuilt
         # exe (new hashed asset names) is picked up on the next launch instead
-        # of a cached page from a previous build.
-        return FileResponse(os.path.join(_DIST_DIR, "index.html"), headers=_NO_CACHE_HEADERS)
+        # of a cached page from a previous build. A missing index.html (e.g. a
+        # half-applied update) surfaces as a clean 404, never a 500 traceback.
+        index_path = os.path.join(dist, "index.html")
+        if not os.path.isfile(index_path):
+            raise HTTPException(status_code=404, detail="Not Found")
+        return FileResponse(index_path, headers=_NO_CACHE_HEADERS)
 
     app.mount("/", StaticFiles(directory=_DIST_DIR, html=True), name="static")
 

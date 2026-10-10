@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 from app import logging_utils, storage
 from app.api import history as history_api
 from app.db import odbc
-from app.db.sql_builder import MAX_LIMIT
 from app.lazy import lazy_module
 from app.xpt_export import XPT_MEDIA_TYPE, dataframe_to_xpt
 
@@ -162,12 +161,18 @@ def delete_sql_query(query_id: str):
 
 @router.post("/sql/run")
 def run_raw_sql(payload: SqlRunRequest):
-    """Run an arbitrary read-only SQL statement and stream NDJSON progress + result.
+    """Run an arbitrary read-only SQL statement and stream the result in batches.
 
-    The response is a newline-delimited stream: one or more
-    ``{"type":"progress","rows":N}`` events are emitted while rows are fetched,
-    then a ``{"type":"result","rows":[...],...}`` event carrying the full result.
-    A ``{"type":"error","detail":...}`` event is emitted if the database fails.
+    The response is a newline-delimited stream, mirroring ``/upload/parse/stream``:
+
+    * ``{"type":"result_begin","columns":[...],"sql":...}`` once,
+    * one ``{"type":"result_rows","rows":[...]}`` per fetched batch,
+    * ``{"type":"result_end","row_count":N,"elapsed_ms":...,"sql":...}`` at the end.
+
+    Rows are forwarded as they are fetched instead of buffered into one giant
+    JSON line, so multi-hundred-thousand-row results arrive incrementally and
+    never hit the client's per-string size limit. A ``{"type":"error",...}`` or
+    ``{"type":"canceled"}`` event is emitted if the run fails or is cancelled.
     """
     conn = _resolve_connection(payload.connection_id)
     conn_id = conn.get("id") or ""
@@ -180,14 +185,33 @@ def run_raw_sql(payload: SqlRunRequest):
 
     def generate():
         start = time.perf_counter()
+        total = 0
+        col_types = []
+        began = False
         try:
-            rows: list[dict] = []
-            col_types = []
-            for phase, first, second in odbc.iter_query(conn, payload.sql, row_cap=payload.limit, run_id=run_id):
-                if phase == "progress":
-                    yield _ndjson({"type": "progress", "rows": first})
-                else:
-                    rows, col_types = first, second
+            for phase, first, second in odbc.iter_query_batches(
+                conn, payload.sql, row_cap=payload.limit, run_id=run_id
+            ):
+                if phase == "batch":
+                    rows, cols = first, second
+                    if not began:
+                        col_types = cols
+                        began = True
+                        yield _ndjson(
+                            {
+                                "type": "result_begin",
+                                "columns": [
+                                    {"name": name, "type": str(type_code)}
+                                    for name, type_code in cols
+                                ],
+                                "sql": payload.sql,
+                            }
+                        )
+                    total += len(rows)
+                    yield _ndjson({"type": "result_rows", "rows": rows})
+                    yield _ndjson({"type": "progress", "rows": total})
+                else:  # "done": first is the total row count, second the columns
+                    total, col_types = first, second
         except pyodbc.Error as exc:
             logging_utils.log_error(
                 "query.run",
@@ -199,27 +223,35 @@ def run_raw_sql(payload: SqlRunRequest):
                 return
             yield _ndjson({"type": "error", "detail": f"Database error: {odbc.format_db_error(exc)}"})
             return
+        if not began:
+            # No rows (empty result or non-SELECT): still announce the columns.
+            yield _ndjson(
+                {
+                    "type": "result_begin",
+                    "columns": [
+                        {"name": name, "type": str(type_code)} for name, type_code in col_types
+                    ],
+                    "sql": payload.sql,
+                }
+            )
         elapsed_ms = int((time.perf_counter() - start) * 1000)
-        columns = [{"name": name, "type": str(type_code)} for name, type_code in col_types]
         logging_utils.log_info(
             "sql.run",
-            f"connection={conn.get('name') or conn_id} returned {len(rows)} rows",
-            details=f"rows={len(rows)}, elapsed_ms={elapsed_ms}",
+            f"connection={conn.get('name') or conn_id} returned {total} rows",
+            details=f"rows={total}, elapsed_ms={elapsed_ms}",
         )
         history_api.add_history_entry(
             connection_id=conn_id,
             kind="sql",
             sql=payload.sql,
             query=None,
-            row_count=len(rows),
+            row_count=total,
             elapsed_ms=elapsed_ms,
         )
         yield _ndjson(
             {
-                "type": "result",
-                "rows": rows,
-                "columns": columns,
-                "row_count": len(rows),
+                "type": "result_end",
+                "row_count": total,
                 "elapsed_ms": elapsed_ms,
                 "sql": payload.sql,
             }
@@ -265,7 +297,7 @@ def sql_columns(payload: SqlColumnsRequest):
 
 @router.post("/sql/export")
 def export_sql(payload: SqlExportRequest):
-    """Run raw SQL and download the result as CSV or XLSX (capped at MAX_LIMIT rows)."""
+    """Run raw SQL and download the full result as CSV, XLSX or XPT (no row cap)."""
     conn = _resolve_connection(payload.connection_id)
     try:
         odbc.assert_read_only(payload.sql)
@@ -273,7 +305,7 @@ def export_sql(payload: SqlExportRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     start = time.perf_counter()
     try:
-        rows, _ = odbc.run_query(conn, payload.sql, row_cap=MAX_LIMIT)
+        rows, _ = odbc.run_query(conn, payload.sql, row_cap=None)
     except pyodbc.Error as exc:
         logging_utils.log_error(
             "sql.export",
