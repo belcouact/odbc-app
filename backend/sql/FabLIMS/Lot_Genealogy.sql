@@ -17,3 +17,5 @@ LEFT JOIN GM_WOL gm_wol ON gm_wol.G_WOL = gm_batch.TO_LOT
 WHERE 1 = 1
     AND gm_batch.EVENT_REASON IN ('WFACE','WFILM','WBACK')
 {}
+ORDER BY gm_batch.TO_LOT, gm_batch.EVENT_REASON, gm_batch.CHANGED_ON ASC
+

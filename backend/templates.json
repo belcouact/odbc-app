@@ -1,5 +1,5 @@
 {
-  "published": "2026-10-10T07:09:45",
+  "published": "2026-10-11T12:08:53",
   "templates": [
     {
       "name": "analyze-AOI-defects.py",
@@ -90,6 +90,17 @@
         "label": "Color Data — Lab Colour Explorer",
         "size": "24.9 MB"
       }
+    },
+    {
+      "name": "analyze-lamination-genealogy.py",
+      "stem": "analyze-lamination-genealogy",
+      "title": "Lamination Genealogy",
+      "applies_to": "",
+      "description": "FabLIMS lamination genealogy report.",
+      "details": {},
+      "size": "15 KB",
+      "updated": "2026-10-11",
+      "example": null
     },
     {
       "name": "analyze-lims-raw-genealogy.py",

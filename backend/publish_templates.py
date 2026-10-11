@@ -14,9 +14,13 @@ Steps:
   3. upload each template's sample dashboard (``EXAMPLE_FILES``) to
      ``templates/examples/`` and name it in the catalog, so the app's template
      picker can link to a finished example of what the script produces
-  4. read every public URL back and compare the bytes, so a link that would
+  4. also upload every connection-template query (``sql/<template_key>/*.sql``)
+     to a ``sql/`` folder, so an updated query can be shared and diffed without
+     a rebuild — the app still reads its SQL from the bundle, so these copies
+     are for sharing only and are left out of the catalog
+  5. read every public URL back and compare the bytes, so a link that would
      serve a stale copy is caught here instead of by a user
-  5. write the same page and catalog to ``backend\\template_page.html`` and
+  6. write the same page and catalog to ``backend\\template_page.html`` and
      ``backend\\templates.json``
 
 The catalog matters to the app: a public storage URL cannot list a folder, so
@@ -67,6 +71,13 @@ CATALOG_NAME = f"{PREFIX}/templates.json"
 # text/plain, so this file is the one to open in a browser or host on a share.
 LOCAL_PAGE = ROOT / "template_page.html"
 LOCAL_CATALOG = ROOT / "templates.json"
+
+# Connection-template SQL (``sql/<template_key>/<Name>.sql``) ships inside the
+# exe; it is published here as well so an updated query can be shared and
+# diffed without a rebuild.  The app always reads its SQL from the bundle, so
+# this copy is for sharing only and is deliberately left out of the catalog.
+SQL_DIR = ROOT / "sql"
+SQL_PREFIX = "sql"
 
 # Sample dashboards, published so the app's template picker can show what a
 # script produces.  They are the copies the app opens from this bucket, so the
@@ -402,6 +413,27 @@ def public_base(manifest_url: str) -> str:
     return manifest_url.rsplit("/", 1)[0]
 
 
+def collect_sql() -> list[dict]:
+    """Every ``sql/<template_key>/*.sql`` file, with what the upload needs.
+
+    The object key mirrors the folder layout, so a published query keeps the
+    connection-template key (the DSN) as its folder and cannot collide with a
+    same-named query under another connection.
+    """
+    items = []
+    if not SQL_DIR.is_dir():
+        return items
+    for path in sorted(SQL_DIR.rglob("*.sql")):
+        items.append({
+            "path": path,
+            "object": f"{SQL_PREFIX}/{path.relative_to(SQL_DIR).as_posix()}",
+            "size": _human_size(path.stat().st_size),
+            # Kept for the read-back check, not shown anywhere.
+            "sha256": release.sha256_of(path),
+        })
+    return items
+
+
 CARD = Template("""    <article class="card">
       <h2>$title</h2>
       <p class="file"><code>$filename</code></p>
@@ -678,6 +710,21 @@ def upload_templates(manifest_url: str, key: str, items: list[dict], page: str,
         print(f"  {name}")
 
 
+def upload_sql(manifest_url: str, key: str, items: list[dict]) -> None:
+    """Upload every connection-template SQL file into the update bucket."""
+    auth = {"Authorization": f"Bearer {key}", "x-upsert": "true"}
+    print(f"\nUploading {len(items)} SQL file(s):", flush=True)
+    for item in items:
+        release.http(
+            release.object_url(manifest_url, item["object"]), "POST",
+            # Object names are reused, so keep the TTL short.
+            {**auth, "Content-Type": "text/plain; charset=utf-8",
+             "cache-control": "max-age=60"},
+            item["path"].read_bytes(),
+        )
+        print(f"  {item['object']}  ({item['size']})")
+
+
 def verify_public(base: str, items: list[dict], page: str) -> None:
     """Read every published object back and compare it with the local file.
 
@@ -757,13 +804,40 @@ def verify_public(base: str, items: list[dict], page: str) -> None:
               f"may need a minute. Re-check before sharing the page.")
 
 
-def print_manual_upload(manifest_url: str, items: list[dict]) -> None:
+def verify_sql(base: str, items: list[dict]) -> None:
+    """Read every published SQL file back and compare it with the local copy."""
+    stamp = int(time.time())
+    print("\nVerifying the published SQL files (cache-busted read-back):")
+    bad = []
+    for item in items:
+        url = f"{base}/{quote(item['object'], safe='/')}?v={stamp}"
+        try:
+            status, body = release.http(url, "GET", {"Cache-Control": "no-cache"})
+        except SystemExit as exc:
+            bad.append(item["object"])
+            print(f"  FAIL {item['object']}: {exc}")
+            continue
+        digest = hashlib.sha256(body).hexdigest()
+        if status == 200 and digest == item["sha256"]:
+            print(f"  OK   {item['object']}  (HTTP {status}, sha256 matches the local file)")
+        else:
+            bad.append(item["object"])
+            print(f"  FAIL {item['object']}  (HTTP {status}, sha256 {digest[:12]}…)")
+    if bad:
+        print(f"\nWARNING: {len(bad)} SQL file(s) did not serve the expected bytes — the "
+              f"CDN may need a minute.")
+
+
+def print_manual_upload(manifest_url: str, items: list[dict],
+                        sql_items: list[dict] = ()) -> None:
     """Copy-paste curl commands for when no service-role key is available."""
     uploads = [(f"{PREFIX}/{item['name']}", item["path"], "text/plain; charset=utf-8")
                for item in items]
     uploads += [(item["example"]["object"], item["example"]["path"],
                  "text/html; charset=utf-8")
                 for item in items if item.get("example")]
+    uploads += [(item["object"], item["path"], "text/plain; charset=utf-8")
+                for item in sql_items]
     uploads.append((CATALOG_NAME, LOCAL_CATALOG, "application/json; charset=utf-8"))
     uploads.append((PAGE_NAME, LOCAL_PAGE, "text/html; charset=utf-8"))
     print("\nSame thing from the command line (needs your service_role key):")
@@ -791,6 +865,8 @@ def main() -> None:
     if not items:
         raise SystemExit(f"No *.py templates found in {TEMPLATES_DIR}")
     print(f"Templates: {', '.join(item['name'] for item in items)}")
+    sql_items = collect_sql()
+    print(f"SQL files: {len(sql_items)}")
 
     manifest_url = release.read_manifest_url()
     if not manifest_url:
@@ -802,7 +878,7 @@ def main() -> None:
     if "--no-upload" in sys.argv:
         write_local(page, catalog)
         print(f"\nPage and catalog written to {LOCAL_PAGE.parent} (--no-upload: nothing was uploaded)")
-        print_manual_upload(manifest_url, items)
+        print_manual_upload(manifest_url, items, sql_items)
         return
 
     key = release.upload_key(release.expected_project_ref(manifest_url))
@@ -812,11 +888,14 @@ def main() -> None:
               f"written to {LOCAL_PAGE.parent}.")
         print("  Save the service-role key on a single line in")
         print(f"  {Path(os.environ.get('APPDATA', '~')) / 'ODBCQueryApp' / 'supabase_key'}")
-        print_manual_upload(manifest_url, items)
+        print_manual_upload(manifest_url, items, sql_items)
         return
 
     upload_templates(manifest_url, key, items, page, catalog)
     verify_public(base, items, page)
+    if sql_items:
+        upload_sql(manifest_url, key, sql_items)
+        verify_sql(base, sql_items)
     write_local(page, catalog)
     print(f"\nCatalog: {base}/{CATALOG_NAME}   (the app reads this)")
     print(f"Page: {base}/{PAGE_NAME}")

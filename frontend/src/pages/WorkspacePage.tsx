@@ -3264,6 +3264,11 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
     setFabExtraFilters((current) => current.filter((f) => f.id !== id))
   }
 
+  // The last preview this effect wrote into the editor. Kept so an emptied
+  // criterion can strip the condition it previously injected without clobbering
+  // SQL loaded from elsewhere (history / AI / manual edits).
+  const lastFabPreviewRef = useRef('')
+
   // Live preview: mirror the filled FabLIMS parameters into the SQL editor.
   useEffect(() => {
     if (mode !== 'sql' || !selectedFabOption) return
@@ -3277,7 +3282,22 @@ function WorkspacePage({ onOpenAi, ref }: WorkspacePageProps = {}) {
       fabExtraFilters,
       sqlDateDialect(selectedConnection),
     )
-    if (preview) setSqlText(preview)
+    if (preview) {
+      lastFabPreviewRef.current = preview
+      setSqlText(preview)
+      return
+    }
+    // Every criterion is blank: drop the condition this effect last injected
+    // (e.g. "xxx = '0'") so an emptied field no longer appears in the SQL.
+    // Only reset when the editor still holds our own previous preview — never
+    // overwrite SQL the user loaded from history/AI or typed manually.
+    const previous = lastFabPreviewRef.current
+    if (!previous) return
+    lastFabPreviewRef.current = ''
+    const templateSql = selectedFabOption.sql ?? ''
+    if (!templateSql.includes('{}') && !templateSql.includes('<>')) return
+    const base = templateSql.replace(/\{\}/g, '')
+    setSqlText((current) => (current === previous ? base : current))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fabValues, fabOperators, fabExtraFilters, fabOption, connectionId, selectedConnection])
 
