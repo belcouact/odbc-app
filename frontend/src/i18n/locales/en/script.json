@@ -63,6 +63,7 @@
     "useTooltip": "Use template",
     "useAria": "Use template: {{label}}",
     "sampleDashboard": "Sample dashboard",
+    "loadingExample": "Loading sample dashboard…",
     "viewerCloseAria": "Close sample dashboard",
     "requires": "Requires these columns",
     "optional": "Optional columns",

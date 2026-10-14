@@ -334,8 +334,11 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   const [expandedTemplate, setExpandedTemplate] = useState('')
   /** Stem whose sample dashboard is being fetched, so only that row spins. */
   const [exampleBusy, setExampleBusy] = useState('')
-  /** Sample dashboard open in the in-app viewer (blob URL + title), or null. */
-  const [examplePreview, setExamplePreview] = useState<{ title: string; url: string } | null>(null)
+  /** Sample dashboard open in the in-app viewer, or null. ``loading`` is true
+   *  from the click until its blob URL is ready, so the viewer can open at once
+   *  and show a spinner while the (often multi-MB) sample downloads. */
+  const [examplePreview, setExamplePreview] =
+    useState<{ title: string; url: string; loading: boolean } | null>(null)
   /** Phones show the dashboard viewer full screen, matching the other pop-ups. */
   const exampleFullScreen = useMediaQuery('(max-width:600px)')
 
@@ -396,6 +399,14 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
     }
   }
 
+  /** Close the sample-dashboard viewer and release its blob. */
+  const closeExamplePreview = useCallback(() => {
+    setExamplePreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url)
+      return null
+    })
+  }, [])
+
   /** Show a template's sample dashboard in the in-app viewer.
    *
    *  The bucket serves HTML objects as ``text/plain`` with ``nosniff``, so
@@ -409,6 +420,12 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
     const url = tmpl.example?.url
     if (!url) return
     setExampleBusy(tmpl.name)
+    // Open the viewer immediately: the sample can be several MB, so a spinner
+    // in the pop-up beats a frozen row button with nothing on screen.
+    setExamplePreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url)  // release the previous blob
+      return { title: tmpl.example?.label || tmpl.title || tmpl.name, url: '', loading: true }
+    })
     try {
       const res = await fetch(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -416,10 +433,12 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
         new Blob([await res.text()], { type: 'text/html' }),
       )
       setExamplePreview((prev) => {
-        if (prev) URL.revokeObjectURL(prev.url)  // release the previous blob
-        return { title: tmpl.example?.label || tmpl.title || tmpl.name, url: blobUrl }
+        if (!prev) { URL.revokeObjectURL(blobUrl); return prev }  // viewer closed mid-load
+        if (prev.url) URL.revokeObjectURL(prev.url)
+        return { ...prev, url: blobUrl, loading: false }
       })
     } catch (err) {
+      closeExamplePreview()  // drop the spinner and let the notice explain
       showNotice(
         t('notices.exampleFailed', {
           error: err instanceof Error ? err.message : t('notices.downloadFailed'),
@@ -428,15 +447,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
     } finally {
       setExampleBusy('')
     }
-  }, [t, showNotice])
-
-  /** Close the sample-dashboard viewer and release its blob. */
-  const closeExamplePreview = useCallback(() => {
-    setExamplePreview((prev) => {
-      if (prev) URL.revokeObjectURL(prev.url)
-      return null
-    })
-  }, [])
+  }, [t, showNotice, closeExamplePreview])
 
   // Keep the live log scrolled to the bottom as new output streams in.
   useEffect(() => {
@@ -2052,12 +2063,29 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
           </IconButton>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, display: 'flex', overflow: 'hidden' }}>
-          {examplePreview && (
-            <iframe
-              src={examplePreview.url}
-              title={examplePreview.title}
-              style={{ border: 0, width: '100%', height: '100%', background: '#fff' }}
-            />
+          {examplePreview?.loading ? (
+            <Box
+              sx={{
+                flexGrow: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                color: 'text.secondary',
+              }}
+            >
+              <CircularProgress />
+              <Typography variant="body2">{t('templates.loadingExample')}</Typography>
+            </Box>
+          ) : (
+            examplePreview && (
+              <iframe
+                src={examplePreview.url}
+                title={examplePreview.title}
+                style={{ border: 0, width: '100%', height: '100%', background: '#fff' }}
+              />
+            )
           )}
         </DialogContent>
       </Dialog>

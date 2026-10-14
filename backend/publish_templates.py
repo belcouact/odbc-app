@@ -97,6 +97,7 @@ EXAMPLE_FILES = {
     "analyze-machine-uptime": "machine_up_down_timeline.html",
     "analyze-lims-raw-genealogy": "raw_item_statistical_report.html",
     "analyze-color-data": "color_data.html",
+    "analyze-lamination-genealogy": "lamination_genealogy_echarts.html",
 }
 
 # Title, applicable data and the detail rows shown in the app's template table.
@@ -316,6 +317,37 @@ TEMPLATE_INFO = {
             "ECharts boxplot of summed raw_lot_qty per raw lot",
             "Per-item histogram modal with bin-size and quantity range controls "
             "plus a raw lot details table",
+        ],
+    },
+    "analyze-lamination-genealogy": {
+        "title": "Lamination Genealogy",
+        "applies_to": (
+            "FabLIMS lot genealogy (GM_BATCH / G_LSN / GM_WOL) joined to FAB_MESA10 "
+            "FMI events (MESA_EVENT_HISTORY)"
+        ),
+        "description": (
+            "Charts each work order's raw-material usage beside its packaged lots on "
+            "one roll map, overlaying every scrap / allowance event, and splits the "
+            "scrap and allowance quantity by event reason into two pie charts."
+        ),
+        "requires": [
+            "FabLIMS connection — raw-material usage per work order lot",
+            "FAB_MESA10 connection — FMI packages and defect / allowance events",
+        ],
+        "optional": [
+            "WOLS — the work-order lots to analyse, set at the top of the script",
+        ],
+        "outputs": [
+            "One self-contained HTML page, opened in your browser",
+            "Work order picker with KPIs: packaged lots, gross m, scrap qty, "
+            "allowance qty, events and raw usage per material",
+            "Stacked raw-usage bars for Face / Film / Backer, with a per-material "
+            "direction toggle, normalize and label toggles and a search box",
+            "Packaged-lots row on the roll axis: contiguous lots from X_Position to "
+            "the next lot's X_Position (the last one to its X_Position + Gross_Mtr)",
+            "Scrap (red x) and allowance (amber diamond) markers above that row, whose "
+            "hover shows event reason, position, quantities, resource, employee and date",
+            "Two pie charts below: scrap quantity and allowance quantity by event reason",
         ],
     },
 }

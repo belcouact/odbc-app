@@ -61,6 +61,7 @@
     "useTooltip": "使用模板",
     "useAria": "使用模板：{{label}}",
     "sampleDashboard": "示例仪表板",
+    "loadingExample": "正在加载示例仪表板…",
     "viewerCloseAria": "关闭示例仪表板",
     "requires": "需要这些列",
     "optional": "可选列",

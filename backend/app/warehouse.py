@@ -279,7 +279,16 @@ def delete_snapshot(snapshot_id: str) -> bool:
     """Delete a snapshot and its rows. False when the id is unknown."""
     with connect() as conn:
         cursor = conn.execute("DELETE FROM query_snapshots WHERE id = ?", (snapshot_id,))
-        return cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
+        if deleted:
+            # DELETE only moves the rows' pages onto the freelist; SQLite never
+            # shrinks the file itself, so a warehouse that once held a large
+            # snapshot would stay that size on disk forever. VACUUM rebuilds the
+            # database and hands the space back. It refuses to run inside a
+            # transaction, so the delete has to be committed first.
+            conn.commit()
+            conn.execute("VACUUM")
+        return deleted
 
 
 def get_dashboard(snapshot_id: str) -> Optional[dict[str, Any]]:

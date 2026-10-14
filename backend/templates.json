@@ -1,5 +1,5 @@
 {
-  "published": "2026-10-11T12:08:53",
+  "published": "2026-10-14T09:51:27",
   "templates": [
     {
       "name": "analyze-AOI-defects.py",
@@ -95,12 +95,33 @@
       "name": "analyze-lamination-genealogy.py",
       "stem": "analyze-lamination-genealogy",
       "title": "Lamination Genealogy",
-      "applies_to": "",
-      "description": "FabLIMS lamination genealogy report.",
-      "details": {},
-      "size": "15 KB",
-      "updated": "2026-10-11",
-      "example": null
+      "applies_to": "FabLIMS lot genealogy (GM_BATCH / G_LSN / GM_WOL) joined to FAB_MESA10 FMI events (MESA_EVENT_HISTORY)",
+      "description": "Charts each work order's raw-material usage beside its packaged lots on one roll map, overlaying every scrap / allowance event, and splits the scrap and allowance quantity by event reason into two pie charts.",
+      "details": {
+        "requires": [
+          "FabLIMS connection — raw-material usage per work order lot",
+          "FAB_MESA10 connection — FMI packages and defect / allowance events"
+        ],
+        "optional": [
+          "WOLS — the work-order lots to analyse, set at the top of the script"
+        ],
+        "outputs": [
+          "One self-contained HTML page, opened in your browser",
+          "Work order picker with KPIs: packaged lots, gross m, scrap qty, allowance qty, events and raw usage per material",
+          "Stacked raw-usage bars for Face / Film / Backer, with a per-material direction toggle, normalize and label toggles and a search box",
+          "Packaged-lots row on the roll axis: contiguous lots from X_Position to the next lot's X_Position (the last one to its X_Position + Gross_Mtr)",
+          "Scrap (red x) and allowance (amber diamond) markers above that row, whose hover shows event reason, position, quantities, resource, employee and date",
+          "Two pie charts below: scrap quantity and allowance quantity by event reason"
+        ]
+      },
+      "size": "21 KB",
+      "updated": "2026-10-14",
+      "example": {
+        "name": "lamination_genealogy_echarts.html",
+        "object": "templates/examples/lamination_genealogy_echarts.html",
+        "label": "Genealogy - All WOL",
+        "size": "115 KB"
+      }
     },
     {
       "name": "analyze-lims-raw-genealogy.py",
@@ -269,7 +290,7 @@
         ]
       },
       "size": "49 KB",
-      "updated": "2026-10-01",
+      "updated": "2026-10-14",
       "example": {
         "name": "Laminate_Analysis.html",
         "object": "templates/examples/Laminate_Analysis.html",

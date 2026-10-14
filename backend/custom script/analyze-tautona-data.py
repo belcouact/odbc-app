@@ -394,6 +394,7 @@ function renderModal(){
     c.style.height=(item.ht||420)+"px"; card.appendChild(c);
     wrap.appendChild(card);
     var inst=echarts.init(c); inst.setOption(item.o);
+    inst.setOption({toolbox:{right:18,feature:{dataZoom:{},restore:{},saveAsImage:{}}}});
     CHART_INSTANCES["m"+i]=inst;
   });
   var bar=document.getElementById("mchips"); bar.innerHTML="";
