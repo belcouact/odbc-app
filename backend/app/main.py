@@ -11,7 +11,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import keystore, logging_utils, storage, update
+from app import keystore, logging_utils, scheduler, storage, update
 from app.version import APP_VERSION
 from app.api import (
     ai,
@@ -25,6 +25,7 @@ from app.api import (
     queries,
     report,
     saved,
+    schedules,
     schema,
     scripts,
     sql_queries,
@@ -181,6 +182,7 @@ def _request_shutdown() -> bool:
 def shutdown():
     """Stop the embedded backend server (used by the in-app Quit button)."""
     app.state.shutdown_reason = "quit"
+    scheduler.stop_scheduler()
     stopped = _request_shutdown()
     return {"ok": True, "stopped": stopped}
 
@@ -194,6 +196,7 @@ def _stop_server(reason: str) -> None:
     self-update is staged and the launcher must swap the install and relaunch.
     """
     app.state.shutdown_reason = reason
+    scheduler.stop_scheduler()
     if not _request_shutdown():
         os._exit(0)  # no embedded server handle (dev reloader): hard exit
 
@@ -213,6 +216,9 @@ def inflight_count() -> int:
 _INFLIGHT_REQUESTS = 0
 
 update.start_background_checker()
+# The scheduler lives inside this process because the server dies with the app
+# window; it fires due work while open and catches up a missed run on relaunch.
+scheduler.start_scheduler()
 # Pay the deferred keyring import here instead of on the first /api/connections
 # request: the frontend lists connections on mount, so without this the ~0.6 s
 # would just move from startup to the first page load.
@@ -250,6 +256,7 @@ app.include_router(color_lot.router, prefix="/api", tags=["color-lot"])
 app.include_router(uploads.router, prefix="/api", tags=["uploads"])
 app.include_router(update.router, prefix="/api", tags=["update"])
 app.include_router(feedback.router, prefix="/api", tags=["feedback"])
+app.include_router(schedules.router, prefix="/api", tags=["schedules"])
 
 
 def _bundle_roots() -> list[str]:

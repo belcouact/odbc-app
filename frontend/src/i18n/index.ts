@@ -30,6 +30,8 @@ import enIntro from './locales/en/intro.json'
 import zhIntro from './locales/zh/intro.json'
 import enMisc from './locales/en/misc.json'
 import zhMisc from './locales/zh/misc.json'
+import enSchedules from './locales/en/schedules.json'
+import zhSchedules from './locales/zh/schedules.json'
 
 export const LANGUAGE_STORAGE_KEY = 'odbc-language'
 export type AppLanguage = 'en' | 'zh'
@@ -63,6 +65,7 @@ void i18n.use(initReactI18next).init({
       dialogs: enDialogs,
       intro: enIntro,
       misc: enMisc,
+      schedules: enSchedules,
     },
     zh: {
       app: zhApp,
@@ -80,6 +83,7 @@ void i18n.use(initReactI18next).init({
       dialogs: zhDialogs,
       intro: zhIntro,
       misc: zhMisc,
+      schedules: zhSchedules,
     },
   },
   lng: detectInitialLanguage(),

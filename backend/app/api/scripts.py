@@ -10,6 +10,7 @@ treat script content like code you trust (the same model as a Jupyter notebook).
 """
 import asyncio
 import base64
+import ctypes
 import io
 import json
 import os
@@ -352,12 +353,65 @@ def _downloads_folder() -> str:
     return str(Path.home() / "Downloads")
 
 
+class ScriptCancelled(BaseException):
+    """Raised inside a script's own thread to abort it (see :class:`_RunningScript`).
+
+    Derives from ``BaseException`` so an ``except Exception`` in the script
+    cannot swallow the abort.
+    """
+
+
+class _RunningScript:
+    """Handle for one in-flight script run, used to abort it on request.
+
+    Python scripts run in-process (see :func:`_run_python`), so they cannot be
+    killed the way a child process can: the only way to stop one is to raise an
+    exception inside its own thread, which :meth:`request_cancel` does through
+    the C API. JavaScript runs under Node.js, so that process is killed instead.
+    """
+
+    def __init__(self) -> None:
+        self.cancelled = threading.Event()
+        self.thread_id: Optional[int] = None
+        self.process: Optional[subprocess.Popen] = None
+
+    def request_cancel(self) -> None:
+        """Abort the run: set the flag, kill Node, interrupt the script thread."""
+        self.cancelled.set()
+        process = self.process
+        if process is not None and process.poll() is None:
+            try:
+                process.kill()
+            except OSError:
+                pass  # already gone
+        if self.thread_id is not None:
+            _interrupt_thread(self.thread_id, ScriptCancelled)
+
+
+def _interrupt_thread(thread_id: int, exc: type[BaseException]) -> None:
+    """Raise ``exc`` inside another Python thread at its next bytecode boundary.
+
+    ``PyThreadState_SetAsyncExc`` is the only way to interrupt a thread that is
+    already running. A script blocked inside a native call (an ODBC fetch, say)
+    is not reached until that call returns, which is why an aborted run can be
+    reported while its thread is still unwinding.
+    """
+    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_ulong(thread_id), ctypes.py_object(exc))
+
+
+# Maps a run id to the handle that can abort it, so POST /scripts/cancel/{id}
+# can reach a run started by POST /scripts/run-stream on another thread.
+_RUNS: dict[str, _RunningScript] = {}
+_RUNS_LOCK = threading.Lock()
+
+
 def _run_python(
     script: str,
     data: list,
     timeout: int,
     cwd: Optional[str] = None,
     emit: Optional[callable] = None,
+    run: Optional[_RunningScript] = None,
 ) -> tuple[str, str, bool]:
     """Execute Python in-process; return (stdout, stderr, timed_out).
 
@@ -372,6 +426,10 @@ def _run_python(
     When ``emit`` is provided, every chunk the script writes to stdout is also
     forwarded to ``emit(chunk)`` in real time (used to stream progress/log lines
     to the frontend).
+
+    When ``run`` is provided the thread registers itself so ``run.request_cancel``
+    can abort it; a cancelled run returns without a timeout and without a
+    traceback (the caller reports the abort).
     """
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -391,41 +449,63 @@ def _run_python(
     active_stdout = StreamWriter() if emit is not None else stdout
 
     def target() -> None:
-        previous_cwd = os.getcwd()
-        if cwd:
-            try:
-                os.chdir(cwd)
-            except OSError:
-                pass  # keep the current directory if the target is unavailable
-        # The script runs in-process, so it would otherwise see the server's own
-        # CLI args (uvicorn ... --host --port --reload). Temporarily swap argv
-        # to a bare script name so argparse-based templates don't choke on them.
-        original_argv = sys.argv
-        sys.argv = ["<script>"]
+        if run is not None:
+            run.thread_id = threading.get_ident()
         try:
+            if run is not None and run.cancelled.is_set():
+                raise ScriptCancelled()
             with redirect_stdout(active_stdout), redirect_stderr(stderr):
                 exec(compile(script, "<script>", "exec"), namespace)  # noqa: S102 - user-authored script
+        except ScriptCancelled:
+            pass  # the caller reports the abort; it is not a script error
         except BaseException:  # noqa: BLE001 - report any script failure
             stderr.write(traceback.format_exc())
-        finally:
-            sys.argv = original_argv
-            if cwd:
-                try:
-                    os.chdir(previous_cwd)
-                except OSError:
-                    pass
 
-    thread = threading.Thread(target=target, daemon=True)
-    thread.start()
-    thread.join(timeout)
-    if thread.is_alive():
-        state["timed_out"] = True
-        stderr.write(f"\n[Timeout] script did not finish within {timeout} seconds\n")
+    # The script runs in-process, so it would otherwise see the server's own CLI
+    # args (uvicorn ... --host --port --reload). Swap argv/cwd on this (the
+    # calling) thread and restore them once the script thread has stopped, so an
+    # abort landing in the script's finally cannot leave the server's own state
+    # altered.
+    previous_cwd = os.getcwd()
+    original_argv = sys.argv
+    sys.argv = ["<script>"]
+    if cwd:
+        try:
+            os.chdir(cwd)
+        except OSError:
+            pass  # keep the current directory if the target is unavailable
+    try:
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+        thread.join(timeout)
+        if thread.is_alive() and not (run is not None and run.cancelled.is_set()):
+            state["timed_out"] = True
+            stderr.write(f"\n[Timeout] script did not finish within {timeout} seconds\n")
+    finally:
+        # If the thread was cancelled while blocked in a native call it may still
+        # be unwinding; restoring here cannot corrupt per-thread stdout (that is
+        # handled inside the thread by redirect_stdout).
+        sys.argv = original_argv
+        if cwd:
+            try:
+                os.chdir(previous_cwd)
+            except OSError:
+                pass
     return active_stdout.getvalue() if emit is not None else stdout.getvalue(), stderr.getvalue(), state["timed_out"]
 
 
-def _run_javascript(script: str, data: list, timeout: int, cwd: Optional[str] = None) -> tuple[str, str, bool]:
-    """Execute JavaScript through a local Node.js; return (stdout, stderr, timed_out)."""
+def _run_javascript(
+    script: str,
+    data: list,
+    timeout: int,
+    cwd: Optional[str] = None,
+    run: Optional[_RunningScript] = None,
+) -> tuple[str, str, bool]:
+    """Execute JavaScript through a local Node.js; return (stdout, stderr, timed_out).
+
+    Node runs as a child process, so an aborted run kills it (see
+    :meth:`_RunningScript.request_cancel`).
+    """
     node = shutil.which("node")
     if not node:
         return (
@@ -444,20 +524,29 @@ def _run_javascript(script: str, data: list, timeout: int, cwd: Optional[str] = 
             + script
         )
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 [node, "-e", runner],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=timeout,
                 cwd=cwd,
             )
-            return proc.stdout or "", proc.stderr or "", False
-        except subprocess.TimeoutExpired:
-            return "", f"\n[Timeout] script did not finish within {timeout} seconds\n", True
         except OSError as exc:
             return "", f"Failed to start Node.js: {exc}", False
+        if run is not None:
+            run.process = proc
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+            return stdout or "", stderr or "", False
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            return "", f"\n[Timeout] script did not finish within {timeout} seconds\n", True
+        finally:
+            if run is not None:
+                run.process = None
 
 
 def _collect_output_files(folder: Path) -> list[dict]:
@@ -650,9 +739,11 @@ async def run_script_stream(payload: ScriptRunRequest):
         {"type": "stdout", "chunk": "..."}
         {"type": "stderr", "chunk": "..."}
         {"type": "result", "ok": ..., "stdout": ..., "stderr": ...,
-         "elapsed_ms": ..., "row_count": ..., "timed_out": ..., "message": ...,
-         "output_files": [{"filename": ..., "path": ..., "size": ...,
-                           "data_base64": ...}, ...]}
+         "elapsed_ms": ..., "row_count": ..., "timed_out": ..., "cancelled": ...,
+         "message": ..., "output_files": [...]}
+
+    The run id travels in the ``X-Run-Id`` response header so the caller can
+    POST it to ``/scripts/cancel/{run_id}`` to abort the run at any time.
 
     Scripts run with ``cwd`` set to a fresh staging folder, so files they
     write by relative path always succeed; those files are then returned in
@@ -669,6 +760,10 @@ async def run_script_stream(payload: ScriptRunRequest):
 
     events: "queue.Queue[dict]" = queue.Queue()
     start = time.perf_counter()
+    run_id = uuid.uuid4().hex
+    run = _RunningScript()
+    with _RUNS_LOCK:
+        _RUNS[run_id] = run
 
     def emit(chunk: str) -> None:
         events.put({"type": "stdout", "chunk": chunk})
@@ -677,20 +772,26 @@ async def run_script_stream(payload: ScriptRunRequest):
         try:
             if payload.language == "python":
                 stdout, stderr, timed_out = _run_python(
-                    payload.script, rows, timeout, cwd=str(staging), emit=emit
+                    payload.script, rows, timeout, cwd=str(staging), emit=emit, run=run
                 )
             else:
                 stdout, stderr, timed_out = _run_javascript(
-                    payload.script, rows, timeout, cwd=str(staging)
+                    payload.script, rows, timeout, cwd=str(staging), run=run
                 )
                 if stdout:
                     events.put({"type": "stdout", "chunk": stdout})
         except BaseException as exc:  # noqa: BLE001 - report any runner failure
             stdout, stderr, timed_out = "", traceback.format_exc(), False
+        finally:
+            with _RUNS_LOCK:
+                _RUNS.pop(run_id, None)
+        cancelled = run.cancelled.is_set()
+        if cancelled:
+            timed_out = False
         if stderr:
             events.put({"type": "stderr", "chunk": stderr})
         elapsed_ms = int((time.perf_counter() - start) * 1000)
-        ok = not timed_out and not stderr.strip()
+        ok = not timed_out and not cancelled and not stderr.strip()
         output_files = _collect_output_files(staging)
         # The encoded copies are now held in memory; drop the staging folder so
         # repeated runs do not accumulate temp directories.
@@ -704,7 +805,8 @@ async def run_script_stream(payload: ScriptRunRequest):
                 "elapsed_ms": elapsed_ms,
                 "row_count": row_count,
                 "timed_out": timed_out,
-                "message": "" if not timed_out else f"Timed out after {timeout}s",
+                "cancelled": cancelled,
+                "message": ("" if cancelled else (f"Timed out after {timeout}s" if timed_out else "")),
                 "output_files": output_files,
             }
         )
@@ -721,7 +823,27 @@ async def run_script_stream(payload: ScriptRunRequest):
             if event.get("type") == "result":
                 break
 
-    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+    return StreamingResponse(
+        event_generator(),
+        media_type="application/x-ndjson",
+        headers={"X-Run-Id": run_id},
+    )
+
+
+@router.post("/scripts/cancel/{run_id}")
+def cancel_script_run(run_id: str) -> dict:
+    """Abort an in-flight script run started by POST /scripts/run-stream.
+
+    Returns ``{"ok": True}`` when a matching run was found and asked to stop,
+    ``{"ok": False}`` when it had already finished.
+    """
+    with _RUNS_LOCK:
+        run = _RUNS.get(run_id)
+    if run is None:
+        return {"ok": False}
+    run.request_cancel()
+    logging_utils.log_info("script.cancel", f"run_id={run_id} ok=True")
+    return {"ok": True}
 
 
 @router.get("/scripts")

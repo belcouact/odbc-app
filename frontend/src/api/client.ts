@@ -592,11 +592,17 @@ async function streamScript<T>(
   path: string,
   body: unknown,
   onChunk?: (chunk: string, kind: 'stdout' | 'stderr') => void,
+  options?: {
+    /** Receives the ``X-Run-Id`` header so the run can be cancelled. */
+    onRunId?: (runId: string) => void
+    signal?: AbortSignal
+  },
 ): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: 'POST',
     headers: apiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
+    signal: options?.signal,
   })
   if (!response.ok) {
     let detail = ''
@@ -609,6 +615,7 @@ async function streamScript<T>(
     }
     throw new Error(detail || `Request failed (HTTP ${response.status})`)
   }
+  options?.onRunId?.(response.headers.get('X-Run-Id') ?? '')
   if (!response.body) {
     throw new Error('Streaming is not supported in this browser.')
   }
@@ -1261,8 +1268,17 @@ export const api = {
       rows?: Record<string, unknown>[] | null
     },
     onChunk?: (chunk: string, kind: 'stdout' | 'stderr') => void,
+    options?: {
+      /** Receives the ``X-Run-Id`` header so the run can be cancelled. */
+      onRunId?: (runId: string) => void
+      signal?: AbortSignal
+    },
   ): Promise<ScriptRunResult> =>
-    streamScript<ScriptRunResult>('/scripts/run-stream', payload, onChunk),
+    streamScript<ScriptRunResult>('/scripts/run-stream', payload, onChunk, options),
+
+  /** Cancel an in-flight script run (see ``X-Run-Id`` on the run endpoint). */
+  cancelScriptRun: (runId: string): Promise<{ ok: boolean }> =>
+    apiFetch(client.post(`/scripts/cancel/${encodeURIComponent(runId)}`)),
 
   /** Run a Python transform script against the current grid rows. */
   gridTransform: (payload: {
@@ -1556,7 +1572,149 @@ export const api = {
         timeout: 120000,
       }),
     ),
+
+  // ---- Schedules (in-app scheduler) ----
+
+  /** Every schedule, with its next fire time and last run status. */
+  listSchedules: (): Promise<Schedule[]> =>
+    apiFetch(client.get('/schedules', { timeout: 15000 })),
+
+  /** Create a schedule; the backend computes its first fire time. */
+  createSchedule: (payload: ScheduleCreatePayload): Promise<Schedule> =>
+    apiFetch(client.post('/schedules', payload, { timeout: 20000 })),
+
+  /** Edit a schedule — a partial update, so only the changed fields travel. */
+  updateSchedule: (id: string, payload: ScheduleUpdatePayload): Promise<Schedule> =>
+    apiFetch(client.put(`/schedules/${encodeURIComponent(id)}`, payload, { timeout: 20000 })),
+
+  /** Delete a schedule and its run history. */
+  deleteSchedule: (id: string): Promise<{ ok: boolean }> =>
+    apiFetch(client.delete(`/schedules/${encodeURIComponent(id)}`, { timeout: 15000 })),
+
+  /** Queue an immediate manual run (works even when the schedule is paused). */
+  runScheduleNow: (id: string): Promise<{ queued: boolean }> =>
+    apiFetch(client.post(`/schedules/${encodeURIComponent(id)}/run`, {}, { timeout: 20000 })),
+
+  /** Run history for one schedule, newest first. */
+  scheduleRuns: (id: string, limit = 50): Promise<ScheduleRun[]> =>
+    apiFetch(
+      client.get(`/schedules/${encodeURIComponent(id)}/runs`, {
+        params: { limit },
+        timeout: 15000,
+      }),
+    ),
+
+  /** The editor's pickers: connections plus everything runnable. */
+  scheduleSources: (): Promise<ScheduleSources> =>
+    apiFetch(client.get('/schedules/meta/sources', { timeout: 15000 })),
 }
+
+/** What a schedule runs when it fires. */
+export type ScheduleTargetKind = 'query' | 'sql' | 'sql_saved' | 'script' | 'script_template'
+
+/** The runnable behind a schedule: a saved query, SQL, a script or a template. */
+export interface ScheduleTarget {
+  kind: ScheduleTargetKind
+  query_id: string | null
+  sql: string | null
+  sql_query_id: string | null
+  script_id: string | null
+  template_name: string | null
+  connection_id: string | null
+  timeout_seconds: number
+}
+
+/** How a schedule repeats. */
+export type ScheduleTriggerType = 'interval' | 'daily' | 'weekly' | 'monthly'
+
+/** When a schedule fires. */
+export interface ScheduleTrigger {
+  type: ScheduleTriggerType
+  interval_seconds: number | null
+  at_time: string | null
+  weekdays: number[] | null
+  day_of_month: number | null
+  timezone: string
+}
+
+/** What a run produces beyond its side effects. */
+export interface ScheduleOutput {
+  mode: 'none' | 'snapshot'
+  snapshot_name: string | null
+  row_cap: number
+}
+
+/** Outcome of a run (or of the schedule's most recent one). */
+export type ScheduleStatus = 'success' | 'failed' | 'missed' | 'interrupted' | 'running'
+
+/** One stored schedule definition plus its run bookkeeping. */
+export interface Schedule {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+  target: ScheduleTarget
+  trigger: ScheduleTrigger
+  output: ScheduleOutput
+  created_at: string
+  updated_at: string
+  next_run_at: string | null
+  last_run_at: string | null
+  last_status: ScheduleStatus | null
+  last_error: string | null
+  last_duration_ms: number | null
+  run_count: number
+  failure_count: number
+  consecutive_failures: number
+}
+
+/** One entry in a schedule's run history. */
+export interface ScheduleRun {
+  id: string
+  schedule_id: string
+  started_at: string
+  finished_at: string
+  status: ScheduleStatus
+  duration_ms: number
+  row_count: number
+  error: string
+  message: string
+}
+
+/** A pickable connection / saved query / script / template. */
+export interface ScheduleSourceOption {
+  id: string
+  name: string
+  language?: string
+}
+
+/** One app-published script template (resolved by name at run time). */
+export interface ScheduleTemplateOption {
+  name: string
+  title: string
+}
+
+/** Everything the schedule editor can point a schedule at. */
+export interface ScheduleSources {
+  connections: ScheduleSourceOption[]
+  saved_queries: ScheduleSourceOption[]
+  sql_queries: ScheduleSourceOption[]
+  scripts: ScheduleSourceOption[]
+  templates: ScheduleTemplateOption[]
+}
+
+/** Body for POST /schedules. */
+export interface ScheduleCreatePayload {
+  name: string
+  description?: string
+  enabled?: boolean
+  target: ScheduleTarget
+  trigger: ScheduleTrigger
+  output?: ScheduleOutput
+}
+
+/** Body for PUT /schedules/{id} — every field optional. */
+export type ScheduleUpdatePayload = Partial<ScheduleCreatePayload>
 
 /** Feedback category: bug report, idea, question or anything else. */
 export type FeedbackCategory = 'bug' | 'idea' | 'question' | 'other'

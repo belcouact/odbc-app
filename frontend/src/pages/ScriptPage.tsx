@@ -274,6 +274,14 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   const [scriptText, setScriptText] = useState('')
   const [scriptResult, setScriptResult] = useState<ScriptRunResult | null>(null)
   const [scriptRunning, setScriptRunning] = useState(false)
+  /** True while the running script is being aborted (spinner on Cancel). */
+  const [scriptCancelling, setScriptCancelling] = useState(false)
+  /** Run id of the in-flight run, so Cancel can reach it. */
+  const scriptRunIdRef = useRef('')
+  /** AbortController for the in-flight stream (stops reading chunks at once). */
+  const scriptAbortRef = useRef<AbortController | null>(null)
+  /** Set when the user asked to abort, so the catch can label it as cancelled. */
+  const scriptCancelRequestedRef = useRef(false)
   /** Live streamed stdout from the running script (shown as the progress log). */
   const [liveOutput, setLiveOutput] = useState('')
   /** Ref to the live-output pane so it can auto-scroll as lines arrive. */
@@ -635,12 +643,25 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
     rows?: Record<string, unknown>[] | null
   }) => {
     setScriptRunning(true)
+    setScriptCancelling(false)
     setLiveOutput('')
+    scriptCancelRequestedRef.current = false
+    scriptRunIdRef.current = ''
+    const controller = new AbortController()
+    scriptAbortRef.current = controller
     try {
       // Stream the run so the user sees live output instead of waiting for the
-      // whole script to finish (large datasets can take a while).
-      const result = await api.runScriptStream(payload, (chunk) =>
-        setLiveOutput((prev) => prev + chunk),
+      // whole script to finish (large datasets can take a while). The run id
+      // arrives in the response header and lets Cancel abort it server-side.
+      const result = await api.runScriptStream(
+        payload,
+        (chunk) => setLiveOutput((prev) => prev + chunk),
+        {
+          onRunId: (id) => {
+            scriptRunIdRef.current = id
+          },
+          signal: controller.signal,
+        },
       )
       setScriptResult(result)
       // Save any files the script wrote by relative path (they landed in a
@@ -651,18 +672,43 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
         await saveScriptOutputFiles(result.output_files)
       }
     } catch (err) {
+      const aborted = scriptCancelRequestedRef.current
       setScriptResult({
         ok: false,
         stdout: '',
-        stderr: err instanceof Error ? err.message : t('notices.scriptFailed'),
+        stderr: aborted ? '' : err instanceof Error ? err.message : t('notices.scriptFailed'),
         elapsed_ms: 0,
         row_count: 0,
         timed_out: false,
+        cancelled: aborted,
+        // The result chip already reports the abort; no separate alert needed.
         message: null,
       })
     } finally {
+      scriptAbortRef.current = null
+      scriptRunIdRef.current = ''
+      scriptCancelRequestedRef.current = false
       setScriptRunning(false)
+      setScriptCancelling(false)
     }
+  }
+
+  /** Abort the running script: ask the backend to stop it and drop the stream. */
+  const handleCancelScript = async () => {
+    if (!scriptRunning || scriptCancelling) return
+    setScriptCancelling(true)
+    scriptCancelRequestedRef.current = true
+    const runId = scriptRunIdRef.current
+    if (runId) {
+      try {
+        await api.cancelScriptRun(runId)
+      } catch {
+        // The run may have just finished; the stream's own end still resolves.
+      }
+    }
+    // Closing the stream stops the chunk reader immediately; the backend keeps
+    // unwinding the aborted script on its own thread.
+    scriptAbortRef.current?.abort()
   }
 
   const handleRunScript = async () => {
@@ -1266,6 +1312,20 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                 >
                   {scriptRunning ? t('script.running') : t('script.run')}
                 </Button>
+                {scriptRunning && (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={
+                      scriptCancelling ? <CircularProgress size={18} color="inherit" /> : undefined
+                    }
+                    onClick={() => void handleCancelScript()}
+                    disabled={scriptCancelling}
+                    sx={{ minHeight: 48 }}
+                  >
+                    {scriptCancelling ? t('script.cancelling') : t('script.cancel')}
+                  </Button>
+                )}
                 <>
                   <Button
                     variant="outlined"
@@ -1377,9 +1437,15 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                     <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                       <Chip
                         size="small"
-                        color={scriptResult.ok ? 'success' : 'error'}
+                        color={scriptResult.cancelled ? 'default' : scriptResult.ok ? 'success' : 'error'}
                         variant="outlined"
-                        label={scriptResult.ok ? t('script.finished') : t('script.failed')}
+                        label={
+                          scriptResult.cancelled
+                            ? t('script.canceled')
+                            : scriptResult.ok
+                              ? t('script.finished')
+                              : t('script.failed')
+                        }
                       />
                       <Typography variant="caption" color="text.secondary">
                         {t('script.resultMeta', {

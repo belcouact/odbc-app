@@ -21,6 +21,9 @@
     "openFeedbackUnread_other": "打开反馈，{{count}} 条未读",
     "openFeedback": "打开反馈",
     "howToUse": "如何使用本应用",
+    "schedules": "定时任务",
+    "openSchedules": "打开定时任务",
+    "schedulesDue_other": "定时任务 — 有 {{count}} 项待运行",
     "updates": "在设置中查看更新",
     "language": "切换到 English / Switch to English"
   },

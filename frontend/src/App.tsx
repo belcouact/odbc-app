@@ -22,6 +22,7 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import CircularProgress from '@mui/material/CircularProgress'
 import Skeleton from '@mui/material/Skeleton'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import AppsIcon from '@mui/icons-material/Apps'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
@@ -50,6 +51,7 @@ import ScriptPage, { type ScriptPageHandle } from './pages/ScriptPage'
 import BiPage, { type BiPageHandle } from './pages/BiPage'
 import SettingsPage, { type SettingsSection } from './pages/SettingsPage'
 import FeedbackPage from './pages/FeedbackPage'
+import SchedulesPage from './pages/SchedulesPage'
 import FlowDiagramPage from './pages/FlowDiagramPage'
 import ExternalAppPage from './pages/ExternalAppPage'
 import AiSidebar from './components/AiSidebar'
@@ -744,12 +746,18 @@ function AppShell() {
   const [introOpen, setIntroOpen] = useState(false)
   const [alexOpen, setAlexOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [schedulesOpen, setSchedulesOpen] = useState(false)
+  // Enabled schedules whose next fire time has already passed — drives the
+  // clock badge, so a due run is visible without opening the board.
+  const [schedulesDue, setSchedulesDue] = useState(0)
   // Navigating from the top bar dismisses the feedback overlay so the requested
   // destination is always visible — including when the target view is already
   // the current one (e.g. re-clicking the version badge while the board is open),
-  // which a bare view change would miss.
+  // which a bare view change would miss. The schedules board, being a peer
+  // overlay, is dismissed the same way.
   const setView = useCallback((nextView: View) => {
     setFeedbackOpen(false)
+    setSchedulesOpen(false)
     setViewState(nextView)
   }, [])
   // Posts made since this machine last opened the board, counted for the badge.
@@ -967,6 +975,40 @@ function AppShell() {
   const closeIntro = useCallback(() => setIntroOpen(false), [])
   const openAlex = useCallback(() => setAlexOpen(true), [])
   const closeAlex = useCallback(() => setAlexOpen(false), [])
+  // ---- Schedules: due badge + the board's open/close pair ----
+  // A schedule fires inside this app's own process (there is no server once the
+  // window closes), so the board reads the same list the runner ticks against.
+  const refreshSchedulesDue = useCallback(async () => {
+    try {
+      const list = await api.listSchedules()
+      const now = Date.now()
+      setSchedulesDue(
+        list.filter(
+          (schedule) =>
+            schedule.enabled && schedule.next_run_at && new Date(schedule.next_run_at).getTime() <= now,
+        ).length,
+      )
+    } catch {
+      /* Server restarting or offline — leave the badge as it was. */
+    }
+  }, [])
+  useEffect(() => {
+    void refreshSchedulesDue()
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshSchedulesDue()
+    }, 60000)
+    return () => window.clearInterval(timer)
+  }, [refreshSchedulesDue])
+  const openSchedules = useCallback(() => {
+    // Toggles like the feedback icon, and the two boards are mutually exclusive
+    // so only one overlay ever covers the page.
+    setSchedulesOpen((open) => !open)
+    setFeedbackOpen(false)
+  }, [])
+  const closeSchedules = useCallback(() => {
+    setSchedulesOpen(false)
+    void refreshSchedulesDue()
+  }, [refreshSchedulesDue])
   // Opening the board reads everything on it; closing re-reads, so a post that
   // arrived while the board was open is not left flagged as unread.
   const openFeedback = useCallback(() => {
@@ -976,7 +1018,11 @@ function AppShell() {
       if (!open) void markBoardRead()
       return !open
     })
-  }, [markBoardRead])
+    // The boards are peer overlays, so opening this one also dismisses the
+    // schedules board — otherwise its overlay keeps covering the feedback board.
+    setSchedulesOpen(false)
+    void refreshSchedulesDue()
+  }, [markBoardRead, refreshSchedulesDue])
   // Closing re-reads the board, so a post that arrived while it was open does
   // not stay flagged as unread on the top-bar badge.
   const closeFeedback = useCallback(() => {
@@ -1371,6 +1417,29 @@ function AppShell() {
               </Badge>
             </IconButton>
           </Tooltip>
+          {/* Schedules: opens the scheduling board as a full-window overlay.
+              The badge counts enabled schedules whose next run is already due. */}
+          <Tooltip
+            title={
+              schedulesDue > 0 ? t('bar.schedulesDue', { count: schedulesDue }) : t('bar.openSchedules')
+            }
+          >
+            <IconButton
+              aria-label={t('bar.openSchedules')}
+              onClick={openSchedules}
+              sx={{ flexShrink: 0, ml: 0.5, color: 'primary.main' }}
+            >
+              <Badge
+                badgeContent={schedulesDue}
+                max={99}
+                color="secondary"
+                invisible={schedulesDue === 0}
+                sx={{ '& .MuiBadge-badge': { fontWeight: 700, fontSize: 11 } }}
+              >
+                <AccessTimeIcon />
+              </Badge>
+            </IconButton>
+          </Tooltip>
           {/* Boxed version badge: the box itself renders on the first paint — a
               skeleton holds the slot — so the app bar's right side never shifts
               when the number arrives (the status read is deliberately deferred
@@ -1452,33 +1521,33 @@ function AppShell() {
             layout: the board overlay is absolutely positioned over <main>, so
             a tall page underneath would stretch it far past its content and
             leave a long empty stretch to scroll before the document ends. */}
-        <Box sx={{ width: '100%', display: view === 'editor' && !feedbackOpen ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'editor' && !feedbackOpen && !schedulesOpen ? 'block' : 'none' }}>
           <WorkspacePage ref={workspaceRef} onOpenAi={openAi} />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'script' && !feedbackOpen ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'script' && !feedbackOpen && !schedulesOpen ? 'block' : 'none' }}>
           <ScriptPage ref={scriptRef} onOpenAi={openAi} />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'bi' && !feedbackOpen ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'bi' && !feedbackOpen && !schedulesOpen ? 'block' : 'none' }}>
           <BiPage ref={biRef} onLoadToGrid={loadSnapshotToGrid} />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'flowdiagram' && !feedbackOpen ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'flowdiagram' && !feedbackOpen && !schedulesOpen ? 'block' : 'none' }}>
           <FlowDiagramPage active={view === 'flowdiagram'} />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'project' && !feedbackOpen ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'project' && !feedbackOpen && !schedulesOpen ? 'block' : 'none' }}>
           <ExternalAppPage
             url="https://study-llm.me/apps/light-gantt/"
             title="Project — light-gantt"
             active={view === 'project'}
           />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'problemsolving' && !feedbackOpen ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'problemsolving' && !feedbackOpen && !schedulesOpen ? 'block' : 'none' }}>
           <ExternalAppPage
             url="https://study-llm.me/apps/a3-bowler/metric-bowler"
             title="ProblemSolving — metric-bowler"
             active={view === 'problemsolving'}
           />
         </Box>
-        <Box sx={{ width: '100%', display: view === 'settings' && !feedbackOpen ? 'block' : 'none' }}>
+        <Box sx={{ width: '100%', display: view === 'settings' && !feedbackOpen && !schedulesOpen ? 'block' : 'none' }}>
           <SettingsPage
             onStartUpdate={update.startUpdate}
             section={settingsSection}
@@ -1507,6 +1576,22 @@ function AppShell() {
           >
             {/* The board draws its own centred column, title and cards. */}
             <FeedbackPage onClose={closeFeedback} />
+          </Box>
+        )}
+        {/* Schedules board — the same layered-overlay treatment as the feedback
+            board, so the top bar and tabs stay in reach while it is open. */}
+        {schedulesOpen && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 20,
+              bgcolor: 'background.default',
+              overflowY: 'auto',
+              p: { xs: 1.5, sm: 2, md: 3 },
+            }}
+          >
+            <SchedulesPage onClose={closeSchedules} />
           </Box>
         )}
       </Box>

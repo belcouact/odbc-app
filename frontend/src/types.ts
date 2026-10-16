@@ -393,6 +393,8 @@ export interface ScriptRunResult {
   elapsed_ms: number
   row_count: number
   timed_out: boolean
+  /** True when the user aborted the run from the editor. */
+  cancelled?: boolean
   message?: string | null
   /** Files the script wrote into its staging folder (relative-path output). */
   output_files?: ScriptOutputFile[]

@@ -23,6 +23,10 @@
     "openFeedbackUnread_other": "Open feedback, {{count}} unread",
     "openFeedback": "Open feedback",
     "howToUse": "How to use this app",
+    "schedules": "Schedules",
+    "openSchedules": "Open schedules",
+    "schedulesDue_one": "Schedules — {{count}} run due",
+    "schedulesDue_other": "Schedules — {{count}} runs due",
     "updates": "Open updates in Settings",
     "language": "Switch to Chinese / 切换到中文"
   },

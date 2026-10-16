@@ -1,5 +1,10 @@
 [
   {
+    "version": "2.7.0",
+    "date": "2026-10-16",
+    "notes": "1. Scheduled tasks (new): a clock button in the top bar opens a board of timed runs. Point a task at saved SQL, an app template or one of your saved scripts and run it every few minutes, daily, weekly or monthly — then enable or pause it, run it on demand, and review its run history. Tasks fire while the app is open, and a run missed while it was closed is picked up the next time you open the app.\n2. The script editor gained a Cancel button: a running script can now be aborted at any time, instead of waiting for it to finish or hit its timeout.\n3. In the new-schedule dialog the name is required, the \"save rows to the warehouse\" option is a checkbox that starts off, and the template/script picker no longer draws its label over the value you picked."
+  },
+  {
     "version": "2.6.9",
     "date": "2026-10-11",
     "notes": "1. In the SQL editor's criteria section, clearing a criterion now removes the condition it had added to the SQL, instead of leaving a stale filter such as \"xxx = '0'\" behind.\n2. The FabLIMS LSN, Lot Genealogy and Package Info queries now return rows in a stable, meaningful order — LSN by manufacture date, and the genealogy and package queries by work order lot and date.\n3. New Script template: Lamination Genealogy — queries FabLIMS lot genealogy and LSN for the work order lots you list, and builds a self-contained ECharts dashboard showing the raw face/film/backer usage feeding each work order's packaged lots, with hover details."
@@ -18,10 +23,5 @@
     "version": "2.6.6",
     "date": "2026-10-09",
     "notes": "1. Fixed the failed update that could leave the app showing an error page (HTTP 500) after restarting: the app now starts correctly on the newly installed version, and an update can no longer install into a leftover backup folder."
-  },
-  {
-    "version": "2.6.5",
-    "date": "2026-10-09",
-    "notes": "1. Large SQL editor queries (200,000+ rows) now stream in batches, so results start appearing immediately and no longer stall or fail partway through.\n2. Excel/CSV export from the SQL editor no longer stops at 100,000 rows — the full result is exported.\n3. Databricks connections now remember your authorization, so the sign-in window only appears when a fresh sign-in is actually needed (instead of on every test or page refresh), and the leftover callback tab closes itself."
   }
 ]
