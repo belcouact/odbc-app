@@ -252,6 +252,22 @@ def _is_current_or_newer(port: int) -> bool:
     return _version_key(running) >= _version_key(build)
 
 
+def _health_is_windowless(port: int) -> bool:
+    """Whether the backend on ``port`` is a headless one with no window.
+
+    A dev server run as ``uvicorn app.main:app`` serves the same API — and,
+    since it reads the same ``app/version.py``, can even report a *newer*
+    version than the installed build — but it owns no window.  ``windowed`` is
+    only reported from 2.7.1 on, so an absent field (an older instance, which
+    always has a window) counts as windowed: relying on the flag must never
+    turn a real window into a second copy of the app.
+    """
+    payload = _health(port)
+    if not payload:
+        return False
+    return payload.get("windowed") is False
+
+
 def _running_port() -> int | None:
     """Port of an instance that is already serving, if any.
 
@@ -1061,6 +1077,15 @@ def main() -> int:
     # one left running from before this version was installed), which must be
     # retired so this build can serve.
     running = _running_port()
+    if running is not None and _health_is_windowless(running):
+        # A headless backend (typically a dev server) sitting on one of our
+        # ports answers /api/health but has no window to bring forward and no
+        # embedded server to shut down.  Handing this launch off to it would
+        # exit silently with a blank screen, and retiring it would just burn
+        # the 15s wait in _retire_stale_instance — so ignore it and start
+        # beside it.  _pick_port() still keeps the saved port when it can.
+        print(f"ignoring windowless backend on port {running} — nothing to show there")
+        running = None
     if running is not None and _is_current_or_newer(running):
         if splash is not None:
             splash.close()

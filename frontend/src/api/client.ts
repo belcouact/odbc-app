@@ -1335,6 +1335,17 @@ export const api = {
   getScriptTemplate: (name: string): Promise<{ name: string; filename: string; content: string }> =>
     apiFetch(client.get(`/scripts/templates/${encodeURIComponent(name)}`)),
 
+  /** URL that serves a template's sample dashboard with a rendering content type.
+   *
+   *  The published Supabase URL returns HTML as ``text/plain`` (shown as source),
+   *  so the app streams the page itself; the token keeps the protected route
+   *  reachable from the browser tab the native shell opens.
+   */
+  scriptTemplateExampleUrl: (name: string): string => {
+    const path = `/api/scripts/template-example/${encodeURIComponent(name)}`
+    return APP_TOKEN ? `${path}?token=${encodeURIComponent(APP_TOKEN)}` : path
+  },
+
   createScript: (body: {
     name: string
     description?: string
@@ -1892,7 +1903,7 @@ export interface AiStatsResult {
  * `stats` may be null even on success.
  */
 export interface AiAnalyzePipelineResult {
-  /** Markdown narrative: summary, key findings, risks and next steps. */
+  /** Markdown narrative: summary, key findings and next steps. */
   narrative: string
   /** AI-suggested follow-up questions (may be empty). */
   questions: string[]

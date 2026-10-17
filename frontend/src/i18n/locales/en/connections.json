@@ -64,6 +64,7 @@
   "dialog": {
     "editTitle": "Edit connection",
     "addTitle": "Add connection",
+    "close": "Close",
     "nameLabel": "Connection name",
     "namePlaceholder": "e.g. Production SQL Server",
     "nameHelperEdit": "The name is only a label — you can rename it at any time. It won't affect templates, scripts or channel operations.",
@@ -111,6 +112,7 @@
   },
   "detect": {
     "title": "Detect ODBC DSNs",
+    "close": "Close",
     "scanning": "Scanning the Windows ODBC registry…",
     "none": "No ODBC DSNs found on this PC",
     "selectAll": "Select all",

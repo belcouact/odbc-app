@@ -35,7 +35,6 @@ import InfoIcon from '@mui/icons-material/Info'
 import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew'
 import ReplayIcon from '@mui/icons-material/Replay'
 import SettingsIcon from '@mui/icons-material/Settings'
-import StorageIcon from '@mui/icons-material/Storage'
 import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt'
 import TerminalIcon from '@mui/icons-material/Terminal'
 import TroubleshootIcon from '@mui/icons-material/Troubleshoot'
@@ -56,6 +55,7 @@ import FlowDiagramPage from './pages/FlowDiagramPage'
 import ExternalAppPage from './pages/ExternalAppPage'
 import AiSidebar from './components/AiSidebar'
 import IntroV2 from './components/IntroV2'
+import AlexShow from './components/AlexShow'
 import GuidedTour, { TOUR_STORAGE_KEY } from './components/GuidedTour'
 import { emit, subscribe } from './editorBus'
 import type { GridLoadPayload } from './editorBus'
@@ -89,15 +89,6 @@ const SETTINGS_TAB: { value: View; labelKey: string; icon: ReactElement } = {
   labelKey: 'tabs.settings',
   icon: <SettingsIcon color="warning" />,
 }
-
-/** Short mantras shown under the enlarged brand icon in the Alex lightbox,
- *  each paired with its Chinese rendering on the line below. */
-const ALEX_MOTTOS: { en: string; zh: string }[] = [
-  { en: 'Stay hungry, stay foolish', zh: '求知若渴心如童' },
-  { en: 'Don’t wait, start now', zh: '莫待明朝趁晓风' },
-  { en: 'Start small, learn by doing', zh: '微始躬行勤学步' },
-  { en: 'Improve over time', zh: '日新其道渐无穷' },
-]
 
 /** Board posts this machine has already looked at — the feedback badge counts the rest. */
 const FEEDBACK_SEEN_KEY = 'odbc-feedback-seen-ids'
@@ -146,68 +137,78 @@ const TOOLS_TAB_VALUE = 'tools'
 
 const HELP_STEPS: { title: string; description: string }[] = [
   {
-    title: 'Connect to a data source',
+    title: 'Connect or load data',
     description:
-      'Open Settings → Connections → Add connection. Pick your ODBC driver, fill in the connection settings, then click "Test" to verify. Saved connections are shown as a badge next to this help button.',
+      'Open Settings → Connections → Add connection, pick your ODBC driver, fill in the connection fields and click "Test" to verify. Working from a file instead? Use Upload or Paste on the Query tab to bring CSV/Excel data or clipboard rows into the grid — no database needed.',
   },
   {
     title: 'Run a query',
     description:
-      'Go to the Query tab. Build your query with the visual builder or write raw SQL on the right, then click Run. Results load into the grid below.',
+      'On the Query tab, write read-only SQL (SELECT only) in the SQL editor, or build it visually in the Builder, then click Run. Save SQL keeps a query for later and Recent runs lets you reuse what you ran before.',
   },
   {
-    title: 'Explore the results',
+    title: 'Explore and edit the results',
     description:
-      'Sort, filter, and export (CSV / Excel) from the grid. Each column header shows its detected type (Number / Text / Boolean / Date) — click the chip to change it.',
+      'Sort, filter and copy in the results grid, or export it to XLSX. Edit grid adds the AI transform, column data types and calculated columns; Save data keeps the grid as a snapshot in the Dashboard.',
   },
   {
-    title: 'Visualize with charts',
+    title: 'Chart the data',
     description:
-      'Open Analyze → Chart to turn your results into bar, pie, trend, scatter, histogram, box, or KPI charts. Pick an X axis and a Y axis (numeric or categorical); the operation options adapt to the Y column type.',
+      'Analyze → Chart builds charts by hand — bar, trend, pie, scatter, histogram, box, SPC and more — or lets the AI design one from a description. Dashboard → Chart designs a whole board of tiles from your saved snapshots.',
   },
   {
-    title: 'Analyze with scripts',
+    title: 'Script it, or let AI read it',
     description:
-      'Open the Analyze tab and write a Python or JavaScript script. The script runs against all the rows in the grid. Use the "Copy output" button to copy what it prints.',
+      'Analyze → Script runs Python or JavaScript over every row of the grid — Copy output grabs what it printed. Analyze → Insights returns an AI read of the data (overview, key findings, next steps), and Analyze → Deep Analysis runs the whole pipeline: a written analysis plus charts and statistics.',
   },
   {
-    title: 'Use the AI assistant',
+    title: 'Ask the AI assistant',
     description:
-      'The AI panel (available from the Query, Analyze, and Chart tabs) helps you write SQL, build scripts, and interpret your data.',
+      'The sparkle button in the top bar opens the assistant on any tab: Chat for general questions, SQL to write, explain or optimize SQL and apply it to the editor, Script to draft Python, Chart to build one from a description. Export report saves the result as an HTML report.',
+  },
+  {
+    title: 'Find the rest in the top bar',
+    description:
+      'Switch the interface language with EN/中, open Settings, report a problem or suggest an idea on the feedback board, and check Schedules or the version badge for updates. FlowDiagram, Project and ProblemSolving sit under the Tools menu.',
   },
 ]
 
 /** Simplified Chinese copy of HELP_STEPS, shown when the dialog toggles 中文. */
 const HELP_STEPS_ZH: { title: string; description: string }[] = [
   {
-    title: '连接数据源',
+    title: '连接数据源或加载数据',
     description:
-      '打开 设置 → 连接 → 添加连接。选择你的 ODBC 驱动，填写连接参数，然后点击"测试"验证。已保存的连接会显示在此帮助按钮旁边的徽标上。',
+      '打开 设置 → 连接 → 添加连接，选择你的 ODBC 驱动，填写连接参数后点击"测试"验证。只想用文件？在"查询"页用"上传"或"粘贴"，把 CSV/Excel 文件或剪贴板中的行数据导入表格，无需数据库。',
   },
   {
     title: '运行查询',
     description:
-      '切换到"查询"标签页。用可视化构建器搭建查询，或者在右侧直接写 SQL，然后点击"运行"。结果会加载到下方的表格中。',
+      '在"查询"页的 SQL 编辑器里写只读 SQL（仅 SELECT），或用"构建器"可视化搭建，然后点击"运行"。"保存 SQL"可以保存当前查询，"最近运行"可以复用之前跑过的查询。',
   },
   {
-    title: '浏览结果',
+    title: '浏览与编辑结果',
     description:
-      '在表格中排序、筛选和导出（CSV / Excel）。每个列头都会显示识别出的类型（数字 / 文本 / 布尔 / 日期）——点击类型标签即可修改。',
+      '在结果表格中排序、筛选、复制，或导出为 XLSX。"编辑表格"提供 AI 变换、列数据类型和计算列；"保存数据"把当前表格存为仪表盘中的快照。',
   },
   {
-    title: '用图表可视化',
+    title: '用图表呈现数据',
     description:
-      '打开 分析 → 图表，把结果变成柱状图、饼图、趋势图、散点图、直方图、箱线图或 KPI 卡片。选择 X 轴和 Y 轴（数值或分类），操作选项会根据 Y 列的类型自动调整。',
+      '"分析"页的"图表"可以手动绘图 —— 柱状、趋势、饼图、散点、直方图、箱线、SPC 等 —— 也可以让 AI 按描述出图。"仪表盘"页的"图表"则基于已保存的快照设计整块看板。',
   },
   {
-    title: '用脚本深入分析',
+    title: '用脚本分析，或让 AI 解读',
     description:
-      '打开"分析"标签页，编写 Python 或 JavaScript 脚本。脚本会针对表格中的所有行运行。用"复制输出"按钮复制脚本打印的内容。',
+      '"分析"页的"脚本"会对表格中的每一行运行 Python 或 JavaScript，"复制输出"可复制脚本打印的内容；"洞察"给出 AI 的数据解读（概览、关键发现、后续建议）；"深度分析"一次跑完整条流水线 —— 文字分析加图表与统计量。',
   },
   {
     title: '使用 AI 助手',
     description:
-      'AI 面板（可在"查询""分析""图表"标签页中打开）可以帮助你编写 SQL、构建脚本并解读数据。',
+      '顶栏的 ✨ 按钮可在任意标签页打开 AI 助手：对话用于通用问答；SQL 用于编写、解释、优化 SQL 并应用到编辑器；分析用于生成 Python 脚本；图表按描述出图。"导出报告"可把结果保存为 HTML 报告。',
+  },
+  {
+    title: '顶栏里的其他入口',
+    description:
+      '用 EN/中 切换界面语言，进入设置，到反馈板反馈问题或提出建议，查看定时任务或点击版本徽标检查更新。流程图、项目、问题解决都在"工具"菜单中。',
   },
 ]
 
@@ -744,7 +745,7 @@ function AppShell() {
   const [expandUpdatesTick, setExpandUpdatesTick] = useState(0)
   const [helpOpen, setHelpOpen] = useState(false)
   const [introOpen, setIntroOpen] = useState(false)
-  const [alexOpen, setAlexOpen] = useState(false)
+  const [alexShowOpen, setAlexShowOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [schedulesOpen, setSchedulesOpen] = useState(false)
   // Enabled schedules whose next fire time has already passed — drives the
@@ -973,8 +974,10 @@ function AppShell() {
   const closeHelp = useCallback(() => setHelpOpen(false), [])
   const openIntro = useCallback(() => setIntroOpen(true), [])
   const closeIntro = useCallback(() => setIntroOpen(false), [])
-  const openAlex = useCallback(() => setAlexOpen(true), [])
-  const closeAlex = useCallback(() => setAlexOpen(false), [])
+  // The voxel show runs full-screen inside the app window; an overlay keeps the
+  // WebGL animation in context instead of handing it to another browser.
+  const openAlexShow = useCallback(() => setAlexShowOpen(true), [])
+  const closeAlexShow = useCallback(() => setAlexShowOpen(false), [])
   // ---- Schedules: due badge + the board's open/close pair ----
   // A schedule fires inside this app's own process (there is no server once the
   // window closes), so the board reads the same list the runner ticks against.
@@ -1210,15 +1213,15 @@ function AppShell() {
             component="img"
             src="/alex.ico"
             alt="Alex"
-            onClick={openAlex}
+            onClick={openAlexShow}
             role="button"
             tabIndex={0}
-            aria-label={t('bar.enlargeAlex')}
-            title={t('bar.enlargeAlex')}
+            aria-label={t('bar.openAlexShow')}
+            title={t('bar.openAlexShow')}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
-                openAlex()
+                openAlexShow()
               }
             }}
             sx={{
@@ -1373,18 +1376,6 @@ function AppShell() {
               sx={{ flexShrink: 0, ml: 0.5, color: 'primary.main' }}
             >
               <AutoAwesomeIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title={t('bar.connections')}>
-            <IconButton
-              aria-label={t('bar.connections')}
-              onClick={() => {
-                setSettingsSection('connections')
-                setView('settings')
-              }}
-              sx={{ flexShrink: 0, ml: 0.5, color: 'primary.main' }}
-            >
-              <StorageIcon />
             </IconButton>
           </Tooltip>
           {/* Feedback board: opens as a full-window overlay so a post can be
@@ -1621,115 +1612,8 @@ function AppShell() {
           backup in frontend/backup-intro/.) */}
       {introOpen && <IntroV2 onClose={closeIntro} />}
 
-      {/* Alex icon — clicking the brand-mark icon enlarges the little logo in a
-          small lightbox so it can be seen at full size. */}
-      <Dialog
-        open={alexOpen}
-        onClose={closeAlex}
-        maxWidth="sm"
-        fullWidth
-        slotProps={{
-          paper: {
-            sx: {
-              position: 'relative',
-              borderRadius: 3,
-              border: `1px solid ${BRAND.lightGray}`,
-              bgcolor: BRAND.paper,
-              backgroundImage: 'none',
-              p: { xs: 3, sm: 5 },
-              textAlign: 'center',
-            },
-          },
-        }}
-      >
-        {/* No close button: clicking anywhere outside the dialog (or Escape)
-            dismisses it via the Dialog's onClose. */}
-        {/* Picture left, sentences right on wide screens; stacked on phones. */}
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', sm: 'row' },
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: { xs: 2.5, sm: 4 },
-          }}
-        >
-          <Box
-            component="img"
-            src="/alex.ico"
-            alt="Alex"
-            sx={{
-              display: 'block',
-              flexShrink: 0,
-              width: { xs: '60vw', sm: 260 },
-              maxWidth: 340,
-              height: 'auto',
-              borderRadius: '50%',
-              bgcolor: '#ffffff',
-              p: 1.5,
-              boxShadow: `0 0 0 3px ${BRAND.clay}33, 0 12px 40px rgba(217, 119, 87, 0.28)`,
-            }}
-          />
-          {/* All English lines first, then all Chinese lines, with a gap
-              between the two groups. */}
-          <Box
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              display: 'grid',
-              gap: { xs: 2.5, sm: 3 },
-              textAlign: { xs: 'center', sm: 'left' },
-            }}
-          >
-            <Box
-              component="ul"
-              sx={{
-                listStyle: 'none',
-                m: 0,
-                p: 0,
-                display: 'grid',
-                gap: 1,
-              }}
-            >
-              {ALEX_MOTTOS.map(({ en }) => (
-                <Typography
-                  key={en}
-                  component="li"
-                  variant="body1"
-                  sx={{ color: 'black', whiteSpace: 'nowrap', fontSize: { xs: '0.9rem', sm: '1rem' } }}
-                >
-                  {en}
-                </Typography>
-              ))}
-            </Box>
-            <Box
-              component="ul"
-              sx={{
-                listStyle: 'none',
-                m: 0,
-                p: 0,
-                display: 'grid',
-                gap: 1,
-              }}
-            >
-              {ALEX_MOTTOS.map(({ zh }) => (
-                <Typography
-                  key={zh}
-                  component="li"
-                  variant="body1"
-                  sx={{
-                    color: 'black',
-                    letterSpacing: 3,
-                    fontSize: { xs: '0.95rem', sm: '1.15rem' },
-                  }}
-                >
-                  {zh}
-                </Typography>
-              ))}
-            </Box>
-          </Box>
-        </Box>
-      </Dialog>
+      {/* Alex voxel show — full-screen overlay, closed with Escape or its button. */}
+      {alexShowOpen && <AlexShow onClose={closeAlexShow} />}
 
       {/* First-run / replay step-by-step guide (overlay) */}
       <GuidedTour runToken={tourRun} gotoView={setView} gotoSection={setSettingsSection} />

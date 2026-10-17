@@ -1,5 +1,5 @@
 {
-  "published": "2026-10-14T09:51:27",
+  "published": "2026-10-17T17:10:54",
   "templates": [
     {
       "name": "analyze-AOI-defects.py",
@@ -297,6 +297,23 @@
         "label": "Laminate Analysis — Statistical & Capability Summary",
         "size": "12.1 MB"
       }
+    },
+    {
+      "name": "break reminder.py",
+      "stem": "break reminder",
+      "title": "Break Reminder",
+      "applies_to": "No query needed — the reminder runs on its own",
+      "description": "Shows the “Time to take a break!” card, for dropping on a schedule to step away from the screen.",
+      "details": {
+        "outputs": [
+          "A rounded, always-on-top Windows card with a coffee icon, a short message and a Take break button",
+          "The card is drawn by PowerShell in its own window, so the app keeps working while it is on screen",
+          "Closed with the Take break button or the Escape key"
+        ]
+      },
+      "size": "11 KB",
+      "updated": "2026-10-16",
+      "example": null
     }
   ]
 }

@@ -69,7 +69,13 @@
     "optional": "Optional columns",
     "outputs": "What it outputs",
     "noDetails": "No extra details published for this template.",
-    "updated": "Updated {{date}}"
+    "updated": "Updated {{date}}",
+    "groupEmpty": "No templates in this group yet.",
+    "groups": {
+      "existing": "Existing Data Analysis",
+      "sql": "SQL Embedded Analysis",
+      "reminder": "Reminder Popup"
+    }
   },
   "examples": {
     "overview": "Overview & basic statistics",

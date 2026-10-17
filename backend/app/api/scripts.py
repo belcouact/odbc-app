@@ -32,7 +32,7 @@ from urllib.parse import quote
 
 import pyodbc
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app import logging_utils, storage, update
@@ -60,6 +60,15 @@ def _templates_dir() -> Path:
 
 TEMPLATES_DIR = _templates_dir()
 
+# Local mirror of the published catalog (``publish_templates.py`` writes it next
+# to the backend).  Used when the bucket cannot be read, so the picker still
+# shows titles / descriptions / sizes instead of bare file names.
+LOCAL_CATALOG = TEMPLATES_DIR.parent / "templates.json"
+# Sample dashboards shipped with the app; served instead of the bucket copy when
+# present so the View tab opens instantly and also works offline.
+EXAMPLES_DIR = TEMPLATES_DIR.parent / "templates" / "examples"
+EXAMPLE_TIMEOUT_SECONDS = 60
+
 # Published templates live in the ``templates/`` folder of the same public
 # bucket that serves app updates (see app/update.py).  A storage URL cannot
 # list a folder, so ``publish_templates.py`` also uploads a catalog the app
@@ -68,6 +77,10 @@ TEMPLATES_DIR = _templates_dir()
 TEMPLATE_PREFIX = "templates"
 CATALOG_NAME = f"{TEMPLATE_PREFIX}/templates.json"
 CATALOG_TTL_SECONDS = 300
+# A failed read is retried sooner than a successful one: the network here drops
+# bucket requests intermittently and the picker must not stay incomplete for a
+# full success TTL after a single hiccup.
+CATALOG_ERROR_TTL_SECONDS = 60
 REMOTE_TIMEOUT_SECONDS = 8
 
 # Guards both the catalog and the "is the bucket readable?" answer, which is
@@ -90,14 +103,25 @@ def _public_base() -> str | None:
     return source.rsplit("/", 1)[0]
 
 
-def _fetch_text(url: str) -> str | None:
-    """Body of a public object, or None when it cannot be fetched."""
+def _fetch_bytes(url: str, timeout: int = REMOTE_TIMEOUT_SECONDS) -> bytes | None:
+    """Bytes of a public object, or None when it cannot be fetched.
+
+    Goes through the update module's resilient opener: on corporate networks
+    most direct TLS handshakes to the bucket are reset, and its retry /
+    proxy-route fallback is what makes the catalog readable at all.
+    """
     request = urllib.request.Request(url, headers={"User-Agent": "ODBCQueryApp"})
     try:
-        with urllib.request.urlopen(request, timeout=REMOTE_TIMEOUT_SECONDS) as response:
-            return response.read().decode("utf-8", "replace")
+        with update._urlopen_with_fallback(request, timeout=timeout, attempts_per_route=1) as response:
+            return response.read()
     except (OSError, ValueError):
         return None
+
+
+def _fetch_text(url: str) -> str | None:
+    """Body of a public object, or None when it cannot be fetched."""
+    raw = _fetch_bytes(url)
+    return None if raw is None else raw.decode("utf-8", "replace")
 
 
 def _string_list(value: object) -> list[str]:
@@ -115,12 +139,13 @@ def _example_entry(entry: dict, base: str) -> dict | None:
     update manifest, exactly like the template sources).
     """
     raw = entry.get("example")
-    if not isinstance(raw, dict):
+    if not isinstance(raw, dict) or not base:
         return None
     obj = str(raw.get("object") or "").strip().lstrip("/")
     if not obj:
         return None
     return {
+        "object": obj,
         "url": f"{base}/{quote(obj, safe='/')}",
         "label": str(raw.get("label") or "").strip(),
     }
@@ -158,7 +183,8 @@ def _remote_catalog() -> list[dict] | None:
         return None
     now = time.monotonic()
     with _catalog_lock:
-        if now - _catalog_cache["at"] < CATALOG_TTL_SECONDS:
+        ttl = CATALOG_TTL_SECONDS if _catalog_cache["items"] is not None else CATALOG_ERROR_TTL_SECONDS
+        if now - _catalog_cache["at"] < ttl:
             return _catalog_cache["items"]
 
     items: list[dict] | None = None
@@ -180,6 +206,29 @@ def _remote_catalog() -> list[dict] | None:
     return items
 
 
+def _local_catalog() -> list[dict] | None:
+    """The bundled catalog copy, or None when it is missing or unreadable.
+
+    ``backend/templates.json`` mirrors the last publish, so the picker keeps
+    full titles / descriptions / sizes when the bucket is unreachable.  Entries
+    with no bundled ``.py`` are dropped — they could not be loaded anyway.
+    """
+    try:
+        entries = json.loads(LOCAL_CATALOG.read_text(encoding="utf-8"))["templates"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(entries, list) or not TEMPLATES_DIR.is_dir():
+        return None
+    bundled = {file.stem for file in TEMPLATES_DIR.glob("*.py")}
+    base = _public_base() or ""
+    items = [
+        item
+        for item in (_catalog_item(entry, base) for entry in entries if isinstance(entry, dict))
+        if item is not None and item["name"] in bundled
+    ]
+    return items or None
+
+
 def _remote_template_text(stem: str) -> str | None:
     """A published template's source, or None to fall back to the bundled copy."""
     catalog = _remote_catalog()
@@ -194,12 +243,16 @@ def list_script_templates() -> list[dict]:
     """List the template scripts offered in the Script tab's picker.
 
     Published templates win over the ones bundled with the app, so a template
-    fix reaches every user as soon as it is published; the ``custom script``
-    folder is the fallback when the bucket cannot be read.
+    fix reaches every user as soon as it is published; when the bucket cannot
+    be read the bundled catalog copy is used, and finally the ``custom script``
+    folder alone (names only).
     """
     published = _remote_catalog()
     if published is not None:
         return published
+    local = _local_catalog()
+    if local is not None:
+        return local
     if not TEMPLATES_DIR.is_dir():
         return []
     return [
@@ -226,9 +279,38 @@ def get_script_template(name: str) -> dict:
     return {"name": safe_name, "filename": path.name, "content": path.read_text(encoding="utf-8")}
 
 
+def _template_example(stem: str) -> dict | None:
+    """The sample dashboard advertised for a template, from either catalog."""
+    for item in list_script_templates():
+        if item["name"] == stem and item.get("example"):
+            return item["example"]
+    return None
+
+
+@router.get("/scripts/template-example/{name}")
+def get_script_template_example(name: str) -> HTMLResponse:
+    """Serve a template's sample dashboard so a browser renders it.
+
+    Supabase rewrites HTML objects to ``text/plain`` with ``nosniff`` (it only
+    keeps HTML on custom domains), so opening the bucket URL shows the page
+    source.  Streaming it through the app gives it a real ``text/html`` type;
+    a copy shipped with the app is preferred over downloading it.
+    """
+    safe_name = Path(name).name
+    example = _template_example(safe_name)
+    if example is None:
+        raise HTTPException(status_code=404, detail=f"No sample dashboard for '{safe_name}'")
+    local = EXAMPLES_DIR / Path(str(example.get("object") or "")).name
+    if local.is_file():
+        return HTMLResponse(content=local.read_bytes(), media_type="text/html")
+    raw = _fetch_bytes(example["url"], timeout=EXAMPLE_TIMEOUT_SECONDS)
+    if raw is None:
+        raise HTTPException(status_code=502, detail="Could not download the sample dashboard")
+    return HTMLResponse(content=raw, media_type="text/html")
+
+
 class ScriptRunRequest(BaseModel):
     """Body for POST /scripts/run."""
-
     language: str = Field(pattern="^(python|javascript)$")
     script: str = Field(min_length=1)
     query: Optional[queries_api.QueryDef] = None

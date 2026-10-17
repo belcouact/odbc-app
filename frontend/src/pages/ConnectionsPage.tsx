@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
 import ErrorIcon from '@mui/icons-material/Error'
@@ -778,7 +779,26 @@ export default function ConnectionsPage() {
 
       {/* Add / Edit dialog */}
       <Dialog open={dialogOpen} onClose={closeDialog}>
-        <DialogTitle>{editing ? t('dialog.editTitle') : t('dialog.addTitle')}</DialogTitle>
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+            pr: 1,
+          }}
+        >
+          {editing ? t('dialog.editTitle') : t('dialog.addTitle')}
+          <IconButton
+            onClick={closeDialog}
+            aria-label={t('dialog.close')}
+            size="small"
+            disabled={saving || testing}
+            sx={{ mr: -0.5 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
         <DialogContent dividers sx={{ pt: 2 }}>
           <Stack spacing={2}>
             <TextField
@@ -1131,7 +1151,25 @@ export default function ConnectionsPage() {
 
       {/* Detect ODBC DSNs */}
       <Dialog open={detectOpen} onClose={() => setDetectOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{t('detect.title')}</DialogTitle>
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+            pr: 1,
+          }}
+        >
+          {t('detect.title')}
+          <IconButton
+            onClick={() => setDetectOpen(false)}
+            aria-label={t('detect.close')}
+            size="small"
+            sx={{ mr: -0.5 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
         <DialogContent dividers sx={{ pt: 2 }}>
           {detecting ? (
             <Box sx={{ py: 3 }}>

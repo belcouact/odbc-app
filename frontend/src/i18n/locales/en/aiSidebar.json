@@ -25,7 +25,7 @@
     },
     "insight": {
       "label": "Insights",
-      "hint": "Generate an AI insight card from the loaded grid — overview, key findings, anomalies and next steps."
+      "hint": "Generate an AI insight card from the loaded grid — overview, key findings and next steps."
     },
     "analyze": {
       "label": "Deep Analysis",
@@ -47,7 +47,7 @@
     "sql": "e.g. “Explain what this SQL does”, “Fix the error: …”, or “Write a query for …”.",
     "script": "e.g. “Write a Python script that groups rows by region and prints the total amount per region.”",
     "chart": "e.g. “A bar chart of total amount per region, title “Sales by region”, blue bars.” — or just ask, e.g. “What chart type fits this data?”",
-    "insight": "Run a query, then generate an AI insight card — an overview of the data, key findings, anomalies and suggested next steps. Add an optional focus above to steer the analysis.",
+    "insight": "Run a query, then generate an AI insight card — an overview of the data, key findings and suggested next steps. Add an optional focus above to steer the analysis.",
     "analyze": "Describe your analysis goal above (optional), then run the pipeline — a written analysis plus charts and statistics for the loaded grid. Follow-up questions keep the same data context."
   },
   "insight": {
@@ -72,7 +72,8 @@
     "statsTitle": "Statistical output",
     "questionsTitle": "Follow-up questions",
     "goalLabel": "Analysis goal (optional)",
-    "goalPlaceholder": "e.g. find the main drivers of regional sales and flag data-quality issues…",
+    "goalPlaceholder": "e.g. find the main drivers of regional sales and how they changed over time…",
+    "followupPlaceholder": "e.g. why did one region drop last month? Follow-up questions keep the same data context.",
     "run": "Run analysis",
     "rerun": "Re-run analysis",
     "copy": "Copy",

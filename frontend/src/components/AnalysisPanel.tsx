@@ -17,7 +17,6 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import Divider from '@mui/material/Divider'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
@@ -35,73 +34,20 @@ import MarkdownContent from './MarkdownContent'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
 
-/** Persisted results reuse the keys the old AI sidebar tabs used, so anything
- *  generated before the move still shows up on the Analyze page. */
-const INSIGHT_STORAGE_KEY = 'ai_insight_card_v1'
-const ANALYZE_STORAGE_KEY = 'ai_analyze_pipeline_v1'
-/** Follow-up conversation of the Deep analysis tab (its own storage). */
-const ANALYZE_CHAT_STORAGE_KEY = 'ai_analyze_chat_v1'
-/** At most this many follow-up messages are kept (storage sanity cap). */
-const MAX_STORED_MESSAGES = 100
-
-/** Restore the persisted insight card, ignoring anything malformed. */
-function loadStoredInsight(): AiInsightResult | null {
-  try {
-    const raw = localStorage.getItem(INSIGHT_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<AiInsightResult>
-    if (typeof parsed?.insights !== 'string' || !parsed.profile) return null
-    // Cards persisted before guided questions existed lack this field.
-    const questions = Array.isArray(parsed.questions)
-      ? parsed.questions.filter((q): q is string => typeof q === 'string')
-      : []
-    return { insights: parsed.insights, questions, profile: parsed.profile }
-  } catch {
-    return null
-  }
-}
-
-/** Restore the persisted analysis pipeline result, ignoring anything malformed. */
-function loadStoredAnalyze(): AiAnalyzePipelineResult | null {
-  try {
-    const raw = localStorage.getItem(ANALYZE_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<AiAnalyzePipelineResult>
-    if (typeof parsed?.narrative !== 'string' || !parsed.profile) return null
-    return {
-      narrative: parsed.narrative,
-      questions: Array.isArray(parsed.questions)
-        ? parsed.questions.filter((q): q is string => typeof q === 'string')
-        : [],
-      charts: Array.isArray(parsed.charts) ? (parsed.charts as AiDashboardChart[]) : [],
-      stats: parsed.stats ?? null,
-      profile: parsed.profile,
-    }
-  } catch {
-    return null
-  }
-}
-
-/** Restore the persisted follow-up conversation, sanitizing anything unexpected. */
-function loadStoredAnalyzeChat(): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(ANALYZE_CHAT_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .filter(
-        (m): m is ChatMessage =>
-          !!m &&
-          typeof m === 'object' &&
-          ((m as ChatMessage).role === 'user' || (m as ChatMessage).role === 'assistant') &&
-          typeof (m as ChatMessage).content === 'string',
-      )
-      .slice(-MAX_STORED_MESSAGES)
-  } catch {
-    return []
-  }
-}
+/**
+ * Session-scoped result caches.
+ *
+ * The Analyze page swaps panels on every tab switch, which unmounts them, so
+ * their results are parked here: they survive moving between tabs (and pages)
+ * but not an app restart. Nothing is written to localStorage — a card generated
+ * for one grid would otherwise be restored later and describe data that no
+ * longer matches what is on screen.
+ */
+const resultCache: {
+  insight: AiInsightResult | null
+  analyze: AiAnalyzePipelineResult | null
+  chat: ChatMessage[]
+} = { insight: null, analyze: null, chat: [] }
 
 /** Transient success notice (auto-hides) shared by the three panels. */
 function useNotice() {
@@ -519,22 +465,17 @@ async function buildAnalyzeReportHtml(
 /** Insights tab: the AI insight card with its generate/copy/export controls. */
 export function InsightPanel() {
   const { t } = useTranslation('aiSidebar')
-  const [insight, setInsight] = useState<AiInsightResult | null>(loadStoredInsight)
+  // Results live in memory only: they describe the grid as it was at run time,
+  // so keeping them past the session (or past a data change) would mislead.
+  const [insight, setInsight] = useState<AiInsightResult | null>(resultCache.insight)
+  useEffect(() => {
+    resultCache.insight = insight
+  }, [insight])
   const [loading, setLoading] = useState(false)
   const [exportingReport, setExportingReport] = useState(false)
   const [focus, setFocus] = useState('')
   const [error, setError] = useState<string | null>(null)
   const { notice, show } = useNotice()
-
-  // Persist the insight card so the last analysis survives app restarts.
-  useEffect(() => {
-    try {
-      if (insight) localStorage.setItem(INSIGHT_STORAGE_KEY, JSON.stringify(insight))
-      else localStorage.removeItem(INSIGHT_STORAGE_KEY)
-    } catch {
-      // Storage unavailable — the in-memory card still works normally.
-    }
-  }, [insight])
 
   /** Generate (or regenerate) the insight card for the currently loaded grid. */
   const handleGenerate = async () => {
@@ -633,7 +574,7 @@ export function InsightPanel() {
             }}
             fullWidth
             multiline
-            minRows={1}
+            minRows={2}
             placeholder={t('insight.focusPlaceholder')}
           />
         }
@@ -730,42 +671,27 @@ export function InsightPanel() {
 export function AnalyzePanel() {
   const { t } = useTranslation('aiSidebar')
   const snapshot = getWorkspaceSnapshot()
-  const [analyzeResult, setAnalyzeResult] = useState<AiAnalyzePipelineResult | null>(loadStoredAnalyze)
+  const [analyzeResult, setAnalyzeResult] = useState<AiAnalyzePipelineResult | null>(
+    resultCache.analyze,
+  )
+  useEffect(() => {
+    resultCache.analyze = analyzeResult
+  }, [analyzeResult])
   const [analyzeLoading, setAnalyzeLoading] = useState(false)
   const [exportingReport, setExportingReport] = useState(false)
-  const [messages, setMessages] = useState<ChatMessage[]>(loadStoredAnalyzeChat)
-  const [goal, setGoal] = useState('')
-  const [input, setInput] = useState('')
+  // Results and the follow-up thread live in memory only: they describe the grid
+  // as it was at run time, so keeping them past the session (or past a data change)
+  // would mislead. The session cache keeps them across tab switches.
+  const [messages, setMessages] = useState<ChatMessage[]>(resultCache.chat)
+  useEffect(() => {
+    resultCache.chat = messages
+  }, [messages])
+  // One box drives both actions: before the pipeline has run it is the analysis
+  // goal, afterwards it is a follow-up message on the same data context.
+  const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { notice, show } = useNotice()
-
-  // Persist the pipeline result so the last run survives app restarts.
-  useEffect(() => {
-    try {
-      if (analyzeResult) localStorage.setItem(ANALYZE_STORAGE_KEY, JSON.stringify(analyzeResult))
-      else localStorage.removeItem(ANALYZE_STORAGE_KEY)
-    } catch {
-      // Storage unavailable — the in-memory result still works normally.
-    }
-  }, [analyzeResult])
-
-  // Persist the follow-up conversation so previous context survives restarts.
-  useEffect(() => {
-    try {
-      localStorage.setItem(ANALYZE_CHAT_STORAGE_KEY, JSON.stringify(messages))
-    } catch {
-      // Storage full/unavailable — keep only the most recent messages once.
-      try {
-        localStorage.setItem(
-          ANALYZE_CHAT_STORAGE_KEY,
-          JSON.stringify(messages.slice(-50)),
-        )
-      } catch {
-        // Ignore — the in-memory conversation still works normally.
-      }
-    }
-  }, [messages])
 
   /** Run the one-shot analysis pipeline (narrative + charts + stats) on the grid. */
   const handleRunPipeline = async () => {
@@ -779,13 +705,14 @@ export function AnalyzePanel() {
     setAnalyzeLoading(true)
     try {
       const result = await api.aiAnalyzePipeline({
-        goal: goal.trim(),
+        goal: draft.trim(),
         connectionId: snapshotNow.connectionId || undefined,
         table: snapshotNow.table || undefined,
         columns: snapshotNow.columns.map((name) => ({ name, type: '' })),
         rows: snapshotNow.rows,
       })
       setAnalyzeResult(result)
+      setDraft('')
     } catch (err) {
       setError(aiErrorText(err, t))
     } finally {
@@ -820,13 +747,13 @@ export function AnalyzePanel() {
 
   /** Send a follow-up question (streamed, same data context as the pipeline). */
   const sendFollowup = async (promptOverride?: string) => {
-    const text = (promptOverride ?? input).trim()
+    const text = (promptOverride ?? draft).trim()
     if (!text || streaming) return
     const snapshotNow = getWorkspaceSnapshot()
     const conversation: ChatMessage[] = [...messages, { role: 'user', content: text }]
     // Append an empty assistant placeholder that fills in as chunks stream in.
     setMessages([...conversation, { role: 'assistant', content: '' }])
-    setInput('')
+    setDraft('')
     setError(null)
     setStreaming(true)
     /** Grow the trailing assistant message with the next streamed chunk. */
@@ -875,6 +802,11 @@ export function AnalyzePanel() {
     streaming && lastMessage?.role === 'assistant' && lastMessage.content === ''
 
   const noData = snapshot.rows.length === 0 || snapshot.columns.length === 0
+  /** A run or a follow-up thread exists — the single box now continues the conversation. */
+  const hasContext = analyzeResult !== null || messages.length > 0
+  /** Typing turns the single control into Send; an empty box runs (or re-runs) the pipeline. */
+  const willSend = hasContext && draft.trim().length > 0
+  const willRun = !willSend
 
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
@@ -884,65 +816,38 @@ export function AnalyzePanel() {
       <ControlRow
         field={
           <TextField
-            label={t('analyze.goalLabel')}
-            value={goal}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setGoal(event.target.value)}
+            label={hasContext ? t('input.message') : t('analyze.goalLabel')}
+            value={draft}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
-                void handleRunPipeline()
+                void (willSend ? sendFollowup() : handleRunPipeline())
               }
             }}
             fullWidth
             multiline
             minRows={2}
-            placeholder={t('analyze.goalPlaceholder')}
+            placeholder={hasContext ? t('analyze.followupPlaceholder') : t('analyze.goalPlaceholder')}
           />
         }
         action={
           <Button
             variant="contained"
-            onClick={() => void handleRunPipeline()}
-            disabled={analyzeLoading || streaming || noData}
+            onClick={() => void (willSend ? sendFollowup() : handleRunPipeline())}
+            disabled={analyzeLoading || streaming || (willRun && noData)}
             startIcon={
-              analyzeLoading ? <CircularProgress size={16} color="inherit" /> : <PsychologyOutlinedIcon />
+              (willSend ? streaming : analyzeLoading) ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : willSend ? (
+                <AutoAwesomeIcon />
+              ) : (
+                <PsychologyOutlinedIcon />
+              )
             }
             sx={{ minHeight: 48, flexShrink: 0, width: { xs: '100%', sm: 'auto' } }}
           >
-            {analyzeResult ? t('analyze.rerun') : t('analyze.run')}
-          </Button>
-        }
-      />
-      <Divider />
-      <ControlRow
-        field={
-          <TextField
-            label={t('input.message')}
-            value={input}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                void sendFollowup()
-              }
-            }}
-            fullWidth
-            multiline
-            minRows={2}
-            placeholder={t('empty.analyze')}
-          />
-        }
-        action={
-          <Button
-            variant="outlined"
-            onClick={() => void sendFollowup()}
-            disabled={streaming || analyzeLoading || !input.trim()}
-            startIcon={
-              streaming ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />
-            }
-            sx={{ minHeight: 48, flexShrink: 0, width: { xs: '100%', sm: 'auto' } }}
-          >
-            {t('send')}
+            {willSend ? t('send') : analyzeResult ? t('analyze.rerun') : t('analyze.run')}
           </Button>
         }
       />

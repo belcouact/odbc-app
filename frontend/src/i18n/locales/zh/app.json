@@ -12,7 +12,8 @@
   },
   "bar": {
     "appTitle": "ODBC查询",
-    "enlargeAlex": "放大 Alex 图标",
+    "openAlexShow": "打开 Alex 体素秀",
+    "closeAlexShow": "关闭",
     "watchIntro": "观看片头介绍",
     "aiAssistant": "打开 AI 助手",
     "connections": "打开连接设置",

@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ODBC Query App — 54s Promo</title>
+<style>
+:root{--navy:#081a2d;--teal:#14B8A6;--teal2:#2dd4bf;--blue:#3B82F6;--sky:#7dd3fc;--ink:#0f172a;--ink2:#334155;--mute:#64748b;--line:#e5eaf0;--soft:#f6f8fb}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#000}
+body{font-family:"Lora","LXGW WenKai Screen","Kaiti SC",STKaiti,KaiTi,"楷体",Georgia,"Times New Roman",serif;color:#fff;-webkit-font-smoothing:antialiased}
+/* ---------- bilingual ---------- */
+body:not(.L-en) .le{display:none}
+body.L-en .lz{display:none}
+body.L-en .sub2{display:none}
+body.L-en .cap .hd{font-size:58px}
+body.L-en .cap{width:610px}
+.mono{font-family:"Cascadia Code",Consolas,"JetBrains Mono","DejaVu Sans Mono",monospace}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center;overflow:hidden;
+  background:radial-gradient(1500px 900px at 70% 25%,#123b63 0%,#081a2d 50%,#030b16 100%)}
+#bg{position:absolute;inset:0}
+.floor{position:absolute;left:-20%;right:-20%;bottom:-10%;height:55%;
+  background-image:linear-gradient(rgba(125,211,252,.10) 1.5px,transparent 1.5px),linear-gradient(90deg,rgba(125,211,252,.10) 1.5px,transparent 1.5px);
+  background-size:80px 80px;transform:perspective(700px) rotateX(62deg);transform-origin:bottom;
+  -webkit-mask-image:linear-gradient(to top,#000 0%,transparent 85%);mask-image:linear-gradient(to top,#000 0%,transparent 85%)}
+.orb{position:absolute;border-radius:50%}
+.scene{position:absolute;inset:0;opacity:0}
+.abs{position:absolute}
+.center{position:absolute;left:0;right:0;text-align:center}
+.cap{position:absolute;left:140px;top:290px;width:600px}
+.kick{font-size:22px;letter-spacing:.28em;color:var(--teal2);font-weight:700}
+.kick b{display:inline-block;width:46px;height:3px;background:var(--teal2);vertical-align:middle;margin-right:14px}
+.hd{font-size:66px;font-weight:700;line-height:1.15;margin:22px 0 22px;letter-spacing:-.01em}
+.hd em{font-style:normal;background:linear-gradient(90deg,#7dd3fc,#2dd4bf);-webkit-background-clip:text;background-clip:text;color:transparent}
+.bd{font-size:26px;line-height:1.6;color:#b6c8db}
+.en{font-size:19px;letter-spacing:.06em;color:#6f8aa6;margin-top:18px}
+.win{position:absolute;background:#fff;border-radius:18px;overflow:hidden;color:var(--ink);
+  box-shadow:0 40px 100px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08)}
+.tbar{height:46px;background:#f3f6fa;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px;gap:10px;font-size:15px;color:var(--ink2);font-weight:600}
+.tbar .sp{flex:1}.tbar .wc{color:#94a3b8;letter-spacing:14px;font-weight:400}
+.chip{display:inline-flex;align-items:center;gap:10px;padding:12px 22px;border-radius:999px;font-size:22px;font-weight:600;white-space:nowrap}
+.dchip{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#e2e8f0}
+.tchip{background:rgba(20,184,166,.16);border:1px solid rgba(45,212,191,.5);color:#99f6e4}
+.big{font-size:100px;font-weight:800;letter-spacing:-.02em}
+.sqlwall{position:absolute;left:0;right:0;top:0;bottom:0;font-size:22px;line-height:1.55;color:#5b7a99;white-space:pre;padding:60px 120px;overflow:hidden}
+.row{display:grid;grid-template-columns:1.2fr .55fr 1.5fr .7fr 1.1fr;height:52px;align-items:center;padding:0 24px;font-size:19px;border-bottom:1px solid #eef2f6;background:#fff}
+.row:nth-child(even){background:#fafbfd}
+.gh{background:var(--soft);font-weight:700;color:var(--ink2);font-size:17px}
+.tag{display:inline-block;padding:3px 13px;border-radius:999px;font-size:16px;white-space:nowrap}
+.t0{background:#e0f2fe;color:#0369a1}.t1{background:#ccfbf1;color:#0f766e}.t2{background:#ede9fe;color:#6d28d9}.t3{background:#fef3c7;color:#b45309}.t4{background:#fce7f3;color:#be185d}.t5{background:#f1f5f9;color:#475569}
+.dim{color:#94a3b8}
+.tile{position:absolute;width:196px;height:150px;border-radius:16px;background:#fff;color:var(--ink2);box-shadow:0 14px 34px rgba(0,0,0,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-size:18px;font-weight:600}
+.tile svg{width:120px;height:78px}
+.card{position:absolute;background:#fff;border-radius:14px;color:var(--ink);box-shadow:0 10px 30px rgba(0,0,0,.25);padding:18px 20px}
+.card h4{font-size:17px;color:var(--mute);font-weight:600;margin-bottom:8px}
+.kv{font-size:46px;font-weight:700}
+.field{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.field label{width:120px;font-size:19px;color:var(--mute);font-weight:600}
+.field .in{flex:1;height:48px;border:1.5px solid var(--line);border-radius:10px;display:flex;align-items:center;padding:0 16px;font-size:19px;color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;font-weight:700;color:#fff;background:linear-gradient(90deg,var(--blue),var(--teal))}
+pre.code{white-space:pre;font-size:20px;line-height:1.7}
+.kw{color:#7dd3fc}.str{color:#fcd34d}.num{color:#f9a8d4}.fn{color:#5eead4}.cm{color:#64748b}
+.feat{position:absolute;width:340px;height:190px;border-radius:18px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);padding:22px 24px}
+.feat .ic{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#3B82F6,#14B8A6);margin-bottom:14px}
+.feat b{display:block;font-size:24px}
+.feat span{font-size:17px;color:#9fb3c8}
+.layer{position:absolute;left:770px;width:880px;height:96px;border-radius:16px;display:flex;align-items:center;gap:22px;padding:0 30px;font-size:26px;font-weight:700;border:1px solid rgba(255,255,255,.18)}
+.layer small{font-size:18px;font-weight:500;color:#bcd0e3;margin-left:auto}
+/* ---------- AI insights scene ---------- */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.08)}
+.tab{padding:9px 16px;border-radius:10px;font-size:16px;font-weight:600;color:#8ba3bd;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07)}
+.tab.on{color:#04211c;background:linear-gradient(135deg,#7dd3fc,#2dd4bf);border-color:transparent}
+.aiq{margin:22px 24px 0 auto;width:66%;padding:15px 18px;border-radius:16px 16px 4px 16px;background:#3B82F6;color:#fff;font-size:18px;line-height:1.5}
+.aiic{margin:18px 24px;border-radius:16px;background:#13263a;border:1px solid rgba(45,212,191,.22);padding:18px 22px}
+.aiih{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:700;color:#99f6e4;margin-bottom:12px}
+.aiir{display:flex;gap:14px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06);font-size:16.5px;line-height:1.45;color:#cfe0f0}
+.aiir b{flex:0 0 104px;color:#7d97b2;font-weight:600}
+.aiir.am b{color:#fca5a5}
+.aiok{position:absolute;left:24px;bottom:22px;display:inline-flex;align-items:center;gap:10px;padding:11px 18px;border-radius:999px;font-size:16px;font-weight:600;background:rgba(20,184,166,.15);border:1px solid rgba(45,212,191,.5);color:#99f6e4}
+.airow{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}
+.airow b{display:inline-flex;align-items:center;gap:9px;padding:10px 16px;border-radius:999px;font-size:16.5px;font-weight:600;color:#dbe7f3;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16)}
+.airow b i{flex:0 0 9px;width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,#3B82F6,#14B8A6)}
+#hud{position:absolute;left:140px;right:140px;bottom:60px;display:flex;gap:16px;opacity:0}
+.hs{flex:1;font-size:17px;color:#6f8aa6;letter-spacing:.08em}
+.hs i{display:block;height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin-bottom:12px;overflow:hidden}
+.hs i u{display:block;height:100%;width:0;background:linear-gradient(90deg,#3B82F6,#2dd4bf)}
+.hs.on{color:#fff}
+#brandMini{position:absolute;left:140px;top:64px;display:flex;align-items:center;gap:14px;font-size:24px;font-weight:700;opacity:0}
+
+/* ---------- UI controls ---------- */
+.ui{position:fixed;z-index:9;display:flex;gap:10px;align-items:center;font:13px "Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;color:#cbd5e1;transition:opacity .4s}
+#top{top:16px;right:18px}
+#ctl{left:16px;bottom:14px}
+.seg{display:flex;background:rgba(8,20,36,.6);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:3px;backdrop-filter:blur(8px)}
+.seg button{all:unset;cursor:pointer;padding:7px 15px;border-radius:999px;font-size:13px;color:#cbd5e1}
+.seg button.on{background:#fff;color:#081a2d;font-weight:700}
+.pill{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:999px;background:rgba(8,20,36,.6);border:1px solid rgba(255,255,255,.16);color:#e2e8f0;font-size:13px;backdrop-filter:blur(8px)}
+.pill:hover{background:rgba(255,255,255,.14)}
+.pill.on{border-color:rgba(45,212,191,.7);color:#99f6e4;box-shadow:0 0 0 3px rgba(45,212,191,.15)}
+.pill svg{width:16px;height:16px}
+.eq{display:inline-flex;gap:2px;align-items:flex-end;height:12px}
+.eq i{width:3px;background:#2dd4bf;border-radius:1px;height:3px}
+.pill.on.playing .eq i{animation:eq .8s ease-in-out infinite}
+.eq i:nth-child(2){animation-delay:.2s!important}.eq i:nth-child(3){animation-delay:.4s!important}
+@keyframes eq{0%,100%{height:3px}50%{height:12px}}
+#sk{width:320px;accent-color:#2dd4bf}
+#tm{min-width:46px;font-variant-numeric:tabular-nums}
+#hint{position:fixed;top:64px;right:18px;z-index:9;padding:8px 14px;border-radius:10px;background:rgba(20,184,166,.18);border:1px solid rgba(45,212,191,.5);color:#ccfbf1;font:13px "Segoe UI","Microsoft YaHei UI",system-ui;opacity:0;transition:opacity .4s;pointer-events:none}
+body.idle .ui{opacity:0}
+body.idle{cursor:none}
+.capture .ui,.capture #hint{display:none!important}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="bg" width="1920" height="1080"></canvas>
+  <div class="orb" id="orb1" style="width:760px;height:760px;background:radial-gradient(circle,rgba(20,184,166,.5) 0%,rgba(20,184,166,0) 65%);left:-260px;top:560px;opacity:.6"></div>
+  <div class="orb" id="orb2" style="width:900px;height:900px;background:radial-gradient(circle,rgba(59,130,246,.55) 0%,rgba(59,130,246,0) 65%);right:-300px;top:-380px;opacity:.6"></div>
+  <div class="floor" id="floor"></div>
+  <div id="scenes"></div>
+  <div id="brandMini"></div>
+  <div id="hud"></div>
+  <div id="flash" class="abs" style="inset:0;background:#fff;opacity:0;pointer-events:none"></div>
+</div>
+
+<div id="top" class="ui">
+  <div class="seg"><button data-l="zh">中文</button><button data-l="en">EN</button></div>
+  <button class="pill" id="snd" title="Sound / 音效"></button>
+</div>
+<div id="hint"></div>
+<div id="ctl" class="ui">
+  <button class="pill" id="pp">❚❚</button>
+  <button class="pill" id="rs" title="Restart">↺</button>
+  <input id="sk" type="range" min="0" max="54" step="0.01" value="0"><span id="tm">0.0s</span>
+</div>
+
+<script>
+/* ================= language ================= */
+const qs=new URLSearchParams(location.search);
+const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+let LANG=qs.get('lang')||store.get('promoLang')||((navigator.language||'').toLowerCase().startsWith('zh')?'zh':'en');
+const B=(zh,en)=>`<span class="lz">${zh}</span><span class="le">${en}</span>`;
+const TB=(zh,en)=>`<tspan class="lz">${zh}</tspan><tspan class="le">${en}</tspan>`;
+
+/* ================= timeline engine ================= */
+const DUR=54;
+const E={lin:p=>p,out:p=>1-Math.pow(1-p,3),in:p=>p*p*p,io:p=>p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2,
+  back:p=>{const c=1.7;return 1+(c+1)*Math.pow(p-1,3)+c*Math.pow(p-1,2)}};
+const TW=new Map(),FN=[],TY=[];
+const R=r=>typeof r==='string'?document.querySelector(r):r;
+const $=(s,r=document)=>R(r).querySelector(s),$$=(s,r=document)=>[...R(r).querySelectorAll(s)];
+const H=html=>{const d=document.createElement('div');d.innerHTML=html.trim();return d.firstElementChild;};
+function tw(el,t0,d,props,ease='out'){
+  if(typeof el==='string') el=$(el);
+  if(!el){console.warn('missing',t0);return;}
+  if(!TW.has(el)) TW.set(el,{});
+  const m=TW.get(el);
+  for(const k in props){(m[k]=m[k]||[]).push({t0,d,a:props[k][0],b:props[k][1],e:E[ease]});m[k].sort((x,y)=>x.t0-y.t0);}
+}
+const IN=(el,t,d=.6,dy=40,e='out')=>tw(el,t,d,{o:[0,1],y:[dy,0]},e);
+function fn(t0,t1,f){FN.push({t0,t1,f});}
+function val(list,t){let cur=null;for(const k of list){if(k.t0<=t)cur=k;else break;}
+  if(!cur) return list[0].a;const p=cur.d<=0?1:Math.min(1,(t-cur.t0)/cur.d);return cur.a+(cur.b-cur.a)*cur.e(p);}
+function render(t){
+  for(const [el,m] of TW){
+    const g=k=>m[k]?val(m[k],t):null;
+    const o=g('o'),x=g('x'),y=g('y'),s=g('s'),r=g('r'),sx=g('sx'),sy=g('sy'),bl=g('bl'),dash=g('dash');
+    if(o!==null){el.style.opacity=o;el.style.visibility=o<=0.001?'hidden':'visible';}
+    if(x!==null||y!==null||s!==null||r!==null||sx!==null||sy!==null)
+      el.style.transform=`translate(${x||0}px,${y||0}px) rotate(${r||0}deg) scale(${(s??1)*(sx??1)},${(s??1)*(sy??1)})`;
+    if(bl!==null) el.style.filter=bl>0.05?`blur(${bl}px)`:'none';
+    if(dash!==null) el.style.strokeDashoffset=dash;
+  }
+  for(const f of FN){const p=Math.max(0,Math.min(1,(t-f.t0)/(f.t1-f.t0)));f.f(p,t);}
+  drawBg(t);
+}
+function typer(el,str,t0,t1,useHl){
+  TY.push([t0,t1]);
+  fn(t0,t1,p=>{const s=typeof str==='object'?str[LANG]:str;
+    if(p>=1&&useHl){el.innerHTML=hl(s);return;}
+    el.textContent=s.slice(0,Math.round(p*s.length));});
+}
+function counter(el,to,t0,t1,f){fn(t0,t1,p=>{el.textContent=f(to*E.out(p));});}
+function hl(s){s=s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  return s.replace(/(#[^\n]*)|('[^']*'|"[^"]*")|\b(SELECT|FROM|WHERE|AND|GROUP|BY|ORDER|AS|DESC|DATE|import|for|in|print|def|return)\b|\b(COUNT|SUM|read_grid|groupby|mean|std|round|len)\b|\b(\d+(?:\.\d+)?)\b/g,
+  (m,c,st,kw,f,n)=>c?`<span class="cm">${c}</span>`:st?`<span class="str">${st}</span>`:kw?`<span class="kw">${kw}</span>`:f?`<span class="fn">${f}</span>`:`<span class="num">${n}</span>`);}
+let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+const scenes=$('#scenes');
+function scene(id,t0,t1,html){const el=H(`<div class="scene" id="${id}">${html}</div>`);scenes.appendChild(el);
+  tw(el,t0,.5,{o:[0,1]},'io');tw(el,t1-.5,.5,{o:[1,0]},'io');return el;}
+
+const LOGO=(id,sz)=>`<svg width="${sz}" height="${sz}" viewBox="0 0 120 120" style="overflow:visible"><defs><linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="120" y2="120"><stop offset="0" stop-color="#7dd3fc"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient></defs>
+<g fill="none" stroke="url(#${id})" stroke-width="6" stroke-linecap="round">
+<ellipse class="dr" pathLength="1" stroke-dasharray="1" cx="50" cy="28" rx="34" ry="11"/>
+<path class="dr" pathLength="1" stroke-dasharray="1" d="M16 28v60c0 6 15 11 34 11"/>
+<path class="dr" pathLength="1" stroke-dasharray="1" d="M84 28v20"/>
+<path class="dr" pathLength="1" stroke-dasharray="1" d="M16 58c0 6 15 11 34 11"/></g>
+<rect class="lb" x="62" y="80" width="10" height="20" rx="2" fill="#2dd4bf" style="transform-box:fill-box;transform-origin:bottom"/>
+<rect class="lb" x="77" y="66" width="10" height="34" rx="2" fill="#38bdf8" style="transform-box:fill-box;transform-origin:bottom"/>
+<rect class="lb" x="92" y="52" width="10" height="48" rx="2" fill="#7dd3fc" style="transform-box:fill-box;transform-origin:bottom"/></svg>`;
+const ICO={
+ db:`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>`,
+ lock:`<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 11V8a4 4 0 0 1 8 0v3"/><rect x="5" y="11" width="14" height="10" rx="2"/></svg>`,
+ check:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>`,
+ spark:(c='#fff',s=26)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="${c}"><path d="M12 2l2.2 6.3L20.5 10.5 14.2 12.7 12 19l-2.2-6.3L3.5 10.5l6.3-2.2z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/></svg>`,
+ dna:`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M7 3c0 6 10 6 10 12s-10 3-10 6M17 3c0 6-10 6-10 12"/><path d="M8 7h8M8 17h8"/></svg>`,
+ flow:`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v5a2 2 0 0 0 2 2H14"/></svg>`,
+ chat:`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h8"/></svg>`,
+ upd:`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>`,
+ save:`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4z"/></svg>`,
+ hist:`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`
+};
+
+/* ================= background particles ================= */
+const bgc=$('#bg').getContext('2d');
+const P=Array.from({length:110},()=>({x:rnd()*1920,y:rnd()*1080,vx:(rnd()-.5)*22,vy:-6-rnd()*18,r:.8+rnd()*2.4,a:.15+rnd()*.55,h:180+rnd()*40,ph:rnd()*6}));
+function drawBg(t){
+  bgc.clearRect(0,0,1920,1080);
+  const boost=1+(t>4.2&&t<5.4?(1-Math.abs(t-4.8)/.6)*2.5:0);
+  for(const p of P){
+    const x=((p.x+p.vx*t)%1920+1920)%1920,y=((p.y+p.vy*t*boost)%1080+1080)%1080;
+    const a=p.a*(.6+.4*Math.sin(t*1.6+p.ph));
+    const g=bgc.createRadialGradient(x,y,0,x,y,p.r*6);
+    g.addColorStop(0,`hsla(${p.h},100%,82%,${a})`);g.addColorStop(1,`hsla(${p.h},100%,60%,0)`);
+    bgc.fillStyle=g;bgc.beginPath();bgc.arc(x,y,p.r*6,0,7);bgc.fill();
+  }
+}
+tw('#orb1',0,54,{x:[0,240],y:[0,-160]},'lin');
+tw('#orb2',0,54,{x:[0,-220],y:[0,140]},'lin');
+tw('#floor',0,54,{y:[0,-80]},'lin');
+
+/* ================= SCENE 0 · HOOK 0–4.6 ================= */
+{
+const sqlTxt=Array.from({length:14},(_,i)=>["SELECT l.lot_no, d.defect_code, COUNT(*) AS qty FROM inspection_events d","  INNER JOIN lot_master l ON l.lot_id = d.lot_id AND l.branch IN ('A','B')","  WHERE d.event_date BETWEEN TO_DATE('2026-09-01','YYYY-MM-DD') AND ...","  GROUP BY l.lot_no, d.defect_code HAVING COUNT(*) > 3 ORDER BY qty DESC;"][i%4]).join('\n');
+const SQLW=`<span style="color:#fca5a5;position:relative">SQL<i class="strike" style="position:absolute;left:-6px;right:-6px;top:52%;height:6px;background:#f87171;border-radius:3px;transform-origin:left"></i></span>`;
+scene('s0',-1,4.6,`
+  <div class="sqlwall mono" id="wall">${sqlTxt}</div>
+  <div class="center big" id="h1" style="top:360px">${B('数据里，藏着答案。','Your data holds the answers.')}</div>
+  <div class="center" id="h2" style="top:520px;font-size:62px;font-weight:700;color:#9fb3c8">${B(`但 ${SQLW} 总是挡在中间。`,`But ${SQLW} keeps getting in the way.`)}</div>
+  <div class="center sub2" id="h3" style="top:640px;font-size:24px;letter-spacing:.3em;color:#6f8aa6">YOUR DATA HAS ANSWERS · SQL SHOULDN'T BE THE GATE</div>`);
+tw('#wall',0,4.6,{o:[0,.35],y:[0,-120]},'lin');
+tw('#wall',2.0,1.4,{bl:[0,6]},'io');
+tw('#h1',.25,.9,{o:[0,1],y:[60,0],bl:[14,0]},'out');
+tw('#h1',2.0,.6,{y:[0,-40],s:[1,.86]},'io');
+tw('#h2',1.6,.8,{o:[0,1],y:[50,0],bl:[10,0]},'out');
+tw('#h2',2.0,.6,{y:[0,-40]},'io');
+$$('.strike').forEach(e=>tw(e,2.9,.35,{sx:[0,1]},'out'));
+tw('#h3',3.0,.6,{o:[0,1]},'out');
+tw('#flash',4.35,.25,{o:[0,.85]},'in');tw('#flash',4.6,.5,{o:[.85,0]},'out');
+}
+
+/* ================= SCENE 1 · BRAND 4.6–9.4 ================= */
+{
+const s=scene('s1',4.6,9.4,`
+  <div class="abs" id="lg" style="left:880px;top:250px">${LOGO('g1',160)}</div>
+  <div class="center" id="bn" style="top:460px;font-size:118px;font-weight:800;letter-spacing:-.03em">
+    <span style="background:linear-gradient(90deg,#fff 0%,#bae6fd 55%,#2dd4bf 100%);-webkit-background-clip:text;background-clip:text;color:transparent">ODBC Query App</span></div>
+  <div class="center" id="bs" style="top:625px;font-size:38px;color:#cfe0f0;font-weight:600">${B('不写 SQL，也能查询、图表化并用 AI 解读你的数据','Query, chart and explain your data with AI — no SQL required')}</div>
+  <div class="center" id="be" style="top:700px;font-size:22px;letter-spacing:.32em;color:#7d97b2">LOCAL · NO SQL · INSIGHT IN SECONDS</div>
+  <div class="abs" id="ring" style="left:960px;top:330px;width:10px;height:10px;margin:-5px;border-radius:50%;border:3px solid #2dd4bf"></div>`);
+$$('.dr',s).forEach((p,i)=>tw(p,4.9+i*.14,.8,{dash:[1,0]},'out'));
+$$('.lb',s).forEach((p,i)=>tw(p,5.5+i*.12,.5,{sy:[0,1]},'back'));
+tw('#lg',4.7,.8,{s:[.6,1],o:[0,1]},'back');
+tw('#ring',4.8,1.4,{s:[1,90],o:[.9,0]},'out');
+tw('#bn',5.7,.9,{o:[0,1],y:[50,0],bl:[16,0]},'out');
+tw('#bn',5.7,4,{s:[1,1.04]},'lin');
+tw('#bs',6.4,.8,{o:[0,1],y:[30,0]});
+tw('#be',6.9,.8,{o:[0,1]});
+}
+/* mini brand + HUD */
+{
+$('#brandMini').innerHTML=LOGO('g2',40)+'<span>ODBC Query App</span>';
+tw('#brandMini',9.3,.6,{o:[0,1],x:[-20,0]});tw('#brandMini',48.4,.5,{o:[1,0]});
+const steps=[[B('01 连接','01 CONNECT'),9.4,14.6],[B('02 提问','02 ASK'),14.6,20.4],[B('03 查看','03 SEE'),20.4,25.4],[B('04 可视化','04 VISUALIZE'),25.4,32.6],[B('05 分析','05 ANALYZE'),32.6,37.6],[B('06 AI 洞察','06 AI INSIGHTS'),37.6,43.6],[B('07 导出与更多','07 EXPORT & MORE'),43.6,48.6]];
+$('#hud').innerHTML=steps.map(([n],i)=>`<div class="hs" id="hs${i}"><i><u id="hu${i}"></u></i>${n}</div>`).join('');
+tw('#hud',9.4,.6,{o:[0,1],y:[20,0]});tw('#hud',48.4,.5,{o:[1,0]});
+steps.forEach(([n,a,b],i)=>{fn(a,b,p=>{$('#hu'+i).style.width=(p*100)+'%';});
+  fn(a-.01,b,(p,t)=>{$('#hs'+i).classList.toggle('on',t>=a&&t<b);});});
+}
+function caption(sc,id,t,k,hd,bd,en){
+  sc.insertAdjacentHTML('beforeend',`<div class="cap" id="${id}"><div class="kick"><b></b>${B(...k)}</div><div class="hd">${B(...hd)}</div><div class="bd">${B(...bd)}</div><div class="en sub2">${en}</div></div>`);
+  const c=$('#'+id);
+  IN($('.kick',c),t,.6,20);tw($('.hd',c),t+.12,.8,{o:[0,1],y:[40,0],bl:[10,0]});IN($('.bd',c),t+.35,.7,24);IN($('.en',c),t+.55,.7,16);
+}
+
+/* ================= SCENE 2 · CONNECT 9.4–14.6 ================= */
+{
+const s=scene('s2',9.4,14.6,'');
+caption(s,'c2',9.6,['01 · 连接','01 · CONNECT'],['连接<em>任意</em><br>ODBC 数据库','Connect to<br><em>any</em> ODBC database'],
+  ['通过 DSN、连接字符串，或 SharePoint / OneDrive 上的 Access 文件即可接入。','Use a DSN, a connection string, or an Access file on SharePoint / OneDrive.'],'CONNECT · DSN · CONNECTION STRING · ACCESS');
+const cx=1290,cy=470,Rr=300;
+const dbs=['SQL Server','Oracle','DB2','Access','MySQL','PostgreSQL'];
+let svg=`<svg class="abs" style="left:0;top:0;overflow:visible" width="1920" height="1080">`;
+dbs.forEach((d,i)=>{const a=-Math.PI/2+i*Math.PI/3,x=cx+Math.cos(a)*Rr,y=cy+Math.sin(a)*Rr*.78;
+  svg+=`<line id="ln${i}" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="url(#lg2)" stroke-width="3" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>
+        <circle id="pk${i}" r="7" fill="#5eead4" cx="${cx}" cy="${cy}" style="filter:drop-shadow(0 0 8px #2dd4bf)"/>`;});
+svg+=`<defs><linearGradient id="lg2"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs></svg>`;
+s.insertAdjacentHTML('beforeend',svg);
+s.insertAdjacentHTML('beforeend',`<div class="abs" id="hub" style="left:${cx-95}px;top:${cy-95}px;width:190px;height:190px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#2dd4bf,#0e7490 60%,#0b3a5c);display:grid;place-items:center;font-size:34px;font-weight:800;box-shadow:0 0 80px rgba(45,212,191,.55)">ODBC</div>`);
+dbs.forEach((d,i)=>{const a=-Math.PI/2+i*Math.PI/3,x=cx+Math.cos(a)*Rr,y=cy+Math.sin(a)*Rr*.78;
+  s.insertAdjacentHTML('beforeend',`<div class="abs" id="dn${i}" style="left:${x-100}px;top:${y-38}px;width:200px;height:76px;border-radius:16px;background:rgba(10,30,52,.85);border:1.5px solid rgba(125,211,252,.45);display:flex;align-items:center;gap:12px;padding:0 18px;font-size:21px;font-weight:700">${ICO.db}${d}</div>`);
+  tw('#ln'+i,10.2+i*.1,.6,{dash:[1,0]},'out');
+  tw('#dn'+i,10.5+i*.1,.6,{o:[0,1],s:[.6,1]},'back');
+  fn(11.0+i*.1,14.6,(p,t)=>{const q=((t*.9+i*.17)%1);const el=$('#pk'+i);el.setAttribute('cx',cx+(x-cx)*q);el.setAttribute('cy',cy+(y-cy)*q);el.style.opacity=p>0?1:0;});
+});
+tw('#hub',9.9,.7,{o:[0,1],s:[.3,1]},'back');
+fn(9.9,14.6,(p,t)=>{$('#hub').style.boxShadow=`0 0 ${60+30*Math.sin(t*5)}px rgba(45,212,191,.55)`});
+s.insertAdjacentHTML('beforeend',`<div class="abs" style="left:830px;top:860px;display:flex;gap:18px">
+  <span class="chip tchip" id="cc0">${B('DSN 自动检测','DSN auto-detect')}</span>
+  <span class="chip dchip" id="cc1">${B('Windows 身份验证','Windows Authentication')}</span>
+  <span class="chip tchip" id="cc2">${B('保存前一键测试 ✓','Test before saving ✓')}</span></div>`);
+[0,1,2].forEach(i=>IN('#cc'+i,11.8+i*.25,.6,30,'back'));
+s.insertAdjacentHTML('beforeend',`<div class="abs chip dchip" id="kc" style="left:140px;top:770px;color:#99f6e4">${ICO.lock}${B('凭据存于 Windows 凭据管理器','Credentials in Windows Credential Manager')}</div>`);
+IN('#kc',12.6,.6,20);
+tw(s,13.9,.7,{s:[1,1.06]},'in');
+}
+
+/* ================= SCENE 3 · ASK 14.6–20.4 ================= */
+{
+const s=scene('s3',14.6,20.4,'');
+caption(s,'c3',14.8,['02 · 提问','02 · ASK'],['模板一填，<br><em>SQL 自动生成</em>','Fill a template,<br><em>get the SQL</em>'],
+  ['FabLIMS 风格模板、可视化查询构建器，或直接问 AI 助手。','FabLIMS-style templates, a visual query builder — or just ask the AI assistant.'],'ASK · TEMPLATES · VISUAL BUILDER · AI');
+s.insertAdjacentHTML('beforeend',`
+<div class="win" id="w3" style="left:780px;top:170px;width:620px;height:640px">
+  <div class="tbar">${ICO.spark('#14B8A6',18)}${B('模板快速查询 · FabLIMS','Template quick search · FabLIMS')}<span class="sp"></span><span class="wc">─▢✕</span></div>
+  <div style="padding:30px 32px">
+    <div class="field"><label>${B('日期范围','Date range')}</label><div class="in mono" id="f1"></div></div>
+    <div class="field"><label>${B('产线','Line')}</label><div class="in" id="f2"></div></div>
+    <div class="field"><label>${B('批次','Lot')}</label><div class="in mono" id="f3"></div></div>
+    <div class="field"><label>${B('分支','Branch')}</label><div class="in" id="f4"></div></div>
+    <div style="display:flex;gap:10px;margin:8px 0 22px 134px;font-size:16px">
+      <span class="tag t1" id="oc1">${B('+ 可选列','+ Optional cols')}</span><span class="tag t0" id="oc2">${B('+ 计算列','+ Computed cols')}</span><span class="tag t2" id="oc3">${B('宽表透视','Wide pivot')}</span></div>
+    <div class="btn" id="gen" style="width:100%;height:60px;font-size:22px">${B('生成 SQL 并运行 ▸','Generate SQL &amp; run ▸')}</div>
+    <div style="margin-top:22px;font-size:17px;color:#64748b;display:flex;gap:10px;align-items:center">
+      <span>${B('已保存查询','Saved queries')}</span><span class="tag t5">${B('参数化','Parameters')}</span><span class="tag t5">${B('预定义 SQL 库','Predefined SQL')}</span><span class="tag t5">${B('历史记录','History')}</span></div>
+  </div>
+</div>
+<div class="win" id="ai3" style="left:1430px;top:120px;width:400px;height:740px;background:#0d1b2a;color:#dbe7f3">
+  <div class="tbar" style="background:#0a1624;border-color:rgba(255,255,255,.07);color:#cfe0f0">${ICO.spark('#2dd4bf',18)}${B('AI 助手','AI assistant')}<span class="sp"></span>
+    <span style="font-size:13px;display:flex;gap:6px"><span class="tag" style="background:#14b8a6;color:#03211c">SQL</span><span class="tag" style="background:#1e3348;color:#9fb3c8">${B('脚本','Script')}</span><span class="tag" style="background:#1e3348;color:#9fb3c8">${B('图表','Chart')}</span></span></div>
+  <div style="padding:22px">
+    <div id="ub" style="margin-left:40px;padding:14px 16px;border-radius:14px 14px 4px 14px;background:#3B82F6;font-size:18px;line-height:1.5;color:#fff">${B('上个月 3 号线哪些批次涂布条纹最多？','Which lots on Line 3 had the most coating streaks last month?')}</div>
+    <div id="ar" style="margin-top:18px;padding:14px 14px;border-radius:14px 14px 14px 4px;background:#13263a;font-size:15px">
+      <pre class="code mono" id="aisql" style="font-size:14.5px;line-height:1.75"></pre></div>
+    <div id="aiok" style="margin-top:14px;font-size:15px;color:#5eead4;font-weight:700">${B('✓ 流式输出 · 兼容任意 OpenAI 接口','✓ Streamed · any OpenAI-compatible API')}</div>
+  </div>
+</div>`);
+IN('#w3',14.9,.8,60);IN('#ai3',15.3,.8,60);
+typer($('#f1'),'2026-09-01  →  2026-09-30',15.7,16.4);
+typer($('#f2'),'L3',16.4,16.6);
+typer($('#f3'),'24-80*',16.6,16.95);
+typer($('#f4'),'A, B',16.95,17.15);
+['#oc1','#oc2','#oc3'].forEach((e,i)=>tw(e,17.1+i*.1,.4,{o:[.25,1],s:[.85,1]},'back'));
+tw('#gen',17.6,.18,{s:[1,.95]},'io');tw('#gen',17.78,.25,{s:[.95,1]},'back');
+IN('#ub',17.0,.5,20);
+const q=`SELECT lot_no,\n       COUNT(*) AS qty\nFROM   inspection_events\nWHERE  line = 'L3'\n  AND  defect = 'STREAK'\n  AND  event_date >= DATE\n       '2026-09-01'\nGROUP  BY lot_no\nORDER  BY qty DESC;`;
+IN('#ar',17.6,.4,16);
+typer($('#aisql'),q,17.8,19.4,true);
+IN('#aiok',19.4,.4,10);
+tw(s,19.7,.7,{s:[1,1.05]},'in');
+}
+
+/* ================= SCENE 4 · SEE 20.4–25.4 ================= */
+const DEF=[['针孔','Pinhole'],['褶皱','Wrinkle'],['涂布条纹','Coating streak'],['卷边','Edge curl'],['色差','Color shift'],['污染','Contamination']];
+{
+const s=scene('s4',20.4,25.4,'');
+caption(s,'c4',20.6,['03 · 查看','03 · SEE'],['数据秒入<br><em>高性能表格</em>','Results land in<br><em>a fast grid</em>'],
+  ['AG Grid 排序、筛选、搜索、分页、钻取，还能改列类型、一键复制。','AG Grid sort, filter, search, paginate and drill down — retype columns, copy in one click.'],'SEE · AG GRID · SORT · FILTER · DRILL-DOWN');
+let rows='';for(let i=0;i<30;i++){const d=Math.floor(rnd()*6);rows+=`<div class="row"><span class="mono">24-${80412+i*37}</span><span>L3</span><span><span class="tag t${d}">${B(...DEF[d])}</span></span><span class="mono" style="text-align:right;padding-right:28px">${1+Math.floor(rnd()*60)}</span><span class="mono dim">2026-09-${String(1+(i*7)%30).padStart(2,'0')}</span></div>`;}
+s.insertAdjacentHTML('beforeend',`
+<div class="win" id="w4" style="left:780px;top:150px;width:1000px;height:640px">
+  <div class="tbar">${B('查询结果','Query results')} · inspection_events<span class="sp"></span><span class="wc">─▢✕</span></div>
+  <div style="padding:20px 26px">
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;font-size:17px">
+      <span style="padding:9px 16px;border:1px solid var(--line);border-radius:10px;color:#94a3b8;width:220px">🔍 <span id="srch" style="color:#0f172a"></span></span>
+      <span class="tag t0" id="flt" style="font-size:16px;padding:7px 14px">${B('产线 = L3','Line = L3')}</span>
+      <span class="tag t2" id="rty" style="font-size:16px;padding:7px 14px">${B('类型：Number ▾','Type: Number ▾')}</span>
+      <span style="flex:1"></span>
+      <span style="color:#14b8a6;font-weight:700" id="st4"></span><b class="mono" id="cnt4" style="font-size:22px">0</b><span style="color:#64748b">${B('行','rows')}</span>
+    </div>
+    <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <div class="row gh"><span>${B('批次','Lot')}</span><span>${B('产线','Line')}</span><span>${B('缺陷','Defect')}</span><span style="text-align:right;padding-right:28px">${B('数量','Qty')} <b id="sort4" style="color:#3B82F6">⇅</b></span><span>${B('日期','Date')}</span></div>
+      <div style="height:416px;overflow:hidden"><div id="gb4">${rows}</div></div>
+    </div>
+  </div>
+</div>
+<div class="abs" id="up4" style="left:1250px;top:820px;width:530px;padding:18px 22px;border-radius:16px;border:2px dashed rgba(125,211,252,.55);background:rgba(8,26,45,.7);font-size:20px">
+  <b>📄 ${B('CSV / Excel 拖入即载入','Drop CSV / Excel to load')}</b><div style="height:8px;border-radius:4px;background:rgba(255,255,255,.12);margin-top:12px;overflow:hidden"><i id="upb" style="display:block;height:100%;width:0;background:linear-gradient(90deg,#3B82F6,#2dd4bf)"></i></div></div>`);
+IN('#w4',20.6,.8,60);
+tw('#gb4',21.0,3.2,{y:[0,-52*20]},'io');
+counter($('#cnt4'),186420,21.0,24.0,v=>Math.round(v).toLocaleString('en-US'));
+const ST_L=B('● 加载中','● Loading'),ST_D=B('✓ 完成','✓ Done');
+fn(23.99,24.0,p=>{const h=p>=1?ST_D:ST_L;const el=$('#st4');if(el._h!==h){el.innerHTML=h;el._h=h;}});
+typer($('#srch'),'STREAK',22.0,22.6);
+tw('#flt',22.7,.4,{s:[.7,1],o:[.3,1]},'back');
+tw('#rty',23.1,.4,{s:[.7,1],o:[.3,1]},'back');
+fn(23.5,23.6,p=>{$('#sort4').textContent=p>0?'↓':'⇅';});
+IN('#up4',23.2,.6,30);
+fn(23.5,25.0,p=>{$('#upb').style.width=(E.out(p)*100)+'%';});
+tw(s,24.7,.7,{s:[1,1.05]},'in');
+}
+
+/* ================= SCENE 5 · VISUALIZE 25.4–32.6 ================= */
+{
+const s=scene('s5',25.4,32.6,'');
+const C='#14B8A6',Bl='#3B82F6',K='#7dd3fc';
+const ic=[
+ ['趋势','Trend',`<polyline points="5,60 30,40 55,48 80,20 115,28" fill="none" stroke="${Bl}" stroke-width="5"/>`],
+ ['面积','Area',`<path d="M5 70 L5 50 30 34 55 44 80 18 115 26 115 70Z" fill="${C}" opacity=".7"/>`],
+ ['柱状','Bar',[20,40,30,55,45].map((h,i)=>`<rect x="${8+i*22}" y="${72-h}" width="15" height="${h}" rx="2" fill="${Bl}"/>`).join('')],
+ ['组合','Combo',[30,45,35,55].map((h,i)=>`<rect x="${10+i*27}" y="${72-h}" width="18" height="${h}" fill="${K}"/>`).join('')+`<polyline points="19,40 46,22 73,32 100,12" fill="none" stroke="${C}" stroke-width="4"/>`],
+ ['饼图','Pie',`<circle cx="60" cy="40" r="32" fill="${K}"/><path d="M60 40 L60 8 A32 32 0 0 1 90 50Z" fill="${Bl}"/><path d="M60 40 L90 50 A32 32 0 0 1 40 65Z" fill="${C}"/>`],
+ ['环形','Doughnut',`<circle cx="60" cy="40" r="28" fill="none" stroke="${K}" stroke-width="12"/><circle cx="60" cy="40" r="28" fill="none" stroke="${C}" stroke-width="12" stroke-dasharray="110 200"/>`],
+ ['雷达','Radar',`<polygon points="60,6 92,30 80,70 40,70 28,30" fill="none" stroke="#cbd5e1" stroke-width="2"/><polygon points="60,18 84,32 70,60 46,62 38,34" fill="${C}" opacity=".7"/>`],
+ ['柏拉图','Pareto',[55,38,24,14,8].map((h,i)=>`<rect x="${8+i*22}" y="${72-h}" width="16" height="${h}" fill="${C}"/>`).join('')+`<polyline points="16,30 38,16 60,9 82,5 104,3" fill="none" stroke="${Bl}" stroke-width="3"/>`],
+ ['瀑布','Waterfall',`<rect x="8" y="20" width="16" height="50" fill="${Bl}"/><rect x="30" y="20" width="16" height="18" fill="${C}"/><rect x="52" y="38" width="16" height="14" fill="#f87171"/><rect x="74" y="30" width="16" height="22" fill="${C}"/><rect x="96" y="30" width="16" height="40" fill="${Bl}"/>`],
+ ['漏斗','Funnel',`<rect x="10" y="6" width="100" height="14" rx="3" fill="${Bl}"/><rect x="24" y="24" width="72" height="14" rx="3" fill="${K}"/><rect x="38" y="42" width="44" height="14" rx="3" fill="${C}"/><rect x="50" y="60" width="20" height="12" rx="3" fill="#0f766e"/>`],
+ ['矩形树图','Treemap',`<rect x="6" y="6" width="60" height="64" fill="${Bl}"/><rect x="70" y="6" width="44" height="34" fill="${C}"/><rect x="70" y="44" width="20" height="26" fill="${K}"/><rect x="94" y="44" width="20" height="26" fill="#0f766e"/>`],
+ ['热力图','Heatmap',Array.from({length:24},(_,i)=>`<rect x="${6+(i%6)*18}" y="${6+Math.floor(i/6)*17}" width="16" height="15" fill="${['#ccfbf1','#5eead4','#14b8a6','#0f766e','#7dd3fc','#3b82f6'][(i*7)%6]}"/>`).join('')],
+ ['直方图','Histogram',[10,24,42,56,40,22,9].map((h,i)=>`<rect x="${8+i*15.5}" y="${72-h}" width="15" height="${h}" fill="${Bl}"/>`).join('')],
+ ['散点','Scatter',Array.from({length:14},(_,i)=>`<circle cx="${10+i*7.5}" cy="${65-i*3.8+((i*13)%9)-4}" r="4" fill="${i%2?C:Bl}"/>`).join('')],
+ ['气泡','Bubble',`<circle cx="30" cy="45" r="16" fill="${Bl}" opacity=".7"/><circle cx="70" cy="28" r="22" fill="${C}" opacity=".7"/><circle cx="98" cy="56" r="11" fill="${K}"/>`],
+ ['箱线图','Box plot',`<line x1="35" y1="8" x2="35" y2="70" stroke="#94a3b8" stroke-width="2"/><rect x="22" y="24" width="26" height="30" fill="${K}" stroke="${Bl}" stroke-width="2"/><line x1="85" y1="14" x2="85" y2="66" stroke="#94a3b8" stroke-width="2"/><rect x="72" y="20" width="26" height="24" fill="#ccfbf1" stroke="${C}" stroke-width="2"/>`],
+ ['仪表盘','Gauge',`<path d="M16 66 A44 44 0 0 1 104 66" fill="none" stroke="#e2e8f0" stroke-width="12"/><path d="M16 66 A44 44 0 0 1 88 36" fill="none" stroke="${C}" stroke-width="12"/><line x1="60" y1="66" x2="84" y2="40" stroke="#0f172a" stroke-width="4"/>`],
+ ['KPI','KPI',`<text x="60" y="52" text-anchor="middle" font-size="34" font-weight="800" fill="#0f172a">96%</text><text x="60" y="72" text-anchor="middle" font-size="14" fill="${C}">▲ 1.2</text>`],
+ ['SPC','SPC',`<line x1="4" x2="116" y1="14" y2="14" stroke="#f87171" stroke-dasharray="4 3"/><line x1="4" x2="116" y1="62" y2="62" stroke="#f87171" stroke-dasharray="4 3"/><line x1="4" x2="116" y1="38" y2="38" stroke="${C}"/><polyline points="6,40 20,32 34,44 48,30 62,42 76,8 90,36 104,44 116,34" fill="none" stroke="${Bl}" stroke-width="3"/><circle cx="76" cy="8" r="5" fill="#ef4444"/>`],
+ ['桑基','Sankey',`<path d="M8 14 C60 14 60 30 112 30" stroke="${Bl}" stroke-width="14" fill="none" opacity=".6"/><path d="M8 40 C60 40 60 60 112 60" stroke="${C}" stroke-width="18" fill="none" opacity=".6"/><path d="M8 66 C60 66 60 32 112 32" stroke="${K}" stroke-width="8" fill="none" opacity=".7"/>`]
+];
+s.appendChild(H(`<div class="center" id="t5" style="top:110px"><div class="kick" style="letter-spacing:.3em"><b></b>${B('04 · 可视化','04 · VISUALIZE')}</div>
+  <div class="hd" style="font-size:66px;margin:18px 0 0">${B('一键，<em>20+ 种图表</em>','One click, <em>20+ chart types</em>')}</div></div>`));
+IN('#t5',25.6,.7,30);
+ic.forEach(([zh,en,svg],i)=>{const col=i%5,row=Math.floor(i/5);const x=360+col*246,y=330+row*172;
+  const el=H(`<div class="tile" style="left:${x}px;top:${y}px"><svg viewBox="0 0 120 78">${svg}</svg><span>${B(zh,en)}</span></div>`);s.appendChild(el);
+  const d=Math.hypot(col-2,row-1.5);
+  tw(el,25.8+d*.12+i*.012,.6,{o:[0,1],s:[.4,1],y:[80,0],r:[(i%2?8:-8),0]},'back');
+  tw(el,28.6+d*.04,.6,{o:[1,0],s:[1,.5],y:[0,-60]},'in');
+});
+tw('#t5',28.5,.5,{o:[1,0],y:[0,-30]},'in');
+s.insertAdjacentHTML('beforeend',`
+<div class="abs" id="db5" style="left:150px;top:150px;width:1620px;height:720px">
+  <div class="abs" style="left:0;top:0;font-size:40px;font-weight:800" id="db5t">${B('固定仪表板 · 拖拽式','Pinned dashboards · drag-and-drop')} <em style="font-style:normal;background:linear-gradient(90deg,#7dd3fc,#2dd4bf);-webkit-background-clip:text;background-clip:text;color:transparent">Graphic Walker</em> BI</div>
+  <div class="card" id="k1" style="left:0;top:90px;width:380px;height:150px"><h4>${B('一次合格率','First-pass yield')}</h4><div class="kv mono"><span id="kv1">0</span>%</div><div style="color:#0f766e;font-weight:700">${B('▲ 1.2 vs 上月','▲ 1.2 vs last month')}</div></div>
+  <div class="card" id="k2" style="left:0;top:262px;width:380px;height:150px"><h4>${B('缺陷率','Defect rate')}</h4><div class="kv mono"><span id="kv2">0</span>%</div><div style="color:#0f766e;font-weight:700">${B('▼ 0.3 vs 上月','▼ 0.3 vs last month')}</div></div>
+  <div class="card" id="k3" style="left:0;top:434px;width:380px;height:150px"><h4>${B('Cpk · 涂布重量','Cpk · Coating weight')}</h4><div class="kv mono" id="kv3">0</div><div style="color:#0f766e;font-weight:700">${B('≥ 1.33 达标','≥ 1.33 on target')}</div></div>
+  <div class="card" id="pc" style="left:410px;top:90px;width:600px;height:494px"><h4>${B('柏拉图 · 缺陷 · 3 号线','Pareto · Defects · Line 3')}</h4><svg width="560" height="420" id="psvg"></svg></div>
+  <div class="card" id="sc" style="left:1040px;top:90px;width:580px;height:494px"><h4>${B('SPC · 均值控制图','SPC · X̄ chart')}</h4><svg width="540" height="420" id="ssvg"></svg></div>
+  <div class="abs" style="left:0;top:620px;display:flex;gap:18px">
+    <span class="chip tchip" id="aig">${ICO.spark('#99f6e4',22)} ${B('AI 一键生成整组图表','AI generates a whole chart set')}</span>
+    <span class="chip dchip" id="pin">📌 ${B('固定到仪表板','Pin to dashboard')}</span></div>
+</div>`);
+tw('#db5',28.9,.01,{o:[0,1]});
+IN('#db5t',28.95,.6,30);
+['#k1','#k2','#k3'].forEach((e,i)=>IN(e,29.1+i*.12,.6,50,'back'));
+IN('#pc',29.3,.6,50);IN('#sc',29.45,.6,50);
+counter($('#kv1'),96.4,29.3,30.6,v=>v.toFixed(1));counter($('#kv2'),0.82,29.4,30.7,v=>v.toFixed(2));counter($('#kv3'),1.41,29.5,30.8,v=>v.toFixed(2));
+IN('#aig',30.4,.5,20,'back');IN('#pin',30.6,.5,20,'back');
+{const v=[412,268,175,96,61,38],lab=[['针孔','Pinhole'],['褶皱','Wrinkle'],['涂布条纹','Streak'],['卷边','Edge curl'],['色差','Color'],['污染','Contam.']],sum=v.reduce((a,b)=>a+b);
+ const ps=$('#psvg');let html=`<line x1="30" x2="540" y1="360" y2="360" stroke="#cbd5e1" stroke-width="2"/>`;let cum=0,pts=[];
+ v.forEach((x,i)=>{const h=x/412*300,X=40+i*84;cum+=x;pts.push([X+30,360-cum/sum*330]);
+   html+=`<rect id="pb${i}" x="${X}" y="${360-h}" width="60" height="${h}" rx="6" fill="#14B8A6" style="transform-box:fill-box;transform-origin:bottom"/><text x="${X+30}" y="390" text-anchor="middle" font-size="15" fill="#334155">${TB(...lab[i])}</text>`;});
+ html+=`<polyline id="pl" points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#3B82F6" stroke-width="4" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>`+pts.map((p,i)=>`<circle id="pd${i}" cx="${p[0]}" cy="${p[1]}" r="6" fill="#fff" stroke="#3B82F6" stroke-width="3"/>`).join('')+
+   `<line x1="30" x2="540" y1="${360-.8*330}" y2="${360-.8*330}" stroke="#f59e0b" stroke-dasharray="7 6" stroke-width="2" id="p80"/><text x="540" y="${352-.8*330}" text-anchor="end" fill="#b45309" font-size="15" id="p80t">80%</text>`;
+ ps.innerHTML=html;
+ v.forEach((_,i)=>tw('#pb'+i,29.6+i*.08,.6,{sy:[0,1]},'back'));
+ tw('#pl',30.2,.9,{dash:[1,0]});pts.forEach((_,i)=>tw('#pd'+i,30.2+i*.13,.3,{o:[0,1]}));tw('#p80',30.8,.4,{o:[0,1]});tw('#p80t',30.8,.4,{o:[0,1]});
+}
+{const ss=$('#ssvg');const CL=200,U=90,L=310,off=[10,-24,8,32,-14,4,-38,22,-6,18,-28,10,2,-18,26,-8,14,-24,-128,6,-12,20,-4,16,-10];
+ const pts=off.map((o,i)=>[30+i*19.5,CL+o]);
+ ss.innerHTML=`<line x1="20" x2="520" y1="${U}" y2="${U}" stroke="#ef4444" stroke-dasharray="7 6" stroke-width="2"/><text x="520" y="${U-8}" text-anchor="end" fill="#ef4444" font-size="15">UCL</text>
+ <line x1="20" x2="520" y1="${CL}" y2="${CL}" stroke="#14B8A6" stroke-width="2"/><text x="520" y="${CL-8}" text-anchor="end" fill="#0f766e" font-size="15">CL</text>
+ <line x1="20" x2="520" y1="${L}" y2="${L}" stroke="#ef4444" stroke-dasharray="7 6" stroke-width="2"/><text x="520" y="${L-8}" text-anchor="end" fill="#ef4444" font-size="15">LCL</text>
+ <polyline id="sl" points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#3B82F6" stroke-width="3" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>
+ <circle cx="${pts[18][0]}" cy="${pts[18][1]}" r="8" fill="#ef4444" id="oo"/><circle cx="${pts[18][0]}" cy="${pts[18][1]}" r="10" fill="none" stroke="#ef4444" stroke-width="3" id="oor" style="transform-box:fill-box;transform-origin:center"/>`;
+ tw('#sl',29.7,1.6,{dash:[1,0]},'lin');tw('#oo',30.85,.3,{o:[0,1],s:[0,1]},'back');
+ fn(30.9,32.6,(p,t)=>{const q=((t-30.9)/0.8)%1;const r=$('#oor');r.style.transform=`scale(${1+q*2.6})`;r.style.opacity=p>0?1-q:0;});
+}
+tw(s,31.9,.7,{s:[1,1.05]},'in');
+}
+
+/* ================= SCENE 6 · ANALYZE 32.6–37.6 ================= */
+{
+const s=scene('s6',32.6,37.6,'');
+caption(s,'c6',32.8,['05 · 分析','05 · ANALYZE'],['脚本分析 +<br><em>本地 BI 仓库</em>','Scripts +<br><em>local BI warehouse</em>'],
+  ['对表格数据直接运行 Python / JavaScript；结果快照存入本地 SQLite，并建立关联。','Run Python or JavaScript on the grid rows; snapshot results into local SQLite and join them.'],'ANALYZE · PYTHON · JAVASCRIPT · SQLITE WAREHOUSE');
+const body=`rows = read_grid()\nfor lot, g in groupby(rows, 'lot_no'):\n    w = [r['coat_wt'] for r in g]\n    print(lot, round(mean(w), 2), round(std(w), 3))`;
+const code={zh:`# 模板脚本：按批次统计涂布重量\n`+body,en:`# Template script: coating weight by lot\n`+body};
+s.insertAdjacentHTML('beforeend',`
+<div class="win" id="w6" style="left:780px;top:140px;width:640px;height:520px;background:#0d1b2a;color:#dbe7f3">
+  <div class="tbar" style="background:#0a1624;border-color:rgba(255,255,255,.07);color:#cfe0f0">Analyze · Python<span class="sp"></span><span class="tag" style="background:#14b8a6;color:#03211c;font-size:14px">${B('▶ 运行','▶ Run')}</span></div>
+  <pre class="code mono" id="code6" style="padding:22px 24px;font-size:18.5px;height:220px"></pre>
+  <div style="border-top:1px solid rgba(255,255,255,.08);padding:14px 24px;font-size:15px;color:#7d97b2">stdout · ${B('实时输出','live output')}</div>
+  <pre class="mono" id="out6" style="padding:0 24px;font-size:17px;line-height:1.7;color:#5eead4"></pre>
+</div>`);
+IN('#w6',32.9,.8,60);
+typer($('#code6'),code,33.3,35.0,true);
+const out=['24-80412   52.31  0.412','24-80449   51.98  0.387','24-80486   52.44  0.405','24-80523   52.07  0.398'];
+const fin={zh:'✓ 网格已原地更新',en:'✓ Grid updated in place'};
+fn(35.0,36.2,p=>{$('#out6').textContent=[...out,fin[LANG]].slice(0,Math.ceil(p*5)).join('\n');});
+const wx=1480,wy=170;
+s.insertAdjacentHTML('beforeend',`<div class="abs" id="wh" style="left:${wx}px;top:${wy}px;width:330px;height:620px">
+  <div style="font-size:22px;font-weight:700;margin-bottom:6px">${B('SQLite BI 仓库','SQLite BI warehouse')}</div><div style="font-size:16px;color:#9fb3c8">${B('快照 · 关联 · 固定视图','Snapshots · joins · pinned visuals')}</div>
+  ${[['检验快照 W40','Inspection W40'],['批次快照 W41','Lots W41'],['色批快照 W41','Color lots W41']].map((n,i)=>`<div class="abs" id="sn${i}" style="left:${i%2?150:0}px;top:${100+i*170}px;width:180px;height:120px;border-radius:16px;background:linear-gradient(160deg,#1e4a74,#0e2a45);border:1.5px solid rgba(125,211,252,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:17px;font-weight:600">${ICO.db}${B(...n)}</div>`).join('')}
+  <svg class="abs" style="left:0;top:0;overflow:visible" width="330" height="620"><path id="j1" d="M90 220 C90 260 240 250 240 270" stroke="#2dd4bf" stroke-width="3" fill="none" stroke-dasharray="1" pathLength="1"/><path id="j2" d="M240 390 C240 430 90 420 90 440" stroke="#2dd4bf" stroke-width="3" fill="none" stroke-dasharray="1" pathLength="1"/></svg>
+  <div class="abs tag t1" id="jn" style="left:118px;top:236px;font-size:15px">JOIN lot_no</div></div>`);
+IN('#wh',33.6,.6,40);
+[0,1,2].forEach(i=>tw('#sn'+i,34.0+i*.25,.6,{o:[0,1],s:[.5,1]},'back'));
+tw('#j1',34.9,.6,{dash:[1,0]});tw('#j2',35.2,.6,{dash:[1,0]});IN('#jn',35.4,.4,10);
+tw(s,36.9,.7,{s:[1,1.05]},'in');
+}
+
+/* ================= SCENE 6b · AI INSIGHTS 37.6–43.6 ================= */
+{
+const s=scene('s6b',37.6,43.6,'');
+caption(s,'c6b',37.8,['06 · AI 洞察','06 · AI INSIGHTS'],['让 AI 读懂<br><em>你的数据</em>','Let AI read<br><em>your data</em>'],
+  ['对话问答、写与优化 SQL、描述即出图、生成脚本、自然语言变换表格 —— 一个 AI 助手覆盖全流程。','Chat, write &amp; optimize SQL, chart by description, generate scripts, transform the grid in plain language — one assistant across the whole flow.'],'AI · CHAT · SQL · CHARTS · SCRIPTS · INSIGHTS');
+const TABS=[['对话','Chat'],['SQL','SQL'],['分析','Analyze'],['图表','Chart'],['洞察','Insights'],['深度分析','Deep analysis']];
+s.insertAdjacentHTML('beforeend',`
+<div class="win" id="w7" style="left:830px;top:150px;width:940px;height:700px;background:#0d1b2a;color:#dbe7f3">
+  <div class="tbar" style="background:#0a1624;border-color:rgba(255,255,255,.07);color:#cfe0f0">${ICO.spark('#2dd4bf',18)}${B('AI 助手','AI assistant')}<span class="sp"></span><span class="wc">─▢✕</span></div>
+  <div class="tabs">${TABS.map(([z,e],i)=>`<span class="tab${i===4?' on':''}" id="md7${i}">${B(z,e)}</span>`).join('')}</div>
+  <div class="aiq" id="q7">${B('这批涂布条纹数据有什么值得注意的？','What stands out in this coating-streak data?')}</div>
+  <div class="aiic" id="ic7">
+    <div class="aiih">${ICO.spark('#99f6e4',18)}${B('数据洞察 · 由 AI 生成','Insight · generated by AI')}</div>
+    <div class="aiir" id="ir0"><b>${B('概览','Overview')}</b><span>${B('186,420 行 · 6 条产线 · 跨 30 天','186,420 rows · 6 lines · over 30 days')}</span></div>
+    <div class="aiir" id="ir1"><b>${B('关键发现','Key finding')}</b><span>${B('涂布条纹集中在 3 号线，占全部缺陷 41%','Streaks cluster on Line 3 — 41% of all defects')}</span></div>
+    <div class="aiir am" id="ir2"><b>${B('异常','Anomaly')}</b><span>${B('24-80486 涂布重量偏离均值 −2.8σ','Lot 24-80486 coating weight is −2.8σ off mean')}</span></div>
+    <div class="aiir" id="ir3"><b>${B('后续建议','Next step')}</b><span>${B('对 3 号线前 5 个批次加严抽检','Tighten sampling on the top 5 Line-3 lots')}</span></div>
+  </div>
+  <div class="aiok" id="ok7">${B('任意 OpenAI 兼容接口 · 流式输出','Any OpenAI-compatible API · streaming')}</div>
+</div>`);
+$('#c6b').insertAdjacentHTML('beforeend',`<div class="airow">${[['对话问答','Chat Q&amp;A'],['写 / 优化 SQL','Write / optimize SQL'],['描述即出图','Chart by description'],['生成脚本','Generate scripts'],['自然语言变换表格','Transform grid in plain language']].map(([z,e],i)=>`<b id="ap${i}"><i></i>${B(z,e)}</b>`).join('')}</div>`);
+IN('#w7',37.9,.8,60);
+TABS.forEach((_,i)=>tw('#md7'+i,38.5+i*.07,.4,{o:[0,1],y:[14,0]},'back'));
+IN('#q7',39.1,.5,20);IN('#ic7',39.5,.5,20);
+[0,1,2,3].forEach(i=>IN('#ir'+i,39.8+i*.22,.5,14));
+[0,1,2,3,4].forEach(i=>tw('#ap'+i,40.7+i*.16,.5,{o:[0,1],x:[30,0]},'back'));
+IN('#ok7',42.6,.5,16,'back');
+tw(s,43.1,.7,{s:[1,1.05]},'in');
+}
+
+/* ================= SCENE 7 · EXPORT & MORE 43.6–48.6 ================= */
+{
+const s=scene('s7',43.6,48.6,'');
+caption(s,'c7',43.8,['07 · 导出与更多','07 · EXPORT &amp; MORE'],['一键导出，<br><em>持续进化</em>','One-click export,<br><em>always improving</em>'],
+  ['Excel、CSV、SAS XPT 或格式化报告；还有色批谱系、内嵌工具与自动更新。','Excel, CSV, SAS XPT or a formatted report — plus color-lot genealogy, embedded tools and self-update.'],'EXPORT · XLSX · CSV · SAS XPT · REPORT');
+const fx=[['XLSX','#16a34a'],['CSV','#0891b2'],['XPT','#7c3aed'],[B('报告','Report'),'#dc2626']];
+s.insertAdjacentHTML('beforeend',`<div class="abs btn" id="ex" style="left:780px;top:190px;width:200px;height:70px;font-size:26px">⬇ ${B('导出','Export')}</div>`);
+fx.forEach(([n,c],i)=>{s.insertAdjacentHTML('beforeend',`<div class="abs" id="fx${i}" style="left:${1010+i*190}px;top:180px;width:170px;height:90px;border-radius:16px;background:#fff;color:#0f172a;display:flex;align-items:center;gap:14px;padding:0 18px;font-size:22px;font-weight:800;box-shadow:0 12px 30px rgba(0,0,0,.3)"><i style="width:46px;height:56px;border-radius:8px;background:${c};display:block;flex:0 0 46px;clip-path:polygon(0 0,70% 0,100% 25%,100% 100%,0 100%)"></i>${n}</div>`);
+  tw('#fx'+i,44.5+i*.1,.7,{o:[0,1],x:[-(230+i*190),0],s:[.4,1],r:[-20,0]},'back');});
+IN('#ex',44.1,.5,30,'back');tw('#ex',44.45,.15,{s:[1,.92]},'io');tw('#ex',44.6,.25,{s:[.92,1]},'back');
+const F=[['dna',['色批谱系','Color-lot genealogy'],['一步补全 FabLIMS 批次谱系','FabLIMS lot genealogy in one step']],
+ ['flow',['内嵌工具','Embedded tools'],['流程图 · 项目 · 问题解决','Flow diagram · Project · Problem solving']],
+ ['save',['保存与复用','Save &amp; reuse'],['已存查询 · 历史 · 模板','Saved queries · history · templates']],
+ ['chat',['反馈板','Feedback board'],['应用内提交问题与想法','Report issues and ideas in-app']],
+ ['upd',['自动更新','Self-update'],['新版本自动安装并重启','New builds install and restart']],
+ ['hist',['运行记录','Run history'],['近期运行历史一键重跑','Re-run recent queries in one click']]];
+F.forEach(([k,b,d],i)=>{const x=780+(i%3)*370,y=320+Math.floor(i/3)*210;
+  s.insertAdjacentHTML('beforeend',`<div class="feat" id="ft${i}" style="left:${x}px;top:${y}px"><div class="ic">${ICO[k]}</div><b>${B(...b)}</b><span>${B(...d)}</span></div>`);
+  tw('#ft'+i,45.2+i*.14,.6,{o:[0,1],y:[50,0],s:[.9,1]},'back');});
+tw(s,47.9,.7,{s:[1,1.05]},'in');
+}
+
+/* ================= SCENE 8 · LOCAL + END 48.6–54.6 ================= */
+{
+const s=scene('s8',48.6,54.6,'');
+s.insertAdjacentHTML('beforeend',`<div class="cap" id="c8" style="top:330px;width:560px"><div class="kick"><b></b>${B('本地优先 · ON-PREMISE','LOCAL FIRST · ON-PREMISE')}</div>
+  <div class="hd">${B('全部在<em>一台电脑</em><br>上运行','Everything runs<br>on <em>one PC</em>')}</div><div class="bd">${B('ODBC 驱动、数据与后端都在本地；只有导出或发给你配置的 AI 时，数据才会离开。','ODBC driver, data and backend stay local. Data only leaves when you export it or send it to your configured AI.')}</div></div>`);
+IN($('.kick','#c8'),48.8,.5,20);tw($('.hd','#c8'),48.9,.7,{o:[0,1],y:[40,0],bl:[10,0]});IN($('.bd','#c8'),49.1,.6,20);
+const L=[[B('原生窗口','Native window'),'WebView2 + React','linear-gradient(90deg,#1d4ed8,#0e7490)'],[B('FastAPI 后端','FastAPI backend'),'Python · pandas','linear-gradient(90deg,#1e40af,#0f766e)'],['pyodbc',B('本地 ODBC 驱动','Local ODBC driver'),'linear-gradient(90deg,#1e3a8a,#115e59)'],[B('你的数据库','Your database'),'SQL Server · Oracle · DB2 · Access …','linear-gradient(90deg,#172554,#134e4a)']];
+L.forEach(([a,b,g],i)=>{s.insertAdjacentHTML('beforeend',`<div class="layer" id="ly${i}" style="top:${210+i*130}px;background:${g}">${i===3?ICO.db:''}${a}<small>${b}</small></div>`);
+  tw('#ly'+i,48.9+i*.15,.6,{o:[0,1],y:[-60,0],s:[.92,1]},'back');
+  if(i<3){s.insertAdjacentHTML('beforeend',`<div class="abs" id="ar${i}" style="left:1200px;top:${310+i*130}px;font-size:26px;color:#5eead4">▼</div>`);IN('#ar'+i,49.3+i*.15,.3,-10);}});
+s.insertAdjacentHTML('beforeend',`<div class="abs" id="shield" style="left:745px;top:180px;width:930px;height:570px;border-radius:28px;border:3px solid rgba(45,212,191,.7);box-shadow:0 0 60px rgba(45,212,191,.35),inset 0 0 60px rgba(45,212,191,.12)"></div>
+  <div class="abs chip tchip" id="shl" style="left:1040px;top:780px">${ICO.lock} %APPDATA% · ${B('本地存储','local storage')}</div>`);
+tw('#shield',49.8,.6,{o:[0,1],s:[1.08,1]},'out');IN('#shl',50.0,.5,20,'back');
+['#c8','#ly0','#ly1','#ly2','#ly3','#ar0','#ar1','#ar2','#shield','#shl'].forEach((e,i)=>tw(e,51.0+i*.02,.5,{o:[1,0],s:[1,.9]},'in'));
+s.insertAdjacentHTML('beforeend',`
+  <div class="abs" id="elg" style="left:900px;top:190px">${LOGO('g3',120)}</div>
+  <div class="center" id="ew" style="top:350px;font-size:96px;font-weight:800;letter-spacing:.02em">
+    <span id="ew1">${B('连接','Connect')}</span><span id="d1"> · </span><span id="ew2">${B('提问','Ask')}</span><span id="d2"> · </span><span id="ew3">${B('查看','See')}</span><span id="d3"> · </span><span id="ew4" style="color:#2dd4bf">${B('分享','Share')}</span></div>
+  <div class="center sub2" id="en8" style="top:480px;font-size:26px;letter-spacing:.42em;color:#7d97b2">CONNECT · ASK · SEE · SHARE</div>
+  <div class="center" id="nm8" style="top:560px;font-size:64px;font-weight:800">
+    <span style="background:linear-gradient(90deg,#fff,#bae6fd 55%,#2dd4bf);-webkit-background-clip:text;background-clip:text;color:transparent">ODBC Query App</span></div>
+  <div class="center" id="tg8" style="top:660px;font-size:32px;color:#cfe0f0;font-weight:600">${B('让每一位工程师，都能直接与数据对话','Let every engineer talk to their data directly')}</div>
+  <div class="center" style="top:750px;display:flex;justify-content:center;gap:18px">
+    ${[['无需 SQL','No SQL'],['本地运行','Runs locally'],['20+ 图表','20+ charts'],['AI 助手','AI assistant'],['中英双语','EN + 中文']].map((p,i)=>`<span class="chip dchip" id="pp${i}" style="font-size:21px;color:#99f6e4">${ICO.check}${B(...p)}</span>`).join('')}</div>`);
+$$('#elg .dr').forEach((p,i)=>tw(p,51.3+i*.1,.7,{dash:[1,0]}));$$('#elg .lb').forEach((p,i)=>tw(p,51.7+i*.08,.4,{sy:[0,1]},'back'));
+tw('#elg',51.2,.6,{o:[0,1],s:[.6,1]},'back');
+['#ew1','#d1','#ew2','#d2','#ew3','#d3','#ew4'].forEach((e,i)=>{$(e).style.display='inline-block';tw(e,51.4+i*.09,.55,{o:[0,1],y:[40,0],bl:[10,0]});});
+IN('#en8',52.0,.5,10);IN('#nm8',52.2,.6,30);IN('#tg8',52.45,.6,20);
+[0,1,2,3,4].forEach(i=>tw('#pp'+i,52.7+i*.08,.5,{o:[0,1],y:[24,0],s:[.85,1]},'back'));
+tw('#ew',51.4,2.6,{s:[1,1.03]},'lin');
+}
+
+/* =====================================================================
+   SOUND ENGINE — 100% synthesized with Web Audio (no files, works offline)
+   ===================================================================== */
+function buildGraph(ctx){
+  const G={ctx};
+  const g=v=>{const n=ctx.createGain();n.gain.value=v;return n;};
+  G.master=g(.85);
+  const comp=ctx.createDynamicsCompressor();comp.threshold.value=-16;comp.ratio.value=4;comp.attack.value=.004;comp.release.value=.2;
+  G.master.connect(comp);comp.connect(ctx.destination);
+  G.music=g(.34);G.music.connect(G.master);
+  G.sfx=g(.75);G.sfx.connect(G.master);
+  G.rev=ctx.createConvolver();
+  const len=Math.floor(ctx.sampleRate*2.6),ir=ctx.createBuffer(2,len,ctx.sampleRate);
+  for(let c=0;c<2;c++){const d=ir.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.6);}
+  G.rev.buffer=ir;const ro=g(.42);G.rev.connect(ro);ro.connect(G.master);
+  const nb=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+  G.noise=nb;return G;
+}
+const A={
+  vca(G,w,a,peak,d,dest){const n=G.ctx.createGain();n.gain.setValueAtTime(.0001,w);n.gain.linearRampToValueAtTime(peak,w+a);n.gain.exponentialRampToValueAtTime(.0001,w+a+d);n.connect(dest);return n;},
+  osc(G,type,f0,f1,w,dur,dest,det=0){const o=G.ctx.createOscillator();o.type=type;o.detune.value=det;o.frequency.setValueAtTime(f0,w);if(f1!==f0)o.frequency.exponentialRampToValueAtTime(f1,w+dur);o.connect(dest);o.start(w);o.stop(w+dur+.05);return o;},
+  nz(G,w,dur,dest){const s=G.ctx.createBufferSource();s.buffer=G.noise;s.loop=true;s.connect(dest);s.start(w,Math.random()*1.5);s.stop(w+dur+.05);return s;},
+  filt(G,type,f,Q,dest){const b=G.ctx.createBiquadFilter();b.type=type;b.frequency.value=f;b.Q.value=Q;b.connect(dest);return b;},
+  send(G,node,amt){const n=G.ctx.createGain();n.gain.value=amt;node.connect(n);n.connect(G.rev);},
+  pan(G,from,to,w,dur,dest){const p=G.ctx.createStereoPanner();p.pan.setValueAtTime(from,w);p.pan.linearRampToValueAtTime(to,w+dur);p.connect(dest);return p;}
+};
+const SFX={
+  whoosh(G,w){const g=A.vca(G,w,.22,.5,.5,G.sfx);A.send(G,g,.3);const p=A.pan(G,-.7,.7,w,.7,g);
+    const f=A.filt(G,'bandpass',300,1.3,p);f.frequency.setValueAtTime(300,w);f.frequency.exponentialRampToValueAtTime(3800,w+.3);f.frequency.exponentialRampToValueAtTime(600,w+.75);A.nz(G,w,.8,f);},
+  swipe(G,w){const g=A.vca(G,w,.02,.28,.16,G.sfx);const f=A.filt(G,'highpass',1500,.8,g);f.frequency.setValueAtTime(1500,w);f.frequency.exponentialRampToValueAtTime(7000,w+.18);A.nz(G,w,.2,f);},
+  riser(G,w,dur){const g=G.ctx.createGain();g.gain.setValueAtTime(.0001,w);g.gain.exponentialRampToValueAtTime(.45,w+dur);g.gain.exponentialRampToValueAtTime(.0001,w+dur+.06);g.connect(G.sfx);A.send(G,g,.4);
+    const f=A.filt(G,'bandpass',200,2,g);f.frequency.setValueAtTime(200,w);f.frequency.exponentialRampToValueAtTime(6000,w+dur);A.nz(G,w,dur+.1,f);
+    const lp=A.filt(G,'lowpass',1600,1,g);A.osc(G,'sawtooth',90,700,w,dur,lp);},
+  impact(G,w){const g=A.vca(G,w,.004,1,.9,G.sfx);A.send(G,g,.55);A.osc(G,'sine',150,36,w,.9,g);
+    const g2=A.vca(G,w,.002,.55,.35,G.sfx);A.nz(G,w,.4,A.filt(G,'lowpass',900,.7,g2));},
+  pop(G,w,p=1){const g=A.vca(G,w,.003,.26,.13,G.sfx);A.send(G,g,.18);A.osc(G,'sine',520*p,1100*p,w,.08,g);},
+  click(G,w){const g=A.vca(G,w,.001,.38,.06,G.sfx);A.nz(G,w,.07,A.filt(G,'highpass',2500,.7,g));A.osc(G,'square',1500,900,w,.03,A.vca(G,w,.001,.06,.03,G.sfx));},
+  tick(G,w){const g=A.vca(G,w,.001,.07+Math.random()*.05,.025,G.sfx);A.nz(G,w,.04,A.filt(G,'bandpass',3000+Math.random()*2500,2.2,g));},
+  ding(G,w){[1318.5,1975.5].forEach((f,i)=>{const g=A.vca(G,w,.005,.16-i*.05,1.1,G.sfx);A.send(G,g,.5);A.osc(G,'sine',f,f,w,1.2,g);});},
+  alert(G,w){[0,.15].forEach(k=>{const g=A.vca(G,w+k,.005,.09,.1,G.sfx);A.osc(G,'square',988,988,w+k,.12,A.filt(G,'lowpass',2600,.7,g));});},
+  shimmer(G,w){[1568,1976,2349,2637,3136].forEach((f,i)=>{const g=A.vca(G,w+i*.05,.005,.06,1.2,G.sfx);A.send(G,g,.7);A.osc(G,'sine',f,f,w+i*.05,1.3,g);});},
+  chime(G,w){[523.25,659.25,783.99,987.77,1174.66,1567.98].forEach((f,i)=>{const t=w+i*.07;const g=A.vca(G,t,.01,.11,3,G.sfx);A.send(G,g,.7);A.osc(G,'triangle',f,f,t,3.1,g);});},
+  drone(G,w,dur){const g=G.ctx.createGain();g.gain.setValueAtTime(.0001,w);g.gain.linearRampToValueAtTime(.22,w+1.4);g.gain.setValueAtTime(.22,w+dur-.3);g.gain.linearRampToValueAtTime(.0001,w+dur);g.connect(G.music);A.send(G,g,.4);
+    const lp=A.filt(G,'lowpass',260,1,g);lp.frequency.setValueAtTime(220,w);lp.frequency.linearRampToValueAtTime(900,w+dur);
+    A.osc(G,'sawtooth',55,55,w,dur,lp);A.osc(G,'sawtooth',55,55,w,dur,lp,9);A.osc(G,'sine',110,110,w,dur,lp);},
+  kick(G,w){const g=A.vca(G,w,.002,.95,.32,G.music);A.osc(G,'sine',160,44,w,.3,g);},
+  hat(G,w){const g=A.vca(G,w,.001,.16,.045,G.music);A.nz(G,w,.06,A.filt(G,'highpass',7500,.7,g));},
+  clap(G,w){const g=A.vca(G,w,.002,.32,.16,G.music);A.send(G,g,.3);A.nz(G,w,.2,A.filt(G,'bandpass',1600,1.1,g));},
+  bass(G,w,f){const g=A.vca(G,w,.008,.42,.38,G.music);const lp=A.filt(G,'lowpass',700,4,g);lp.frequency.setValueAtTime(1200,w);lp.frequency.exponentialRampToValueAtTime(260,w+.3);A.osc(G,'sawtooth',f,f,w,.45,lp);A.osc(G,'sine',f/2,f/2,w,.45,g);},
+  pad(G,w,ch,dur){ch.forEach(f=>{const g=G.ctx.createGain();g.gain.setValueAtTime(.0001,w);g.gain.linearRampToValueAtTime(.045,w+.45);g.gain.setValueAtTime(.04,w+dur-.25);g.gain.linearRampToValueAtTime(.0001,w+dur+.35);g.connect(G.music);A.send(G,g,.6);
+    const lp=A.filt(G,'lowpass',1500,.8,g);A.osc(G,'sawtooth',f,f,w,dur+.4,lp,-8);A.osc(G,'sawtooth',f,f,w,dur+.4,lp,8);});}
+};
+/* ---- cue sheet (time-locked to the animation) ---- */
+const CUES=[];const cue=(t,f)=>CUES.push({t,f});
+(function buildCues(){
+  // hook
+  cue(0,(G,w)=>SFX.drone(G,w,4.6));cue(.25,(G,w)=>SFX.whoosh(G,w));cue(1.6,(G,w)=>SFX.whoosh(G,w));
+  cue(2.9,(G,w)=>SFX.swipe(G,w));cue(3.35,(G,w)=>SFX.riser(G,w,1.0));cue(4.38,(G,w)=>SFX.impact(G,w));
+  // brand
+  cue(4.8,(G,w)=>SFX.shimmer(G,w));cue(5.55,(G,w)=>SFX.pop(G,w,1));cue(5.67,(G,w)=>SFX.pop(G,w,1.26));cue(5.79,(G,w)=>SFX.pop(G,w,1.5));cue(5.7,(G,w)=>SFX.whoosh(G,w));
+  // scene transitions
+  [9.4,14.6,20.4,25.4,28.55,32.6,37.6,43.6,48.6].forEach(t=>cue(t-.1,(G,w)=>SFX.whoosh(G,w)));
+  // connect
+  cue(9.9,(G,w)=>SFX.pop(G,w,.7));for(let i=0;i<6;i++)cue(10.5+i*.1,(G,w)=>SFX.pop(G,w,1+i*.12));
+  [11.8,12.05,12.3].forEach((t,i)=>cue(t,(G,w)=>SFX.pop(G,w,1.4+i*.15)));cue(12.6,(G,w)=>SFX.click(G,w));
+  // ask
+  cue(17.6,(G,w)=>SFX.click(G,w));cue(17.0,(G,w)=>SFX.pop(G,w,1.2));cue(19.4,(G,w)=>SFX.ding(G,w));
+  // see
+  cue(22.7,(G,w)=>SFX.pop(G,w,1.1));cue(23.1,(G,w)=>SFX.pop(G,w,1.3));cue(23.5,(G,w)=>SFX.click(G,w));cue(24.0,(G,w)=>SFX.ding(G,w));
+  // visualize
+  for(let i=0;i<20;i++)cue(25.85+i*.045,(G,w)=>SFX.pop(G,w,1+(i%5)*.15));
+  [29.1,29.22,29.34].forEach((t,i)=>cue(t,(G,w)=>SFX.pop(G,w,.9+i*.2)));cue(30.85,(G,w)=>SFX.alert(G,w));cue(30.4,(G,w)=>SFX.shimmer(G,w));
+  // analyze
+  cue(35.0,(G,w)=>SFX.ding(G,w));[34.0,34.25,34.5].forEach((t,i)=>cue(t,(G,w)=>SFX.pop(G,w,1+i*.2)));cue(34.9,(G,w)=>SFX.swipe(G,w));
+  // ai insights
+  cue(38.5,(G,w)=>SFX.click(G,w));for(let i=0;i<6;i++)cue(38.5+i*.07,(G,w)=>SFX.pop(G,w,.9+i*.1));
+  cue(39.1,(G,w)=>SFX.pop(G,w,1.2));cue(39.5,(G,w)=>SFX.shimmer(G,w));
+  for(let i=0;i<4;i++)cue(39.8+i*.22,(G,w)=>SFX.tick(G,w));
+  for(let i=0;i<5;i++)cue(40.7+i*.16,(G,w)=>SFX.pop(G,w,1+i*.08));
+  cue(42.6,(G,w)=>SFX.ding(G,w));
+  // export
+  cue(44.45,(G,w)=>SFX.click(G,w));for(let i=0;i<4;i++)cue(44.5+i*.1,(G,w)=>SFX.swipe(G,w));for(let i=0;i<6;i++)cue(45.2+i*.14,(G,w)=>SFX.pop(G,w,1+i*.1));
+  // outro
+  cue(49.8,(G,w)=>SFX.shimmer(G,w));cue(50.25,(G,w)=>SFX.riser(G,w,1.1));cue(51.35,(G,w)=>SFX.impact(G,w));cue(52.2,(G,w)=>SFX.chime(G,w));
+  // typing ticks
+  TY.forEach(([a,b])=>{for(let t=a;t<b;t+=.055)cue(t,(G,w)=>SFX.tick(G,w));});
+  // music: 120 BPM, 1 bar = 2 s, Am – F – C – G
+  const CH=[[220,261.63,329.63],[174.61,220,261.63],[196,261.63,329.63],[196,246.94,293.66]];
+  const RT=[110,87.31,130.81,98];
+  for(let k=0;k<26;k++){const b0=4.6+k*2,ci=k%4;
+    if(b0>=51) break;
+    cue(b0,(G,w)=>SFX.pad(G,w,CH[ci],2));
+    for(let j=0;j<4;j++){const t=b0+j*.5;if(t>=51.2)break;
+      cue(t,(G,w)=>SFX.bass(G,w,RT[ci]*(j===2?2:1)));
+      const full=b0>=9.4&&b0<48.6;
+      if(full||j===0) cue(t,(G,w)=>SFX.kick(G,w));
+      if(full) cue(t+.25,(G,w)=>SFX.hat(G,w));
+      if(b0>=14.6&&b0<48.6&&(j===1||j===3)) cue(t,(G,w)=>SFX.clap(G,w));
+    }}
+  cue(51.35,(G,w)=>SFX.pad(G,w,[220,261.63,329.63,440],2.4));cue(51.35,(G,w)=>SFX.bass(G,w,55));
+  CUES.sort((a,b)=>a.t-b.t);
+})();
+
+/* ---- live audio ---- */
+const SND={on:false,G:null,fired:0};
+function audioOn(){
+  if(!SND.G){SND.G=buildGraph(new (window.AudioContext||window.webkitAudioContext)());}
+  SND.G.ctx.resume();SND.G.master.gain.setTargetAtTime(.85,SND.G.ctx.currentTime,.05);
+}
+function audioOff(){if(SND.G){SND.G.master.gain.setTargetAtTime(0,SND.G.ctx.currentTime,.05);setTimeout(()=>SND.on||SND.G.ctx.suspend(),300);}}
+function scheduleAudio(cur){
+  if(!SND.on||!SND.G||SND.G.ctx.state!=='running') {SND.fired=cur;return;}
+  const h=cur+.1,now=SND.G.ctx.currentTime;
+  for(const c of CUES){if(c.t>SND.fired&&c.t<=h){try{c.f(SND.G,now+Math.max(0,c.t-cur));}catch(e){}}}
+  SND.fired=h;
+}
+/* ---- offline soundtrack render (used by the MP4 export script) ---- */
+window.renderSoundtrack=async()=>{
+  const sr=44100,oc=new OfflineAudioContext(2,sr*DUR,sr),G=buildGraph(oc);
+  for(const c of CUES) c.f(G,Math.max(0,c.t));
+  const buf=await oc.startRendering();
+  const n=buf.length,L=buf.getChannelData(0),Rc=buf.getChannelData(1),ab=new ArrayBuffer(44+n*4),v=new DataView(ab);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,'RIFF');v.setUint32(4,36+n*4,true);ws(8,'WAVE');ws(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,2,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*4,true);v.setUint16(32,4,true);v.setUint16(34,16,true);ws(36,'data');v.setUint32(40,n*4,true);
+  for(let i=0,o=44;i<n;i++,o+=4){v.setInt16(o,Math.max(-1,Math.min(1,L[i]))*32767,true);v.setInt16(o+2,Math.max(-1,Math.min(1,Rc[i]))*32767,true);}
+  const u=new Uint8Array(ab);let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));
+  return btoa(s);
+};
+
+/* ================= UI / playback ================= */
+const stage=$('#stage');
+function fit(){const k=Math.min(innerWidth/1920,innerHeight/1080);stage.style.transform=`translate(-50%,-50%) scale(${k})`;}
+addEventListener('resize',fit);fit();
+let cur=0,playing=true,start=performance.now();
+function setLang(l){
+  LANG=l;store.set('promoLang',l);
+  if(window.parent!==window){try{window.parent.postMessage({type:'promo-lang',lang:l},'*')}catch(e){}}
+  document.body.classList.toggle('L-en',l==='en');
+  document.documentElement.lang=l==='en'?'en':'zh-CN';
+  $$('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.l===l));
+  $('#pp').title=l==='en'?'Play / Pause':'播放 / 暂停';$('#rs').title=l==='en'?'Restart':'从头播放';
+  drawSnd();render(cur);
+}
+const EQ='<span class="eq"><i></i><i></i><i></i></span>';
+const SPK_ON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+const SPK_OFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z" fill="currentColor"/><path d="M22 9l-6 6M16 9l6 6"/></svg>';
+function drawSnd(){const b=$('#snd');b.classList.toggle('on',SND.on);b.classList.toggle('playing',SND.on&&playing);
+  b.innerHTML=(SND.on?SPK_ON:SPK_OFF)+(SND.on?EQ:'');}
+function toggleSound(force){
+  SND.on=force??!SND.on;store.set('promoSound',SND.on?'1':'0');
+  if(SND.on){audioOn();SND.fired=cur;}else audioOff();
+  drawSnd();
+}
+const capture=qs.has('capture');
+setLang(LANG==='en'?'en':'zh');
+if(capture){document.body.classList.add('capture');window.seek=t=>render(t);render(0);}
+else{
+  window.seek=t=>render(t);
+  const sk=$('#sk'),tm=$('#tm'),pp=$('#pp');
+  $$('.seg button').forEach(b=>b.onclick=()=>setLang(b.dataset.l));
+  $('#snd').onclick=()=>toggleSound();
+  pp.onclick=()=>{if(!playing&&cur>=DUR)cur=0;playing=!playing;pp.textContent=playing?'❚❚':'▶';start=performance.now()-cur*1000;SND.fired=cur;
+    if(SND.G){playing&&SND.on?SND.G.ctx.resume():SND.G.ctx.suspend();}drawSnd();};
+  $('#rs').onclick=()=>{cur=0;start=performance.now();SND.fired=-.01;render(0);if(!playing)pp.click();};
+  sk.oninput=()=>{cur=+sk.value;start=performance.now()-cur*1000;SND.fired=cur;render(cur);};
+  addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();pp.click();}else if(e.key==='m'||e.key==='M')toggleSound();else if(e.key==='l'||e.key==='L')setLang(LANG==='en'?'zh':'en');});
+  // remembered "sound on": browsers need one user gesture before audio can start
+  if(store.get('promoSound')==='1'){SND.on=true;drawSnd();const hint=$('#hint');hint.innerHTML=B('点击任意处开启音效','Click anywhere to enable sound');hint.style.opacity=1;
+    const go=()=>{audioOn();SND.fired=cur;hint.style.opacity=0;removeEventListener('pointerdown',go);removeEventListener('keydown',go);};
+    addEventListener('pointerdown',go);addEventListener('keydown',go);}
+  let idleT;const wake=()=>{document.body.classList.remove('idle');clearTimeout(idleT);idleT=setTimeout(()=>document.body.classList.add('idle'),2500);};
+  addEventListener('pointermove',wake);addEventListener('pointerdown',wake);wake();
+  (function loop(n){
+    if(playing){let t=(n-start)/1000;
+      if(t>=DUR){t=DUR;playing=false;pp.textContent='▶';if(SND.G&&SND.on)SND.G.ctx.suspend();drawSnd();}
+      cur=t;sk.value=cur;tm.textContent=cur.toFixed(1)+'s';render(cur);scheduleAudio(cur);}
+    requestAnimationFrame(loop);
+  })(performance.now());
+}
+</script>
+</body>
+</html>

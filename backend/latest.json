@@ -1,8 +1,8 @@
 {
-  "version": "2.7.0",
+  "version": "2.7.3",
   "min_version": "1.0.0",
-  "notes": "1. Scheduled tasks (new): a clock button in the top bar opens a board of timed runs. Point a task at saved SQL, an app template or one of your saved scripts and run it every few minutes, daily, weekly or monthly — then enable or pause it, run it on demand, and review its run history. Tasks fire while the app is open, and a run missed while it was closed is picked up the next time you open the app.\n2. The script editor gained a Cancel button: a running script can now be aborted at any time, instead of waiting for it to finish or hit its timeout.\n3. In the new-schedule dialog the name is required, the \"save rows to the warehouse\" option is a checkbox that starts off, and the template/script picker no longer draws its label over the value you picked.",
+  "notes": "1. Script templates now always list their title, applicable data, description, size and example link: when the published catalog cannot be read, the copy shipped with the app is used instead of bare file names.\n2. \"View\" on a template opens its sample dashboard as a rendered page again instead of showing the raw HTML source; the page is served by the app (or from the local copy when present), so it also opens faster.\n3. The template catalog retries sooner after a network hiccup, so a temporary connection problem no longer leaves the picker incomplete for several minutes.\n4. The intro animation's feature tiles are taller, so every description fits inside its box.\n5. The Alex icon in the top bar plays the Alex voxel show full-screen inside the app; close it with the button or the Escape key.",
   "package": "ODBCQueryApp.zip",
-  "sha256": "a3e39fea273545278fe172ce9af5e00f0e0d43ea8a25165ced2e806824dc8936",
+  "sha256": "827ef29100d17ef94d10acec45c7c14961ff6a5238f95e110a0b0c33e32724d5",
   "installer": "ODBCQueryApp-Setup-latest.exe"
 }

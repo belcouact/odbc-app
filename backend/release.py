@@ -58,6 +58,7 @@ import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent          # backend/
 APP_ROOT = ROOT.parent                          # project root
@@ -361,8 +362,13 @@ def bucket_base(manifest_url: str) -> str:
 
 
 def object_url(manifest_url: str, name: str) -> str:
-    """Public manifest URL -> write URL for one file in the same bucket."""
-    return bucket_base(manifest_url) + "/" + name
+    """Public manifest URL -> write URL for one file in the same bucket.
+
+    The object key is percent-encoded (a template file may contain a space),
+    which keeps the request line valid and matches the quoted URL the app builds
+    when it fetches that template back.
+    """
+    return bucket_base(manifest_url) + "/" + quote(name, safe="/")
 
 
 def list_url(manifest_url: str) -> str:

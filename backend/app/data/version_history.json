@@ -1,5 +1,20 @@
 [
   {
+    "version": "2.7.3",
+    "date": "2026-10-17",
+    "notes": "1. Script templates now always list their title, applicable data, description, size and example link: when the published catalog cannot be read, the copy shipped with the app is used instead of bare file names.\n2. \"View\" on a template opens its sample dashboard as a rendered page again instead of showing the raw HTML source; the page is served by the app (or from the local copy when present), so it also opens faster.\n3. The template catalog retries sooner after a network hiccup, so a temporary connection problem no longer leaves the picker incomplete for several minutes.\n4. The intro animation's feature tiles are taller, so every description fits inside its box.\n5. The Alex icon in the top bar plays the Alex voxel show full-screen inside the app; close it with the button or the Escape key."
+  },
+  {
+    "version": "2.7.2",
+    "date": "2026-10-17",
+    "notes": "1. Script templates are now grouped into three tabs — Existing Data Analysis, SQL Embedded Analysis and Reminder Popup — and a \"break reminder\" template was added.\n2. AI insights and deep-analysis results are no longer restored after the app is closed: they stay for the current session only, so a card generated for one query can never come back describing different data.\n3. Deep analysis has a single input that both starts a run and carries follow-up questions, and its field now matches the height of the Insights focus field.\n4. The intro animation gained an AI-capabilities scene, follows your language choice (Skip button included) and stops on its final frame instead of looping; it now uses the app's fonts.\n5. \"How to use this app\" was rewritten for the current navigation, and the Detect ODBC DSNs and Add connection dialogs got a close button in the top-right corner."
+  },
+  {
+    "version": "2.7.1",
+    "date": "2026-10-16",
+    "notes": "1. Fixed a silent start-up failure: if a background service without a window was already answering on the app's port, launching the shortcut could close the splash and exit without ever showing the app window. The launcher now recognises that case and starts its own window instead of handing off to something that has nothing to show."
+  },
+  {
     "version": "2.7.0",
     "date": "2026-10-16",
     "notes": "1. Scheduled tasks (new): a clock button in the top bar opens a board of timed runs. Point a task at saved SQL, an app template or one of your saved scripts and run it every few minutes, daily, weekly or monthly — then enable or pause it, run it on demand, and review its run history. Tasks fire while the app is open, and a run missed while it was closed is picked up the next time you open the app.\n2. The script editor gained a Cancel button: a running script can now be aborted at any time, instead of waiting for it to finish or hit its timeout.\n3. In the new-schedule dialog the name is required, the \"save rows to the warehouse\" option is a checkbox that starts off, and the template/script picker no longer draws its label over the value you picked."
@@ -8,20 +23,5 @@
     "version": "2.6.9",
     "date": "2026-10-11",
     "notes": "1. In the SQL editor's criteria section, clearing a criterion now removes the condition it had added to the SQL, instead of leaving a stale filter such as \"xxx = '0'\" behind.\n2. The FabLIMS LSN, Lot Genealogy and Package Info queries now return rows in a stable, meaningful order — LSN by manufacture date, and the genealogy and package queries by work order lot and date.\n3. New Script template: Lamination Genealogy — queries FabLIMS lot genealogy and LSN for the work order lots you list, and builds a self-contained ECharts dashboard showing the raw face/film/backer usage feeding each work order's packaged lots, with hover details."
-  },
-  {
-    "version": "2.6.8",
-    "date": "2026-10-10",
-    "notes": "1. The SQL editor and the query Builder now keep separate result grids — running a Builder query no longer overwrites the SQL editor's results, and vice versa.\n2. Running the Process_Data template now shows a step-by-step progress panel (the SQL query, then the Python wide-table conversion), so you can see it is still working instead of appearing frozen.\n3. In the SQL editor's criteria section, date fields now show only the date (no time), and the Yield Summary template's criteria were updated to match the current SQL."
-  },
-  {
-    "version": "2.6.7",
-    "date": "2026-10-09",
-    "notes": "1. Query results now have a search box at the top: type to filter rows across every column at once, with a one-click clear button.\n2. In the SQL Builder the table/view selector gained its own search box, so you can find a table or view by name instead of scrolling through a long list.\n3. The Analyze tab's Copilot prompt now tells the AI to deliver its findings as a self-contained HTML report with Apache ECharts charts, save it to your Downloads folder and open it when done, and — when the task needs your input — show a native Windows dialog the same way this app does (console/tkinter prompts cannot work in a non-interactive run)."
-  },
-  {
-    "version": "2.6.6",
-    "date": "2026-10-09",
-    "notes": "1. Fixed the failed update that could leave the app showing an error page (HTTP 500) after restarting: the app now starts correctly on the newly installed version, and an update can no longer install into a leftover backup folder."
   }
 ]

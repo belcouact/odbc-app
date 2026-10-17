@@ -350,6 +350,21 @@ TEMPLATE_INFO = {
             "Two pie charts below: scrap quantity and allowance quantity by event reason",
         ],
     },
+    "break reminder": {
+        "title": "Break Reminder",
+        "applies_to": "No query needed — the reminder runs on its own",
+        "description": (
+            "Shows the “Time to take a break!” card, for dropping on a schedule to "
+            "step away from the screen."
+        ),
+        "outputs": [
+            "A rounded, always-on-top Windows card with a coffee icon, a short "
+            "message and a Take break button",
+            "The card is drawn by PowerShell in its own window, so the app keeps "
+            "working while it is on screen",
+            "Closed with the Take break button or the Escape key",
+        ],
+    },
 }
 
 
@@ -650,7 +665,7 @@ def build_page(items: list[dict], base: str) -> str:
             description=html.escape(item["description"]),
             size=item["size"],
             updated=item["updated"],
-            url=html.escape(f"{base}/{PREFIX}/{item['name']}", quote=True),
+            url=html.escape(f"{base}/{PREFIX}/{quote(item['name'])}", quote=True),
         )
         for item in items
     )
@@ -769,7 +784,7 @@ def verify_public(base: str, items: list[dict], page: str) -> None:
     print("\nVerifying the published objects (cache-busted read-back):")
     bad = []
     for item in items:
-        url = f"{base}/{PREFIX}/{item['name']}?v={stamp}"
+        url = f"{base}/{PREFIX}/{quote(item['name'])}?v={stamp}"
         try:
             status, body = release.http(url, "GET", {"Cache-Control": "no-cache"})
         except SystemExit as exc:

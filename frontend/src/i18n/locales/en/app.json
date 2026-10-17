@@ -12,7 +12,8 @@
   },
   "bar": {
     "appTitle": "ODBC Query",
-    "enlargeAlex": "Enlarge the Alex icon",
+    "openAlexShow": "Open the Alex voxel show",
+    "closeAlexShow": "Close",
     "watchIntro": "Watch the intro",
     "aiAssistant": "Open AI assistant",
     "connections": "Open Connections settings",

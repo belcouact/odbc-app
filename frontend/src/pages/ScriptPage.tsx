@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { ChangeEvent, ReactNode, Ref } from 'react'
+import type { ChangeEvent, ReactElement, ReactNode, Ref } from 'react'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
@@ -25,6 +25,7 @@ import BarChartIcon from '@mui/icons-material/BarChart'
 import BookmarksIcon from '@mui/icons-material/Bookmarks'
 import CodeIcon from '@mui/icons-material/Code'
 import InsightsIcon from '@mui/icons-material/Insights'
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import StorageIcon from '@mui/icons-material/Storage'
@@ -90,6 +91,28 @@ import ChartsPanel from '../components/ChartsPanel'
 import CodeEditor from '../components/CodeEditor'
 
 type ScriptTab = 'script' | 'chart' | 'insights' | 'analyze'
+
+/** Tabs the template library groups its scripts into, in display order. */
+type TemplateGroup = 'existing' | 'sql' | 'reminder'
+const TEMPLATE_GROUPS: TemplateGroup[] = ['existing', 'sql', 'reminder']
+/** Only the templates that belong somewhere other than the first group; the
+ *  rest of the catalog (present and future scripts) stays under "existing". */
+const TEMPLATE_GROUP: Record<string, TemplateGroup> = {
+  'analyze-lamination-genealogy': 'sql',
+  'break reminder': 'reminder',
+}
+
+/** Which library tab a template is listed under. */
+function templateGroup(tmpl: ScriptTemplate): TemplateGroup {
+  return TEMPLATE_GROUP[tmpl.name] ?? 'existing'
+}
+
+/** Icon for each group tab: the loaded grid, the database behind SQL, a bell. */
+const TEMPLATE_GROUP_ICON: Record<TemplateGroup, ReactElement> = {
+  existing: <GridOnIcon fontSize="small" />,
+  sql: <StorageIcon fontSize="small" />,
+  reminder: <NotificationsActiveIcon fontSize="small" />,
+}
 
 interface DeleteTarget {
   id: string
@@ -340,15 +363,10 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
   const [templateBusy, setTemplateBusy] = useState('')
   /** Stem of the row whose detail panel is open (one at a time). */
   const [expandedTemplate, setExpandedTemplate] = useState('')
-  /** Stem whose sample dashboard is being fetched, so only that row spins. */
-  const [exampleBusy, setExampleBusy] = useState('')
-  /** Sample dashboard open in the in-app viewer, or null. ``loading`` is true
-   *  from the click until its blob URL is ready, so the viewer can open at once
-   *  and show a spinner while the (often multi-MB) sample downloads. */
-  const [examplePreview, setExamplePreview] =
-    useState<{ title: string; url: string; loading: boolean } | null>(null)
-  /** Phones show the dashboard viewer full screen, matching the other pop-ups. */
-  const exampleFullScreen = useMediaQuery('(max-width:600px)')
+  /** Group tab selected in the template library. */
+  const [templateGroupTab, setTemplateGroupTab] = useState<TemplateGroup>('existing')
+  /** Templates listed under the selected group tab. */
+  const groupedTemplates = templates.filter((tmpl) => templateGroup(tmpl) === templateGroupTab)
 
   /** Fetch the published template list (Supabase catalog, bundled fallback). */
   const loadTemplates = useCallback(async () => {
@@ -407,55 +425,15 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
     }
   }
 
-  /** Close the sample-dashboard viewer and release its blob. */
-  const closeExamplePreview = useCallback(() => {
-    setExamplePreview((prev) => {
-      if (prev?.url) URL.revokeObjectURL(prev.url)
-      return null
-    })
-  }, [])
-
-  /** Show a template's sample dashboard in the in-app viewer.
+  /** Open a template's sample dashboard in a new window.
    *
-   *  The bucket serves HTML objects as ``text/plain`` with ``nosniff``, so
-   *  linking straight at the object URL would show source code. Fetching the
-   *  bytes (CORS is open) and handing an ``<iframe>`` a ``text/html`` blob makes
-   *  it render. The viewer is an in-app dialog on purpose: ``window.open`` is
-   *  intercepted by the native WebView2 window (it either navigates the app
-   *  window away or asks the OS browser to open a ``blob:`` URL it cannot
-   *  resolve), so a real popup would be unreliable. */
-  const openExample = useCallback(async (tmpl: ScriptTemplate) => {
-    const url = tmpl.example?.url
-    if (!url) return
-    setExampleBusy(tmpl.name)
-    // Open the viewer immediately: the sample can be several MB, so a spinner
-    // in the pop-up beats a frozen row button with nothing on screen.
-    setExamplePreview((prev) => {
-      if (prev?.url) URL.revokeObjectURL(prev.url)  // release the previous blob
-      return { title: tmpl.example?.label || tmpl.title || tmpl.name, url: '', loading: true }
-    })
-    try {
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const blobUrl = URL.createObjectURL(
-        new Blob([await res.text()], { type: 'text/html' }),
-      )
-      setExamplePreview((prev) => {
-        if (!prev) { URL.revokeObjectURL(blobUrl); return prev }  // viewer closed mid-load
-        if (prev.url) URL.revokeObjectURL(prev.url)
-        return { ...prev, url: blobUrl, loading: false }
-      })
-    } catch (err) {
-      closeExamplePreview()  // drop the spinner and let the notice explain
-      showNotice(
-        t('notices.exampleFailed', {
-          error: err instanceof Error ? err.message : t('notices.downloadFailed'),
-        }),
-      )
-    } finally {
-      setExampleBusy('')
-    }
-  }, [t, showNotice, closeExamplePreview])
+   *  The backend serves the page as ``text/html``; the bucket URL alone would
+   *  download it as plain text.  The native shell hands ``window.open`` to the
+   *  system browser, so the dashboard renders in a real browser tab. */
+  const openExample = (tmpl: ScriptTemplate) => {
+    if (!tmpl.example) return
+    window.open(api.scriptTemplateExampleUrl(tmpl.name), '_blank')
+  }
 
   // Keep the live log scrolled to the bottom as new output streams in.
   useEffect(() => {
@@ -788,14 +766,10 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
       setSaveScriptError(t('notices.enterScriptName'))
       return
     }
-    const resolved = await resolveScriptData()
-    if (resolved.error) {
-      setSaveScriptError(resolved.error)
-      return
-    }
-    // The data actually fed to the script is not stored with it; keep the
-    // workspace's current builder query / custom SQL so the saved script can
-    // re-run its data source when launched from the Pre-defined list.
+    // Saving does not need query data: the rows fed to a script are never
+    // stored with it, so an empty grid (or a not-yet-loaded snapshot) must not
+    // block the save. Keep the workspace's current builder query / custom SQL
+    // so the saved script can re-run its data source from the Pre-defined list.
     const snapshotNow = getWorkspaceSnapshot()
     setSavingScript(true)
     setSaveScriptError(null)
@@ -1816,6 +1790,32 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
             </Paper>
           )}
           {templates.length > 0 && (
+            <Tabs
+              value={templateGroupTab}
+              onChange={(_event, value: TemplateGroup) => setTemplateGroupTab(value)}
+              variant="scrollable"
+              scrollButtons="auto"
+              allowScrollButtonsMobile
+              sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+            >
+              {TEMPLATE_GROUPS.map((group) => (
+                <Tab
+                  key={group}
+                  value={group}
+                  icon={TEMPLATE_GROUP_ICON[group]}
+                  iconPosition="start"
+                  label={t(`templates.groups.${group}`)}
+                  sx={{ minHeight: 48 }}
+                />
+              ))}
+            </Tabs>
+          )}
+          {templates.length > 0 && groupedTemplates.length === 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
+              {t('templates.groupEmpty')}
+            </Typography>
+          )}
+          {groupedTemplates.length > 0 && (
             <TableContainer component={Paper} variant="outlined">
               <Table size="small" aria-label={t('templates.tableAria')}>
                 <TableHead>
@@ -1868,7 +1868,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {templates.map((tmpl) => {
+                  {groupedTemplates.map((tmpl) => {
                     const busy = templateBusy === tmpl.name
                     const expanded = expandedTemplate === tmpl.name
                     const requires = tmpl.details?.requires ?? []
@@ -1960,8 +1960,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                                 <Link
                                   component="button"
                                   type="button"
-                                  onClick={() => void openExample(tmpl)}
-                                  disabled={exampleBusy === tmpl.name}
+                                  onClick={() => openExample(tmpl)}
                                   underline="hover"
                                   sx={{
                                     display: 'inline-flex',
@@ -1971,11 +1970,7 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                                     whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {exampleBusy === tmpl.name ? (
-                                    <CircularProgress size={16} color="inherit" />
-                                  ) : (
-                                    <VisibilityIcon fontSize="small" />
-                                  )}
+                                  <VisibilityIcon fontSize="small" />
                                   {t('common.view')}
                                 </Link>
                               </Tooltip>
@@ -2084,74 +2079,6 @@ function ScriptPage({ onOpenAi, ref }: ScriptPageProps = {}) {
                 </TableBody>
               </Table>
             </TableContainer>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Sample-dashboard viewer. Shown in-app rather than via window.open so it
-          works inside the native WebView2 window, where popups are intercepted. */}
-      <Dialog
-        open={examplePreview !== null}
-        onClose={closeExamplePreview}
-        fullScreen={exampleFullScreen}
-        maxWidth={false}
-        slotProps={{
-          paper: {
-            sx: {
-              width: { xs: '100%', md: '90vw' },
-              height: exampleFullScreen ? '100%' : '88vh',
-              maxWidth: 'none',
-              maxHeight: 'none',
-              m: { md: 3 },
-            },
-          },
-        }}
-      >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
-          <InsightsIcon color="primary" />
-          <Box
-            sx={{
-              flexGrow: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {examplePreview?.title || t('templates.sampleDashboard')}
-          </Box>
-          <IconButton
-            onClick={closeExamplePreview}
-            aria-label={t('templates.viewerCloseAria')}
-            sx={{ width: 48, height: 48 }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, display: 'flex', overflow: 'hidden' }}>
-          {examplePreview?.loading ? (
-            <Box
-              sx={{
-                flexGrow: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 2,
-                color: 'text.secondary',
-              }}
-            >
-              <CircularProgress />
-              <Typography variant="body2">{t('templates.loadingExample')}</Typography>
-            </Box>
-          ) : (
-            examplePreview && (
-              <iframe
-                src={examplePreview.url}
-                title={examplePreview.title}
-                style={{ border: 0, width: '100%', height: '100%', background: '#fff' }}
-              />
-            )
           )}
         </DialogContent>
       </Dialog>

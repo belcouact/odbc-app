@@ -171,6 +171,9 @@ a = Analysis(
         (os.path.join(app_root, "frontend", "dist"), "frontend/dist"),
         # Custom script templates -> <bundle>/custom script
         (os.path.join(backend_dir, "custom script"), "custom script"),
+        # Local mirror of the published template catalog (rich metadata for the
+        # picker when the bucket cannot be reached) -> <bundle>/templates.json
+        (os.path.join(backend_dir, "templates.json"), "."),
         # Connection template config -> <bundle>/app/data
         (
             os.path.join(backend_dir, "app", "data", "connection_templates.json"),

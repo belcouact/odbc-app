@@ -128,7 +128,13 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": APP_VERSION}
+    # ``windowed`` separates a real instance — launched by launcher.py, which is
+    # what opens the pywebview window and sets ODBC_APP_TOKEN — from a headless
+    # backend such as a dev server run as ``uvicorn app.main:app``.  launcher.py
+    # never hands a launch off to a windowless responder, because there would be
+    # no window to bring forward and every shortcut click would end in a silent
+    # exit with nothing on screen.
+    return {"status": "ok", "version": APP_VERSION, "windowed": bool(_APP_TOKEN)}
 
 
 def _bundled_data_file(name: str) -> str:

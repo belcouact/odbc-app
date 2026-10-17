@@ -67,7 +67,13 @@
     "optional": "可选列",
     "outputs": "输出内容",
     "noDetails": "该模板暂无更多详情。",
-    "updated": "更新于 {{date}}"
+    "updated": "更新于 {{date}}",
+    "groupEmpty": "该分组暂无模板。",
+    "groups": {
+      "existing": "基于现有数据分析",
+      "sql": "SQL 嵌入式分析",
+      "reminder": "提醒弹窗"
+    }
   },
   "examples": {
     "overview": "概览与基本统计",

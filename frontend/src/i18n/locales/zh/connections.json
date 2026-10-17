@@ -64,6 +64,7 @@
   "dialog": {
     "editTitle": "编辑连接",
     "addTitle": "添加连接",
+    "close": "关闭",
     "nameLabel": "连接名称",
     "namePlaceholder": "例如：生产环境 SQL Server",
     "nameHelperEdit": "名称只是一个标签 —— 你可以随时重命名，不会影响模板、脚本或通道操作。",
@@ -111,6 +112,7 @@
   },
   "detect": {
     "title": "检测 ODBC DSN",
+    "close": "关闭",
     "scanning": "正在扫描 Windows ODBC 注册表…",
     "none": "在这台电脑上未找到 ODBC DSN",
     "selectAll": "全选",
